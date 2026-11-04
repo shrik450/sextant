@@ -3,16 +3,18 @@ import RevueCore
 
 @MainActor
 protocol ReaderDelegate: AnyObject {
-    func readerOpenFile(_ file: Int, line: Int?)
-    func readerUnfolded()
-    func readerJumpToDefinition(_ word: String, file: Int, line: Int)
-    func readerEditNote(_ id: UUID)
-    func readerMenu(file: Int?, line: Int?) -> NSMenu?
-    func readerCurrentFileChanged()
-    func readerBlameClicked(_ commit: Blame.Commit, line: Int)
-    func readerCaretMoved()
-    func readerAddNote()
-    func readerPeek()
+    /// Tells the delegate the reader's code took the keyboard.
+    func readerFocused(_ r: Reader)
+    func readerOpenFile(_ r: Reader, file: Int, line: Int?)
+    func readerUnfolded(_ r: Reader)
+    func readerJumpToDefinition(_ r: Reader, word: String, file: Int, line: Int)
+    func readerEditNote(_ r: Reader, id: UUID)
+    func readerMenu(_ r: Reader, file: Int?, line: Int?) -> NSMenu?
+    func readerCurrentFileChanged(_ r: Reader)
+    func readerBlameClicked(_ r: Reader, commit: Blame.Commit, line: Int)
+    func readerCaretMoved(_ r: Reader)
+    func readerAddNote(_ r: Reader)
+    func readerPeek(_ r: Reader)
 }
 
 /// Where the reader is, as a file and the line of it that is at the top (or selected).
@@ -110,7 +112,10 @@ final class Reader: NSViewController, CodeViewDelegate {
             scroll.rulersVisible = true
             scroll.contentView.postsBoundsChangedNotifications = true
             NotificationCenter.default.addObserver(self, selector: #selector(scrolled(_:)), name: NSView.boundsDidChangeNotification, object: scroll.contentView)
-            gutter.onBlameClick = { [weak self] c, line in self?.delegate?.readerBlameClicked(c, line: line) }
+            gutter.onBlameClick = { [weak self] c, line in
+                guard let self else { return }
+                self.delegate?.readerBlameClicked(self, commit: c, line: line)
+            }
             stack.addArrangedSubview(scroll)
             return Column(scroll: scroll, code: code, gutter: gutter)
         }
@@ -431,7 +436,7 @@ final class Reader: NSViewController, CodeViewDelegate {
             return true
         }
         if plain, event.keyCode == 36 || event.keyCode == 76, !event.modifierFlags.contains(.shift) {
-            delegate?.readerPeek()
+            delegate?.readerPeek(self)
             return true
         }
         if plain, event.keyCode == 53, usesWord != nil, v.selectedRange().length == 0 {
@@ -441,7 +446,9 @@ final class Reader: NSViewController, CodeViewDelegate {
         return false
     }
 
-    func codeViewAddNote(_ v: CodeView) { delegate?.readerAddNote() }
+    func codeViewAddNote(_ v: CodeView) { delegate?.readerAddNote(self) }
+
+    func codeViewFocused(_ v: CodeView) { delegate?.readerFocused(self) }
 
     /// Where the caret last landed by itself, so it can land again once highlighting shows which
     /// names the line has.
@@ -647,7 +654,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         for c in columns { c.code.colorVisibleRows() }
         let before = jumpBar.currentFile
         updateJumpBar()
-        if jumpBar.currentFile != before { delegate?.readerCurrentFileChanged() }
+        if jumpBar.currentFile != before { delegate?.readerCurrentFileChanged(self) }
     }
 
     /// The rows where each run of changed lines starts.
@@ -811,17 +818,17 @@ final class Reader: NSViewController, CodeViewDelegate {
         case .unfold(let file, let at):
             files[file].unfolded.insert(at)
             reload(keepPosition: true)
-            delegate?.readerUnfolded()
+            delegate?.readerUnfolded(self)
         case .openFile(let file, let line):
-            delegate?.readerOpenFile(file, line: line)
+            delegate?.readerOpenFile(self, file: file, line: line)
         case .editNote(let id):
-            delegate?.readerEditNote(id)
+            delegate?.readerEditNote(self, id: id)
         }
     }
 
     func codeView(_ v: CodeView, jumpToDefinitionOf word: String, row: Int) {
         let r = v.rows[row]
-        delegate?.readerJumpToDefinition(word, file: r.file, line: r.line)
+        delegate?.readerJumpToDefinition(self, word: word, file: r.file, line: r.line)
     }
 
     func codeViewCaretMoved(_ v: CodeView) {
@@ -829,11 +836,11 @@ final class Reader: NSViewController, CodeViewDelegate {
         activeColumn = v
         markActiveColumn()
         updateJumpBar()
-        delegate?.readerCaretMoved()
+        delegate?.readerCaretMoved(self)
     }
 
     func codeViewMenu(_ v: CodeView, row: Int?) -> NSMenu? {
         let r = row.map { v.rows[$0] }
-        return delegate?.readerMenu(file: r?.file, line: r?.kind == .line ? r?.line : nil)
+        return delegate?.readerMenu(self, file: r?.file, line: r?.kind == .line ? r?.line : nil)
     }
 }

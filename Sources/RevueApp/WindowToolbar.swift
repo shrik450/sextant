@@ -85,11 +85,11 @@ extension RepoWindowController: NSToolbarDelegate {
         switch id {
         case RepoWindowController.navID:
             let g = NSToolbarItemGroup(itemIdentifier: id,
-                                       images: [NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Back")!,
-                                                NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "Forward")!],
-                                       selectionMode: .momentary, labels: ["Back", "Forward"], target: self, action: #selector(navClicked(_:)))
-            g.subitems[0].toolTip = "Back (⌘[)"
-            g.subitems[1].toolTip = "Forward (⌘])"
+                                       images: [NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Previous Pane")!,
+                                                NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "Next Pane")!],
+                                       selectionMode: .momentary, labels: ["Previous Pane", "Next Pane"], target: self, action: #selector(navClicked(_:)))
+            g.subitems[0].toolTip = "Previous Pane (⌘[)"
+            g.subitems[1].toolTip = "Next Pane (⌘])"
             g.subitems.forEach { $0.autovalidates = false }
             navGroup = g
             updateNavButtons()
@@ -132,7 +132,7 @@ extension RepoWindowController: NSToolbarDelegate {
     }
 
     @objc private func navClicked(_ sender: NSToolbarItemGroup) {
-        sender.selectedIndex == 0 ? goBack(nil) : goForward(nil)
+        sender.selectedIndex == 0 ? previousPane(nil) : nextPane(nil)
     }
 
     @objc private func modeChanged(_ sender: NSToolbarItemGroup) { setSplit(sender.selectedIndex == 1) }

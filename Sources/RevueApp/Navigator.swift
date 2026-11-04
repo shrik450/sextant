@@ -5,6 +5,8 @@ import RevueCore
 protocol NavigatorDelegate: AnyObject {
     func navigatorSelectScope(_ scope: Scope)
     func navigatorOpen(path: String, line: Int?)
+    /// Opens a search result.
+    func navigatorOpenResult(path: String, line: Int)
     func navigatorShowOverview()
     func navigatorToggleReviewed(_ paths: [String])
     func navigatorFileMenu(_ paths: [String]) -> NSMenu?
@@ -875,7 +877,7 @@ final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutli
 
     @objc private func clicked() {
         guard let it = outline.item(atRow: outline.selectedRow) as? Item else { return }
-        delegate?.navigatorOpen(path: it.group.path, line: it.match.line)
+        delegate?.navigatorOpenResult(path: it.group.path, line: it.match.line)
     }
 }
 

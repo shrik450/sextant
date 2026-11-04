@@ -157,7 +157,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     @objc func reloadThemes(_ sender: Any?) { Appearance.shared.reloadThemes() }
 
-    func validateMenuItem(_ item: NSMenuItem) -> Bool { true }
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        item.action == #selector(closePane(_:)) ? NSApp.keyWindow != nil : true
+    }
+
+    /// Closes the key window when it has no panes of its own, such as Settings.
+    @objc func closePane(_ sender: Any?) { NSApp.keyWindow?.performClose(sender) }
 
     func buildMainMenu() -> NSMenu {
         let main = NSMenu()
@@ -214,7 +219,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             recent.submenu = rm
             m.addItem(recent)
             m.addItem(.separator())
-            item(m, "Close", #selector(NSWindow.performClose(_:)), "w")
+            item(m, "Close Pane", #selector(W.closePane(_:)), "w")
+            item(m, "Close Other Panes", #selector(W.closeOtherPanes(_:)), "w", [.command, .option])
             m.addItem(.separator())
             item(m, "Open in Editor", #selector(W.openCurrentInEditor(_:)), "e", [])
             item(m, "Refresh", #selector(W.refreshAction(_:)), "r")
@@ -265,10 +271,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             m.addItem(.separator())
         }
         _ = menu("Go") { m in
-            item(m, "Back", #selector(W.goBack(_:)), "[")
+            item(m, "Previous Pane", #selector(W.previousPane(_:)), "[")
             alternate(m, "[", [])
             alternate(m, "o", [.control])
-            item(m, "Forward", #selector(W.goForward(_:)), "]")
+            item(m, "Next Pane", #selector(W.nextPane(_:)), "]")
             alternate(m, "]", [])
             alternate(m, "i", [.control])
             m.addItem(.separator())

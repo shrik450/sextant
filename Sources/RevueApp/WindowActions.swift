@@ -299,7 +299,7 @@ extension RepoWindowController: NSMenuItemValidation {
             guard let (matches, definitions) = try? await lookUp(word, in: t), gen == searchGeneration else { return }
             let defs = nearest(definitions, to: path)
             if defs.count == 1 {
-                open(defs[0].path, at: .line(SideLine(number: defs[0].line, old: false)))
+                openBeside(defs[0].path, line: defs[0].line)
             } else if defs.isEmpty {
                 revealNavigator(.find)
                 navigator.search.begin(word, word: true)
@@ -336,7 +336,7 @@ extension RepoWindowController: NSMenuItemValidation {
 
     @objc func openDefinition(_ sender: NSMenuItem) {
         guard let a = sender.representedObject as? [Any], let path = a[0] as? String, let line = a[1] as? Int else { return }
-        open(path, at: .line(SideLine(number: line, old: false)))
+        openBeside(path, line: line)
     }
 
     func findReferences(_ word: String) {
@@ -357,8 +357,13 @@ extension RepoWindowController: NSMenuItemValidation {
     /// Goes to a definition in the file being read.
     func goToDefinition(_ s: Symbol) {
         guard let f = focusedFile, let i = f.index(ofLine: s.nameLine + 1) else { return }
-        pushHistory()
         reader.land(onLine: i)
+    }
+
+    /// Opens a line of a file in a new pane beside the focused one.
+    func openBeside(_ path: String, line: Int) {
+        branch()
+        open(path, at: .line(SideLine(number: line, old: false)))
     }
 
     func revealNavigator(_ tab: Navigator.Tab, focus: Bool = false) {
@@ -423,7 +428,7 @@ extension RepoWindowController: NSMenuItemValidation {
         guard let a = sender.representedObject as? [String], a.count == 2 else { return }
         let line = currentLocation()?.top ?? SideLine(number: 1, old: false)
         let r = Review(subject: .commit(a[0]))
-        select(r, then: Location(review: r, place: .file(a[1]), top: line, caret: nil))
+        select(r, then: Location(review: r, place: .file(a[1]), top: line, caret: nil), in: branch())
     }
 
     func readerMenu(file: Int?, line: Int?) -> NSMenu? {
@@ -552,7 +557,7 @@ extension RepoWindowController: NSMenuItemValidation {
             let defs = nearest(definitions, to: from)
             let git = self.git
             let peek = Peek(word: word, definitions: defs, snapshot: t.snapshot, git: git, style: reader.activeCode.style)
-            peek.onOpen = { [weak self] d in self?.open(d.path, at: .line(SideLine(number: d.line, old: false))) }
+            peek.onOpen = { [weak self] d in self?.openBeside(d.path, line: d.line) }
             peek.onKey = { [weak self] event in self?.reader.activeCode.keyDown(with: event) }
             peek.show(relativeTo: anchor.0, of: anchor.1)
         }
@@ -584,7 +589,7 @@ extension RepoWindowController: NSMenuItemValidation {
         let cur = changes.firstIndex { $0.path == p }
         let next: Int? = if let cur { cur + dir } else { dir > 0 ? 0 : changes.count - 1 }
         guard let next, changes.indices.contains(next) else { NSSound.beep(); return }
-        open(changes[next].path, at: anchor, record: false)
+        open(changes[next].path, at: anchor)
     }
 
     @objc func nextDefinition(_ sender: Any?) { if !reader.stepDefinition(1, changedOnly: inspector.changedOnly) { NSSound.beep() } }
@@ -629,7 +634,7 @@ extension RepoWindowController: NSMenuItemValidation {
             NSSound.beep()
             return
         }
-        if case .overview? = focus { reader.scrollToFile(next) } else { open(changes[next].path, record: false) }
+        if case .overview? = focus { reader.scrollToFile(next) } else { open(changes[next].path) }
     }
 
     @objc func toggleShowAll(_ sender: Any?) {
@@ -725,7 +730,7 @@ extension RepoWindowController: NSMenuItemValidation {
         let last = f.lines.last.map { max($0.newNo, $0.oldNo) } ?? 1
         let s = RevisionSheet(title: "Go to Line", placeholder: "1–\(last)", suggestions: [], initial: "") { [weak self] text in
             guard let self, let n = Int(text.trimmingCharacters(in: .whitespaces)), n >= 1 else { return "Enter a line number" }
-            self.open(f.path, at: .line(SideLine(number: min(n, last), old: false)), record: true)
+            self.open(f.path, at: .line(SideLine(number: min(n, last), old: false)))
             return nil
         }
         sheet = s
@@ -761,8 +766,9 @@ extension RepoWindowController: NSMenuItemValidation {
             let files = changes.filter { paths.contains($0.path) }
             item.title = !files.isEmpty && files.allSatisfy(\.reviewed) ? "Mark File as Not Reviewed" : "Mark File as Reviewed"
             return !files.isEmpty
-        case #selector(goBack(_:)): return !backStack.isEmpty
-        case #selector(goForward(_:)): return !forwardStack.isEmpty
+        case #selector(previousPane(_:)): return focusedPane > 0
+        case #selector(nextPane(_:)): return focusedPane < panes.count - 1
+        case #selector(closeOtherPanes(_:)): return panes.count > 1
         case #selector(goToLine(_:)), #selector(showFileHistory(_:)), #selector(showSymbols(_:)), #selector(nextDefinition(_:)), #selector(previousDefinition(_:)):
             return reading
         case #selector(copyReference(_:)), #selector(copyReferenceWithCode(_:)), #selector(addNote(_:)): return reader.selection != nil

@@ -7,8 +7,8 @@ struct SideLine: Equatable {
     var old: Bool
 }
 
-/// A place in the history of what was read: a file or the overview, in a review, with where the
-/// view and the caret were.
+/// A place to read: a file or the overview, in a review, with where the view and the caret
+/// were.
 struct Location: Equatable {
     enum Place: Equatable {
         /// Every change, with `path` as the file at the top.
@@ -39,45 +39,45 @@ enum Anchor {
     case restore(top: SideLine, caret: Location.Caret?)
 }
 
-/// A repository's window: what's being reviewed, and the navigator, reader and inspector that
-/// show it.
+/// A repository's window: the navigator, a strip of panes that read the repository, and the
+/// inspector.
+///
+/// Moving through what's read, with the file tree, next and previous file or All Changes,
+/// moves the focused pane. Following something from the code, such as a definition, a
+/// reference or a blamed commit, opens a pane beside it, so where it came from stays.
 @MainActor
 final class RepoWindowController: NSWindowController, NSWindowDelegate {
     let repository: Repository
     let split = NSSplitViewController()
     let navigator = Navigator()
-    let reader = Reader()
+    let strip = PaneStrip()
     let inspector = Inspector()
     var notes: NotesStore { repository.notes }
     private var watcher: FileWatcher?
     private var watchedPaths: [String] = []
 
+    /// The panes, left to right.
+    private(set) var panes: [Pane] = []
+    private(set) var focusedPane = 0
+    /// The pane the keyboard and the side columns follow.
+    var pane: Pane { panes[focusedPane] }
+    var reader: Reader { pane.reader }
+
     /// The checkout the window was opened from, which typed revisions like `staged` refer to.
     private(set) var home: URL?
-    private(set) var review: Review?
-    private(set) var resolved: ResolvedReview?
+    var session: Session? { pane.session }
+    var review: Review? { session?.review }
+    var resolved: ResolvedReview? { session?.resolved }
     var target: Target? { resolved?.target }
-    /// Where the review's reads and diffs run.
+    /// Where the focused review's reads and diffs run.
     var git: Git { resolved?.git ?? repository.git }
-    /// The review's changes, in diff order.
-    private(set) var changes: [FileState] = []
-    /// Every file in the review's snapshot.
-    private(set) var snapshotFiles: [String] = []
-    private var snapshotLoaded: Snapshot?
-    private(set) var commitDetail: CommitDetail?
-    /// Files read while exploring the snapshot, by path.
-    private var explored: [String: FileState] = [:]
-    /// What the reader shows: the overview of every change, or one file.
-    private(set) var focus: Location.Place?
-    private var pendingLocation: Location?
-    private(set) var backStack: [Location] = []
-    private(set) var forwardStack: [Location] = []
-    private var loadGeneration = 0
-    private var showGeneration = 0
+    /// The focused review's changes, in diff order.
+    var changes: [FileState] { session?.changes ?? [] }
+    var commitDetail: CommitDetail? { session?.commitDetail }
+    /// What the focused pane shows: the overview of every change, or one file.
+    var focus: Location.Place? { pane.focus }
     var searchGeneration = 0
     var blameOn = false
-    /// Whether to offer the picker if the review that's loading turns out empty.
-    private var pickerIfEmpty = false
     /// The panes folded away because the window got narrow, by split item index.
     private var autoCollapsed: Set<Int> = []
     /// The number of loads in flight.
@@ -109,13 +109,11 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
 
         navigator.delegate = self
         navigator.changes.reviews = repository.reviews
-        reader.delegate = self
-        reader.split = UserDefaults.standard.string(forKey: "diffMode") == "split"
-        reader.wraps = UserDefaults.standard.bool(forKey: "wrapLines")
-        reader.isRead = { [weak repository] f, r in repository?.reviews.isRead(r.key, in: f.diff.change) ?? false }
         inspector.delegate = self
         inspector.notes.delegate = self
-        inspector.isRead = reader.isRead
+        inspector.isRead = { [weak repository] f, r in repository?.reviews.isRead(r.key, in: f.diff.change) ?? false }
+        panes = [makePane()]
+        strip.onSelect = { [weak self] i in self?.focusPane(i) }
 
         let navItem = NSSplitViewItem(sidebarWithViewController: navigator)
         navItem.minimumThickness = 220
@@ -123,7 +121,9 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         navItem.preferredThicknessFraction = 0.18
         navItem.canCollapse = true
         navItem.canCollapseFromWindowResize = true
-        let readerItem = NSSplitViewItem(viewController: reader)
+        let stripController = NSViewController()
+        stripController.view = strip
+        let readerItem = NSSplitViewItem(viewController: stripController)
         readerItem.minimumThickness = 420
         let inspectorItem = NSSplitViewItem(inspectorWithViewController: inspector)
         inspectorItem.minimumThickness = 220
@@ -135,6 +135,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         split.splitView.autosaveName = "RevueSplit3"
         window.contentViewController = split
         window.setContentSize(NSSize(width: 1440, height: 900))
+        showPanes(animated: false)
 
         let toolbar = NSToolbar(identifier: "RevueToolbar3")
         toolbar.delegate = self
@@ -146,18 +147,12 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         navigator.changes.filter.nextKeyView = navigator.changes.outline
         navigator.search.field.nextKeyView = navigator.search.outline
         navigator.onTabChanged = { [weak self] in self?.updateKeyLoop() }
-        reader.keyLoopNext = inspector.outline
         updateKeyLoop()
         window.initialFirstResponder = reader.firstKeyView
-
-        reader.jumpBar.onOpenPath = { [weak self] p in self?.open(p, at: .start) }
-        reader.jumpBar.onShowOverview = { [weak self] in self?.showOverview() }
-        reader.jumpBar.onSelectSymbol = { [weak self] s in self?.goToDefinition(s) }
 
         window.setFrameAutosaveName("RevueWindow")
         if !window.setFrameUsingName("RevueWindow") { window.center() }
 
-        showNotes()
         NotificationCenter.default.addObserver(self, selector: #selector(reviewsChanged(_:)), name: ReviewStore.didChange, object: repository.reviews)
         NotificationCenter.default.addObserver(self, selector: #selector(notesChanged(_:)), name: NotesStore.didChange, object: notes)
         watch()
@@ -165,15 +160,49 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    /// Makes a pane's reader, set up like the others.
+    private func makePane() -> Pane {
+        let p = Pane()
+        let r = p.reader
+        r.delegate = self
+        r.split = UserDefaults.standard.string(forKey: "diffMode") == "split"
+        r.wraps = UserDefaults.standard.bool(forKey: "wrapLines")
+        r.isRead = { [weak repository] f, run in repository?.reviews.isRead(run.key, in: f.diff.change) ?? false }
+        r.keyLoopNext = inspector.outline
+        r.jumpBar.onOpenPath = { [weak self, weak p] path in
+            guard let self, let p else { return }
+            self.open(path, at: .start, in: p)
+        }
+        r.jumpBar.onShowOverview = { [weak self, weak p] in
+            guard let self, let p else { return }
+            self.showOverview(in: p)
+        }
+        r.jumpBar.onSelectSymbol = { [weak self] s in self?.goToDefinition(s) }
+        _ = r.view
+        return p
+    }
+
     private func updateKeyLoop() {
         navigator.focusView.nextKeyView = reader.firstKeyView
         inspector.outline.nextKeyView = navigator.focusView
     }
 
-    /// Watches the git directory and the checkout being reviewed.
+    /// The panes showing a review.
+    private func panes(of s: Session) -> [Pane] { panes.filter { $0.session === s } }
+
+    /// The sessions the panes show, each once.
+    private var sessions: [Session] {
+        var seen = Set<ObjectIdentifier>()
+        return panes.compactMap(\.session).filter { seen.insert(ObjectIdentifier($0)).inserted }
+    }
+
+    private func isFocused(_ p: Pane) -> Bool { p === pane }
+    private func isFocused(_ s: Session) -> Bool { s === session }
+
+    /// Watches the git directory and the checkouts being read.
     private func watch() {
         var paths = [repository.commonDir.path]
-        if case .worktree(let root)? = review?.subject { paths.append(root.path) }
+        for s in sessions { if case .worktree(let root) = s.review.subject, !paths.contains(root.path) { paths.append(root.path) } }
         guard paths != watchedPaths else { return }
         watchedPaths = paths
         watcher = FileWatcher(paths: paths) { [weak self] changed in self?.filesystemChanged(changed) }
@@ -221,10 +250,13 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     /// Shows the worktrees' status once it arrives after the review it opened with.
     private func statusChanged() {
         updateTitle()
+        for s in sessions {
+            guard let res = s.resolved else { continue }
+            let conflicts = res.target.includesWorktree ? repository.conflicts[res.git.root.path] ?? [] : []
+            for f in s.changes { f.conflicted = conflicts.contains(f.path) }
+        }
         guard let res = resolved else { return }
         navigator.changes.setScopes(scopeRows(), selected: res.review.scope)
-        let conflicts = res.target.includesWorktree ? repository.conflicts[res.git.root.path] ?? [] : []
-        for f in changes { f.conflicted = conflicts.contains(f.path) }
         navigator.changes.refreshReviewState()
     }
 
@@ -232,9 +264,8 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     func openWork(in root: URL?) {
         guard let root else { showPicker(nil); return }
         home = root
-        pickerIfEmpty = true
         let subject = Subject.worktree(root)
-        select(Review(subject: subject, base: repository.base(for: subject)))
+        select(Review(subject: subject, base: repository.base(for: subject)), pickerIfEmpty: true)
     }
 
     /// Reviews what a typed revision expression names.
@@ -248,31 +279,42 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// Reviews something else, or another part of the same review.
+    /// Shows a review in a pane: another review, or another part of the one it shows.
     ///
-    /// - Parameter location: Where to land once the review has loaded.
-    func select(_ r: Review, then location: Location? = nil, record: Bool = true) {
-        let isNew = r != review
-        if isNew, record, review != nil { pushHistory() }
-        if isNew {
-            explored = [:]
-            lastDiffs = nil
+    /// Panes showing the same review share what's loaded for it.
+    ///
+    /// - Parameters:
+    ///   - location: Where to land once the review has loaded.
+    ///   - p: The pane, or the focused one.
+    func select(_ r: Review, then location: Location? = nil, in p: Pane? = nil, pickerIfEmpty: Bool = false) {
+        let p = p ?? pane
+        let current = p.session
+        if let current, current.review == r {
+            p.pendingLocation = location
+            load(current, keepPosition: true)
+            return
         }
-        review = r
-        pendingLocation = location
-        if isNew { showNotes() }
+        let shared = sessions.first { $0.review == r }
+        let s = shared ?? Session(review: r)
+        s.pickerIfEmpty = pickerIfEmpty
+        p.session = s
+        p.pendingLocation = location
+        showNotes()
         watch()
         updateTitle()
-        load(keepPosition: !isNew)
+        if isFocused(p) { bindSideColumns() }
+        if shared == nil {
+            load(s, keepPosition: false)
+        } else if !s.isLoading {
+            place(p, here: nil)
+        }
     }
 
-    private var lastDiffs: [FileDiff]?
-    private var lastKey: String?
-
-    private func load(keepPosition: Bool) {
-        guard let r = review else { return }
-        loadGeneration += 1
-        let gen = loadGeneration
+    private func load(_ s: Session, keepPosition: Bool) {
+        s.loadGeneration += 1
+        s.isLoading = true
+        let gen = s.loadGeneration
+        let r = s.review
         busy += 1
         Task {
             defer {
@@ -290,7 +332,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
                 } else {
                     if case .pullRequest = r.subject, repository.pullRequests == nil { await repository.loadPullRequests() }
                     res = try await repository.resolver.resolve(r, worktrees: repository.worktrees, pullRequests: repository.pullRequests ?? [])
-                    guard gen == loadGeneration else { return }
+                    guard gen == s.loadGeneration else { return }
                     diffs = try await res.git.diff(res.target)
                 }
                 preloaded = nil
@@ -300,89 +342,108 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
                 case .commit(let c), .stash(let c): try? await res.git.commitDetail(c)
                 default: nil
                 }
-                guard gen == loadGeneration else { return }
-                resolved = res
-                review = res.review
-                commitDetail = detail
-                apply(diffs, keepPosition: keepPosition, firstWhole: firstWhole)
+                guard gen == s.loadGeneration else { return }
+                s.isLoading = false
+                s.resolved = res
+                s.review = res.review
+                s.commitDetail = detail
+                apply(diffs, to: s, keepPosition: keepPosition, firstWhole: firstWhole)
             } catch {
-                guard gen == loadGeneration else { return }
-                resolved = nil
-                changes = []
-                focus = nil
-                navigator.changes.setScopes([], selected: .everything)
-                navigator.changes.setFiles([], paths: [])
-                reader.showEmpty(error.localizedDescription)
-                inspector.showEmpty(card: nil)
+                guard gen == s.loadGeneration else { return }
+                s.isLoading = false
+                s.resolved = nil
+                s.changes = []
+                s.error = error.localizedDescription
+                for p in panes(of: s) {
+                    p.focus = nil
+                    p.reader.showEmpty(error.localizedDescription)
+                }
+                if isFocused(s) {
+                    navigator.changes.setScopes([], selected: .everything)
+                    navigator.changes.setFiles([], paths: [])
+                    inspector.showEmpty(card: nil)
+                }
                 lastError = error.localizedDescription
+                showPanes(animated: false)
                 updateTitle()
             }
         }
     }
 
-    /// Shows a review's changes.
+    /// Shows a review's changes in the panes that show it.
     ///
     /// - Parameter firstWhole: The first change as a whole file, when it was read already.
-    private func apply(_ diffs: [FileDiff], keepPosition: Bool, firstWhole: [DiffLine]? = nil) {
-        guard let res = resolved else { return }
-        let key = "\(res.target)|\(res.commits.map(\.oid))|\(commitDetail?.oid ?? "")"
-        navigator.changes.setScopes(scopeRows(), selected: res.review.scope)
-        if keepPosition, pendingLocation == nil, diffs == lastDiffs, key == lastKey {
+    private func apply(_ diffs: [FileDiff], to s: Session, keepPosition: Bool, firstWhole: [DiffLine]? = nil) {
+        guard let res = s.resolved else { return }
+        let key = "\(res.target)|\(res.commits.map(\.oid))|\(s.commitDetail?.oid ?? "")"
+        if isFocused(s) { navigator.changes.setScopes(scopeRows(), selected: res.review.scope) }
+        let showing = panes(of: s)
+        if keepPosition, !showing.contains(where: { $0.pendingLocation != nil }), diffs == s.lastDiffs, key == s.lastKey {
             updateTitle()
             return
         }
-        let here = keepPosition ? currentLocation() : nil
-        let previous = Dictionary(changes.map { ($0.path, $0) }, uniquingKeysWith: { a, _ in a })
+        let heres = keepPosition ? Dictionary(showing.compactMap { p in currentLocation(of: p).map { (ObjectIdentifier(p), $0) } }, uniquingKeysWith: { a, _ in a }) : [:]
+        let previous = Dictionary(s.changes.map { ($0.path, $0) }, uniquingKeysWith: { a, _ in a })
         let conflicts = res.target.includesWorktree ? repository.conflicts[res.git.root.path] ?? [] : []
-        changes = diffs.map { d in
+        s.changes = diffs.map { d in
             let f = previous[d.path].flatMap { $0.diff == d ? $0 : nil } ?? FileState(diff: d)
             f.reviewed = repository.reviews.isReviewed(d.change)
             f.conflicted = conflicts.contains(d.path)
             return f
         }
-        if let firstWhole { changes.first?.offerWhole(firstWhole) }
-        if keepPosition, res.target.snapshot == .worktree { explored = [:] }
-        lastDiffs = diffs
-        lastKey = key
+        if let firstWhole { s.changes.first?.offerWhole(firstWhole) }
+        if keepPosition, res.target.snapshot == .worktree { s.explored = [:] }
+        s.lastDiffs = diffs
+        s.lastKey = key
+        s.error = nil
         lastError = nil
-        loadSnapshotFiles(force: keepPosition)
-
-        if let loc = pendingLocation ?? here {
-            pendingLocation = nil
-            restore(loc)
-        } else if changes.isEmpty {
-            focus = nil
-            navigator.changes.showFocus(.none)
-            reader.showEmpty(emptyMessage)
-            inspector.showEmpty(card: card())
-            if pickerIfEmpty { showPicker(nil) }
-        } else if UserDefaults.standard.string(forKey: "readerMode") == "overview" && changes.count > 1 {
-            showOverview(record: false)
-        } else {
-            open(changes[0].path, at: .firstChange, record: false)
-        }
-        pickerIfEmpty = false
+        loadSnapshotFiles(s, force: keepPosition)
+        for p in showing { place(p, here: heres[ObjectIdentifier(p)]) }
+        s.pickerIfEmpty = false
         updateTitle()
     }
 
-    /// Lists every file in the review's snapshot, for the file tree and the jump bar.
-    private func loadSnapshotFiles(force: Bool) {
-        guard let snapshot = target?.snapshot else { return }
-        if snapshot != snapshotLoaded { snapshotFiles = changes.filter { !$0.diff.change.isDeleted }.map(\.path) }
-        showFilesSoon()
-        guard force || snapshot != snapshotLoaded else { return }
-        let git = self.git
+    /// Lands a pane once its review has loaded: where it was asked to go, where it was, or the
+    /// review's first change.
+    private func place(_ p: Pane, here: Location?) {
+        guard let s = p.session else { return }
+        if let loc = p.pendingLocation ?? here {
+            p.pendingLocation = nil
+            restore(loc, in: p)
+        } else if s.changes.isEmpty {
+            p.focus = nil
+            p.reader.showEmpty(emptyMessage(s))
+            if isFocused(p) {
+                navigator.changes.showFocus(.none)
+                inspector.showEmpty(card: card())
+            }
+            showPanes(animated: false)
+            if s.pickerIfEmpty { showPicker(nil) }
+        } else if UserDefaults.standard.string(forKey: "readerMode") == "overview" && s.changes.count > 1 {
+            showOverview(in: p)
+        } else {
+            open(s.changes[0].path, at: .firstChange, in: p)
+        }
+    }
+
+    /// Lists every file in a review's snapshot, for the file tree and the jump bar.
+    private func loadSnapshotFiles(_ s: Session, force: Bool) {
+        guard let snapshot = s.target?.snapshot else { return }
+        if snapshot != s.snapshotLoaded { s.snapshotFiles = s.changes.filter { !$0.diff.change.isDeleted }.map(\.path) }
+        if isFocused(s) { showFilesSoon() }
+        guard force || snapshot != s.snapshotLoaded else { return }
+        let git = s.resolved?.git ?? repository.git
         busy += 1
         Task {
             defer { busy -= 1 }
             let files = ((try? await git.files(in: snapshot)) ?? []).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-            guard target?.snapshot == snapshot else { return }
-            snapshotLoaded = snapshot
-            if files != snapshotFiles {
-                snapshotFiles = files
-                showFilesSoon()
+            guard s.target?.snapshot == snapshot else { return }
+            s.snapshotLoaded = snapshot
+            if files != s.snapshotFiles {
+                s.snapshotFiles = files
+                if isFocused(s) { showFilesSoon() }
             }
-            reader.jumpBar.tree = files
+            for p in panes(of: s) { p.reader.jumpBar.tree = files }
         }
     }
 
@@ -403,22 +464,23 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         return rows + res.commits.map(ScopeRow.commit)
     }
 
-    private var emptyMessage: String {
-        switch review?.scope {
-        case .uncommitted?: "Nothing uncommitted"
-        case .staged?: "Nothing staged"
-        case .unstaged?: "No unstaged changes"
-        default: if case .worktree? = review?.subject { "Nothing to review in this checkout" } else { "No changes" }
+    private func emptyMessage(_ s: Session) -> String {
+        switch s.review.scope {
+        case .uncommitted: "Nothing uncommitted"
+        case .staged: "Nothing staged"
+        case .unstaged: "No unstaged changes"
+        default: if case .worktree = s.review.subject { "Nothing to review in this checkout" } else { "No changes" }
         }
     }
 
-    /// The file the reader shows, when it shows one.
+    /// The file the focused pane shows, when it shows one.
     var focusedFile: FileState? {
         guard case .file? = focus else { return nil }
         return reader.files.first
     }
 
-    /// The change under the reader, which is the focused file or the file at the top of the overview.
+    /// The change under the focused pane, which is its file or the file at the top of its
+    /// overview.
     var currentChange: Int? {
         switch focus {
         case .file(let p)?: return changes.firstIndex { $0.path == p }
@@ -427,72 +489,75 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// Shows one file, which is a change or any file in the review's snapshot.
+    /// Shows one file in a pane, which is a change or any file in the review's snapshot.
     ///
     /// A file that's ready shows in the same event; otherwise it shows once it's loaded.
-    func open(_ path: String, at anchor: Anchor = .firstChange, record: Bool = true) {
-        guard let t = target else { return }
-        if record { pushHistory() }
-        focus = .file(path)
+    ///
+    /// - Parameter p: The pane, or the focused one.
+    func open(_ path: String, at anchor: Anchor = .firstChange, in p: Pane? = nil) {
+        let p = p ?? pane
+        guard let s = p.session, let t = s.target else { return }
+        p.focus = .file(path)
         UserDefaults.standard.set("file", forKey: "readerMode")
-        showGeneration += 1
-        let gen = showGeneration
-        navigator.changes.showFocus(.file(path))
+        p.showGeneration += 1
+        let gen = p.showGeneration
+        if isFocused(p) { navigator.changes.showFocus(.file(path)) }
+        showPanes(animated: false)
         updateTitle()
-        if let f = readyFile(path) {
-            loadingGeneration = nil
-            present(f, at: anchor)
-            prepareNeighbors(of: path)
+        if let f = readyFile(path, in: s) {
+            p.loadingGeneration = nil
+            present(f, at: anchor, in: p)
+            prepareNeighbors(of: path, in: s)
             return
         }
         busy += 1
-        loadingGeneration = gen
+        p.loadingGeneration = gen
         Task {
             defer {
                 busy -= 1
-                if loadingGeneration == gen { loadingGeneration = nil }
+                if p.loadingGeneration == gen { p.loadingGeneration = nil }
             }
-            let f = await fileState(path, in: t)
-            guard gen == showGeneration else { return }
+            let f = await fileState(path, in: t, of: s)
+            guard gen == p.showGeneration else { return }
             guard let f else {
-                reader.showEmpty("\(path) isn’t in this revision")
-                inspector.showEmpty(card: card())
+                p.reader.showEmpty("\(path) isn’t in this revision")
+                if isFocused(p) { inspector.showEmpty(card: card()) }
                 return
             }
-            present(f, at: anchor)
-            prepareNeighbors(of: path)
+            present(f, at: anchor, in: p)
+            prepareNeighbors(of: path, in: s)
         }
     }
 
     /// The file at a path if it can be shown without waiting.
-    private func readyFile(_ path: String) -> FileState? {
-        guard let f = changes.first(where: { $0.path == path }) else { return explored[path] }
+    private func readyFile(_ path: String, in s: Session) -> FileState? {
+        guard let f = s.changes.first(where: { $0.path == path }) else { return s.explored[path] }
         guard f.hasWhole || f.diff.isBinary else { return nil }
         f.adoptWhole()
         return f
     }
 
-    private func fileState(_ path: String, in t: Target) async -> FileState? {
-        let git = self.git
-        if let f = changes.first(where: { $0.path == path }) {
+    private func fileState(_ path: String, in t: Target, of s: Session) async -> FileState? {
+        let git = s.resolved?.git ?? repository.git
+        if let f = s.changes.first(where: { $0.path == path }) {
             await f.prepareWhole(git: git, analyzing: false)
             f.adoptWhole()
             return f
         }
-        if let f = explored[path] { return f }
+        if let f = s.explored[path] { return f }
         guard let data = await git.contents(of: path, in: t.snapshot) else { return nil }
         let binary = data.prefix(8000).contains(0)
         let f = FileState(path: path, contents: binary ? nil : splitLines(data))
-        if target == t { explored[path] = f }
+        if s.target == t { s.explored[path] = f }
         return f
     }
 
     /// Loads and analyzes the changes around a file, so stepping to them shows them at once.
-    private func prepareNeighbors(of path: String) {
-        guard let i = changes.firstIndex(where: { $0.path == path }) else { return }
-        let git = self.git
-        for j in [i + 1, i - 1, i + 2] where changes.indices.contains(j) {
-            let f = changes[j]
+    private func prepareNeighbors(of path: String, in s: Session) {
+        guard let i = s.changes.firstIndex(where: { $0.path == path }) else { return }
+        let git = s.resolved?.git ?? repository.git
+        for j in [i + 1, i - 1, i + 2] where s.changes.indices.contains(j) {
+            let f = s.changes[j]
             Task {
                 await f.prepareWhole(git: git, analyzing: true)
                 if f.isWhole { await f.analyze(symbols: true) }
@@ -501,22 +566,20 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private var afterFrame: [String: Timer] = [:]
-    /// Whether a file is loading to show, which the side panes wait for.
-    private var loadingFile: Bool { loadingGeneration == showGeneration }
-    private var loadingGeneration: Int?
 
     /// Runs work once the run loop has committed what the current event drew, and once however
     /// often it's asked for before then.
     ///
-    /// A timer fires after the commit, so the code shows first and the side panes follow. Work
-    /// that waits for a loading file waits until the file shows, so it doesn't delay it.
+    /// A timer fires after the commit, so the code shows first and the side columns follow.
+    /// Work that waits for a loading file waits until the focused pane's file shows, so it
+    /// doesn't delay it.
     private func afterFrame(_ key: String, waitingForFile: Bool = false, _ work: @escaping @MainActor () -> Void) {
         if afterFrame[key] == nil { busy += 1 }
         afterFrame[key]?.invalidate()
         let t = Timer(timeInterval: 0, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                if waitingForFile && self.loadingFile {
+                if waitingForFile && self.pane.isLoadingFile {
                     self.afterFrame[key] = nil
                     self.busy -= 1
                     self.afterFrame(key, waitingForFile: true, work)
@@ -540,15 +603,16 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// Shows the review's files in the navigator, after the code.
+    /// Shows the focused review's files in the navigator, after the code.
     private func showFilesSoon() {
         afterFrame("navigator", waitingForFile: true) { [weak self] in
             guard let self else { return }
-            self.navigator.changes.setFiles(self.changes, paths: self.snapshotFiles)
+            self.navigator.changes.setFiles(self.changes, paths: self.session?.snapshotFiles ?? [])
         }
     }
 
-    private func present(_ f: FileState, at anchor: Anchor) {
+    private func present(_ f: FileState, at anchor: Anchor, in p: Pane) {
+        let reader = p.reader
         reader.blame = nil
         reader.show(files: [f], overview: false)
         switch anchor {
@@ -564,97 +628,193 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         case .start:
             reader.placeCaret(at: ReaderPosition(file: 0, line: 0))
         }
+        guard isFocused(p) else { return }
         showInInspector(f)
         if blameOn { loadBlame(f) }
-        updateNavButtons()
         updateTitle()
     }
 
-    func showOverview(record: Bool = true, at path: String? = nil, top: SideLine? = nil, caret: Location.Caret? = nil) {
-        guard !changes.isEmpty else { NSSound.beep(); return }
-        if record { pushHistory() }
-        showGeneration += 1
-        focus = .overview(path: nil)
+    /// Shows every change in a pane, one after another.
+    ///
+    /// - Parameter p: The pane, or the focused one.
+    func showOverview(in p: Pane? = nil, at path: String? = nil, top: SideLine? = nil, caret: Location.Caret? = nil) {
+        let p = p ?? pane
+        guard let s = p.session, !s.changes.isEmpty else { NSSound.beep(); return }
+        p.showGeneration += 1
+        p.focus = .overview(path: nil)
         UserDefaults.standard.set("overview", forKey: "readerMode")
+        let reader = p.reader
         reader.blame = nil
-        reader.show(files: changes, overview: true)
-        if let path, let i = changes.firstIndex(where: { $0.path == path }) {
-            if let top, let l = changes[i].index(ofLine: top.number, old: top.old) {
+        reader.show(files: s.changes, overview: true)
+        if let path, let i = s.changes.firstIndex(where: { $0.path == path }) {
+            if let top, let l = s.changes[i].index(ofLine: top.number, old: top.old) {
                 reader.scroll(to: ReaderPosition(file: i, line: l), animated: false, offset: 0)
             } else {
                 reader.scrollToFile(i)
             }
         }
-        if let caret, let i = changes.firstIndex(where: { $0.path == caret.path }), let l = changes[i].index(ofLine: caret.line.number, old: caret.line.old) {
+        if let caret, let i = s.changes.firstIndex(where: { $0.path == caret.path }), let l = s.changes[i].index(ofLine: caret.line.number, old: caret.line.old) {
             reader.placeCaret(at: ReaderPosition(file: i, line: l), column: caret.column)
         }
+        showPanes(animated: false)
+        guard isFocused(p) else { return }
         navigator.changes.showFocus(.overview)
-        inspector.showOverview(changes, card: card())
+        inspector.showOverview(s.changes, card: card())
         inspector.follow(lineIndex: reader.currentFile)
-        updateNavButtons()
         updateTitle()
     }
 
-    func currentLocation() -> Location? {
-        guard let r = review, let focus else { return nil }
-        func side(_ p: ReaderPosition?) -> (path: String, line: SideLine)? {
-            guard let p, reader.files.indices.contains(p.file) else { return nil }
-            let f = reader.files[p.file]
+    /// Where a pane is, to put it back there.
+    func currentLocation(of p: Pane) -> Location? {
+        guard let r = p.session?.review, let focus = p.focus else { return nil }
+        let reader = p.reader
+        func side(_ pos: ReaderPosition?) -> (path: String, line: SideLine)? {
+            guard let pos, reader.files.indices.contains(pos.file) else { return nil }
+            let f = reader.files[pos.file]
             guard !f.lines.isEmpty else { return (f.path, SideLine(number: 1, old: false)) }
-            let (n, old) = f.lineNumber(at: p.line)
+            let (n, old) = f.lineNumber(at: pos.line)
             return (f.path, SideLine(number: n, old: old))
         }
         let top = side(reader.topPosition)
         let caret = side(reader.caret).map { Location.Caret(path: $0.path, line: $0.line, column: reader.caretColumn) }
         switch focus {
         case .overview: return Location(review: r, place: .overview(path: top?.path), top: top?.line ?? SideLine(number: 1, old: false), caret: caret)
-        case .file(let p): return Location(review: r, place: .file(p), top: top?.line ?? SideLine(number: 1, old: false), caret: caret)
+        case .file(let path): return Location(review: r, place: .file(path), top: top?.line ?? SideLine(number: 1, old: false), caret: caret)
         }
     }
 
-    func pushHistory() {
-        guard let here = currentLocation() else { return }
-        if backStack.last != here { backStack.append(here) }
-        if backStack.count > 200 { backStack.removeFirst() }
-        forwardStack.removeAll()
-        updateNavButtons()
-    }
+    /// Where the focused pane is.
+    func currentLocation() -> Location? { currentLocation(of: pane) }
 
-    private func restore(_ loc: Location) {
-        if loc.review != review {
-            select(loc.review, then: loc, record: false)
+    private func restore(_ loc: Location, in p: Pane) {
+        guard let s = p.session, loc.review == s.review else {
+            select(loc.review, then: loc, in: p)
             return
         }
         switch loc.place {
         case .overview(let path):
-            if changes.isEmpty {
-                reader.showEmpty(emptyMessage)
-                focus = nil
+            if s.changes.isEmpty {
+                p.reader.showEmpty(emptyMessage(s))
+                p.focus = nil
             } else {
-                showOverview(record: false, at: path, top: loc.top, caret: loc.caret)
+                showOverview(in: p, at: path, top: loc.top, caret: loc.caret)
             }
-        case .file(let p):
-            open(p, at: .restore(top: loc.top, caret: loc.caret?.path == p ? loc.caret : nil), record: false)
+        case .file(let path):
+            open(path, at: .restore(top: loc.top, caret: loc.caret?.path == path ? loc.caret : nil), in: p)
         }
     }
 
-    @objc func goBack(_ sender: Any?) {
-        guard let loc = backStack.popLast() else { NSSound.beep(); return }
-        if let here = currentLocation() { forwardStack.append(here) }
-        restore(loc)
+    // MARK: Panes
+
+    /// Opens a pane to the right of the focused one, on the same review, and focuses it.
+    ///
+    /// - Parameter takeKeyboard: Whether the new pane's code takes the keyboard, rather than
+    ///   leaving it where it is, such as in a list of results.
+    @discardableResult
+    func branch(takeKeyboard: Bool = true) -> Pane {
+        let p = makePane()
+        p.session = pane.session
+        p.reader.jumpBar.tree = pane.session?.snapshotFiles ?? []
+        panes.insert(p, at: focusedPane + 1)
+        focusedPane += 1
+        showNotes()
+        showPanes(animated: true)
+        p.reader.view.layoutSubtreeIfNeeded()
+        if takeKeyboard { reader.focus() }
+        paneFocusChanged()
+        return p
+    }
+
+    /// Focuses a pane, sliding it into view.
+    ///
+    /// - Parameter takeKeyboard: Whether its code takes the keyboard.
+    func focusPane(_ i: Int, takeKeyboard: Bool = true) {
+        guard panes.indices.contains(i) else { NSSound.beep(); return }
+        let changed = i != focusedPane
+        focusedPane = i
+        if takeKeyboard { reader.focus() }
+        if changed { paneFocusChanged() } else { showPanes(animated: true) }
+    }
+
+    /// Closes the focused pane and focuses the one to its left, or closes the window when it's
+    /// the only one.
+    @objc func closePane(_ sender: Any?) {
+        guard panes.count > 1 else { window?.performClose(sender); return }
+        let closing = pane
+        panes.remove(at: focusedPane)
+        focusedPane = max(0, focusedPane - 1)
+        discard([closing])
+        reader.focus()
+        watch()
+        paneFocusChanged()
+    }
+
+    /// Closes every pane but the focused one.
+    @objc func closeOtherPanes(_ sender: Any?) {
+        guard panes.count > 1 else { NSSound.beep(); return }
+        let kept = pane
+        let closing = panes.filter { $0 !== kept }
+        panes = [kept]
+        focusedPane = 0
+        discard(closing)
+        watch()
+        paneFocusChanged()
+    }
+
+    /// Takes closed panes off screen, after they've left the strip, so nothing they do on the
+    /// way out reaches the window.
+    private func discard(_ closed: [Pane]) {
+        for p in closed {
+            p.reader.delegate = nil
+            p.reader.view.removeFromSuperview()
+        }
+    }
+
+    @objc func previousPane(_ sender: Any?) { focusPane(focusedPane - 1) }
+    @objc func nextPane(_ sender: Any?) { focusPane(focusedPane + 1) }
+
+    /// Lays out the strip, sliding the focused pane into view.
+    func showPanes(animated: Bool) {
+        strip.show(panes.map(\.reader.view), titles: panes.map(\.title), focused: focusedPane, animated: animated)
         updateNavButtons()
     }
 
-    @objc func goForward(_ sender: Any?) {
-        guard let loc = forwardStack.popLast() else { NSSound.beep(); return }
-        if let here = currentLocation() { backStack.append(here) }
-        restore(loc)
-        updateNavButtons()
+    /// Points the navigator, inspector, notes and title at the newly focused pane.
+    private func paneFocusChanged() {
+        showPanes(animated: true)
+        updateKeyLoop()
+        bindSideColumns()
+        showNotes()
+        updateTitle()
+    }
+
+    /// Shows the focused pane's review in the navigator, and what it reads in the inspector.
+    private func bindSideColumns() {
+        guard let s = session, s.resolved != nil else {
+            navigator.changes.setScopes([], selected: .everything)
+            navigator.changes.setFiles([], paths: [])
+            inspector.showEmpty(card: nil)
+            return
+        }
+        navigator.changes.setScopes(scopeRows(), selected: s.review.scope)
+        navigator.changes.setFiles(s.changes, paths: s.snapshotFiles)
+        switch focus {
+        case .file(let path)?:
+            navigator.changes.showFocus(.file(path))
+            if let f = focusedFile { inspector.showFile(f, card: card()); inspector.follow(lineIndex: reader.caret?.line) }
+        case .overview?:
+            navigator.changes.showFocus(.overview)
+            inspector.showOverview(s.changes, card: card())
+            inspector.follow(lineIndex: reader.currentFile)
+        case nil:
+            navigator.changes.showFocus(.none)
+            inspector.showEmpty(card: card())
+        }
     }
 
     func updateNavButtons() {
-        navGroup?.subitems[0].isEnabled = !backStack.isEmpty
-        navGroup?.subitems[1].isEnabled = !forwardStack.isEmpty
+        navGroup?.subitems[0].isEnabled = focusedPane > 0
+        navGroup?.subitems[1].isEnabled = focusedPane < panes.count - 1
     }
 
     private var refreshTask: Task<Void, Never>?
@@ -668,7 +828,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         if relevant { refresh() }
     }
 
-    /// Reloads refs and checkouts, then the review if anything it shows may have moved.
+    /// Reloads refs and checkouts, then each review shown if anything it shows may have moved.
     func refresh() {
         refreshTask?.cancel()
         refreshTask = Task {
@@ -677,37 +837,40 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
             busy += 1
             defer { busy -= 1 }
             let changed = await repository.refresh()
-            if changed || target?.includesIndex == true { load(keepPosition: true) }
+            for s in sessions where changed || s.target?.includesIndex == true { load(s, keepPosition: true) }
             updateTitle()
         }
     }
 
     @objc private func reviewsChanged(_ n: Notification) {
-        for f in changes { f.reviewed = repository.reviews.isReviewed(f.diff.change) }
+        for s in sessions { for f in s.changes { f.reviewed = repository.reviews.isReviewed(f.diff.change) } }
         navigator.changes.refreshReviewState()
         navigator.changes.refreshCommitProgress()
         inspector.refreshReviewState()
-        reader.refreshReadState()
-        if case .overview? = focus { reader.reload(keepPosition: true) }
+        for p in panes {
+            p.reader.refreshReadState()
+            if case .overview? = p.focus { p.reader.reload(keepPosition: true) }
+        }
         updateTitle()
     }
 
     @objc private func notesChanged(_ n: Notification) {
         showNotes()
-        if !reader.files.isEmpty { reader.reload(keepPosition: true) }
+        for p in panes where !p.reader.files.isEmpty { p.reader.reload(keepPosition: true) }
     }
 
-    /// The notes on what's being reviewed.
+    /// The notes on what the focused pane reviews.
     var reviewNotes: [Note] { review.map { notes.notes(about: $0.subject) } ?? [] }
 
-    /// Shows the review's notes in the inspector, and its notes on lines beside them in the reader.
+    /// Shows each pane's notes on lines beside its code, and the focused review's notes in the
+    /// inspector.
     func showNotes() {
-        let n = reviewNotes
-        reader.notes = n.filter { $0.lines != nil }
-        inspector.notes.setNotes(n)
+        for p in panes { p.reader.notes = p.session.map { notes.notes(about: $0.review.subject).filter { $0.lines != nil } } ?? [] }
+        inspector.notes.setNotes(reviewNotes)
     }
 
     func toggleReviewed(_ paths: [String], advance: Bool) {
+        let changes = self.changes
         let idx = changes.indices.filter { paths.contains(changes[$0].path) }
         guard !idx.isEmpty else { return }
         let newValue = !idx.allSatisfy { changes[$0].reviewed }
@@ -716,7 +879,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         if newValue, advance, let last = idx.max() {
             let next = changes.indices.first { $0 > last && !changes[$0].reviewed } ?? changes.indices.first { !changes[$0].reviewed }
             if let next {
-                if case .overview? = focus { reader.scrollToFile(next) } else { open(changes[next].path, record: false) }
+                if case .overview? = focus { reader.scrollToFile(next) } else { open(changes[next].path) }
             }
         }
         updateTitle()
@@ -761,8 +924,24 @@ extension RepoWindowController: NavigatorDelegate {
         select(r)
     }
 
+    /// Opens a file from the tree in the focused pane, or beside it when Command is held.
     func navigatorOpen(path: String, line: Int?) {
-        open(path, at: line.map { .line(SideLine(number: $0, old: false)) } ?? .firstChange, record: focus != .file(path))
+        let anchor: Anchor = line.map { .line(SideLine(number: $0, old: false)) } ?? .firstChange
+        if NSApp.currentEvent?.modifierFlags.contains(.command) == true {
+            branch(takeKeyboard: false)
+        } else if focus == .file(path) {
+            return
+        }
+        open(path, at: anchor)
+    }
+
+    /// Opens a search result beside the code it was searched from, and later results of the
+    /// same search in that pane, so stepping through results doesn't move the code behind.
+    func navigatorOpenResult(path: String, line: Int) {
+        if !pane.showsResults {
+            branch(takeKeyboard: false).showsResults = true
+        }
+        open(path, at: .line(SideLine(number: line, old: false)))
     }
 
     func navigatorShowOverview() {
@@ -796,50 +975,81 @@ extension RepoWindowController: NavigatorDelegate {
 }
 
 extension RepoWindowController: ReaderDelegate {
-    func readerOpenFile(_ file: Int, line: Int?) {
-        guard reader.files.indices.contains(file) else { return }
-        let f = reader.files[file]
+    /// Focuses the pane whose code took the keyboard.
+    func readerFocused(_ r: Reader) {
+        guard let i = panes.firstIndex(where: { $0.reader === r }), i != focusedPane else { return }
+        focusPane(i, takeKeyboard: false)
+    }
+
+    /// Opens a file from the overview beside it.
+    func readerOpenFile(_ r: Reader, file: Int, line: Int?) {
+        readerFocused(r)
+        guard r.files.indices.contains(file) else { return }
+        let f = r.files[file]
+        let anchor: Anchor
         if let line, !f.lines.isEmpty {
             let (n, old) = f.lineNumber(at: line)
-            open(f.path, at: .line(SideLine(number: n, old: old)))
+            anchor = .line(SideLine(number: n, old: old))
         } else {
-            open(f.path)
+            anchor = .firstChange
         }
+        branch()
+        open(f.path, at: anchor)
     }
 
-    func readerUnfolded() {}
+    func readerUnfolded(_ r: Reader) {}
 
-    func readerJumpToDefinition(_ word: String, file: Int, line: Int) {
-        jumpToDefinition(word, from: reader.files.indices.contains(file) ? reader.files[file].path : nil)
+    func readerJumpToDefinition(_ r: Reader, word: String, file: Int, line: Int) {
+        readerFocused(r)
+        jumpToDefinition(word, from: r.files.indices.contains(file) ? r.files[file].path : nil)
     }
 
-    func readerEditNote(_ id: UUID) { editNote(id) }
+    func readerEditNote(_ r: Reader, id: UUID) { editNote(id) }
 
-    func readerAddNote() { addNote(nil) }
+    func readerAddNote(_ r: Reader) {
+        readerFocused(r)
+        addNote(nil)
+    }
 
-    func readerPeek() { peekDefinition(nil) }
+    func readerPeek(_ r: Reader) {
+        readerFocused(r)
+        peekDefinition(nil)
+    }
 
-    func readerCurrentFileChanged() {
+    func readerMenu(_ r: Reader, file: Int?, line: Int?) -> NSMenu? {
+        readerFocused(r)
+        return readerMenu(file: file, line: line)
+    }
+
+    func readerCurrentFileChanged(_ r: Reader) {
+        guard r === reader else { return }
         updateTitle()
         if case .overview? = focus { inspector.follow(lineIndex: reader.currentFile) }
     }
 
-    func readerCaretMoved() {
+    func readerCaretMoved(_ r: Reader) {
+        guard r === reader else { return }
         if case .file? = focus { inspector.follow(lineIndex: reader.caret?.line) }
         if blameOn { inspector.updateCard(card()) }
     }
 
-    func readerBlameClicked(_ commit: Blame.Commit, line: Int) {
+    /// Opens the commit that last changed a line beside the code, at that line.
+    func readerBlameClicked(_ r: Reader, commit: Blame.Commit, line: Int) {
+        readerFocused(r)
         guard let f = focusedFile else { return }
-        let r = Review(subject: .commit(commit.oid))
-        select(r, then: Location(review: r, place: .file(f.path), top: SideLine(number: line, old: false), caret: Location.Caret(path: f.path, line: SideLine(number: line, old: false))))
+        let review = Review(subject: .commit(commit.oid))
+        let at = SideLine(number: line, old: false)
+        select(review, then: Location(review: review, place: .file(f.path), top: at, caret: Location.Caret(path: f.path, line: at)), in: branch())
     }
 }
 
 extension RepoWindowController: NotesPaneDelegate {
+    /// Opens the lines a note is on beside the code.
     func notesPaneOpen(_ note: Note) {
         guard let on = note.lines else { return }
-        open(on.path, at: .line(SideLine(number: on.range.upperBound, old: on.old)), record: focus != .file(on.path))
+        let anchor = Anchor.line(SideLine(number: on.range.upperBound, old: on.old))
+        if focus != .file(on.path) { branch() }
+        open(on.path, at: anchor)
     }
 
     func notesPaneEdit(_ note: Note, relativeTo rect: NSRect, of view: NSView) { editNote(note.id, relativeTo: (rect, view)) }
@@ -857,10 +1067,7 @@ extension RepoWindowController: NotesPaneDelegate {
 }
 
 extension RepoWindowController: InspectorDelegate {
-    func inspectorJump(toLineIndex index: Int) {
-        pushHistory()
-        reader.land(onLine: index)
-    }
+    func inspectorJump(toLineIndex index: Int) { reader.land(onLine: index) }
 
     func inspectorShowChange(_ index: Int) {
         guard case .overview? = focus else { return }

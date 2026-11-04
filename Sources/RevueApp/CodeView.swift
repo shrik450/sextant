@@ -132,6 +132,8 @@ protocol CodeViewDelegate: AnyObject {
     /// - Returns: Whether the reader handled it.
     func codeView(_ v: CodeView, intercept event: NSEvent) -> Bool
     func codeViewAddNote(_ v: CodeView)
+    /// Tells the delegate the view took the keyboard.
+    func codeViewFocused(_ v: CodeView)
 }
 
 /// One read-only column of code.
@@ -472,7 +474,9 @@ final class CodeView: NSTextView {
 
     override func becomeFirstResponder() -> Bool {
         defer { needsDisplay = true }
-        return super.becomeFirstResponder()
+        let took = super.becomeFirstResponder()
+        if took { codeDelegate?.codeViewFocused(self) }
+        return took
     }
 
     override func resignFirstResponder() -> Bool {

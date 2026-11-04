@@ -128,4 +128,5 @@ check "Previous file" "menu Previous File" frame 8 || failed=1
 check "Next file, sidebars too" "menu Next File" settled 16 || failed=1
 check "All Changes" "menu All Changes" frame 100 || failed=1
 check "Scrolling All Changes" "scroll 40" frame 8 || failed=1
+echo "Load average: $(sysctl -n vm.loadavg)"
 exit "$failed"
