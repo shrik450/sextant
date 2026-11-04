@@ -156,10 +156,12 @@ final class Automation {
             if let d = Double(v) { UserDefaults.standard.set(d, forKey: args[0]) } else { UserDefaults.standard.set(v, forKey: args[0]) }
             await waitIdle()
         case "menu":
-            if let item = findMenuItem(arg, in: NSApp.mainMenu) {
-                if let m = item.menu { m.update(); m.performActionForItem(at: m.index(of: item)) }
-            } else {
+            guard let item = findMenuItem(arg, in: NSApp.mainMenu), let action = item.action else {
                 log("! no menu item \(arg)")
+                return
+            }
+            if !(window?.window?.firstResponder?.tryToPerform(action, with: item) ?? false) {
+                NSApp.sendAction(action, to: item.target, from: item)
             }
             await waitIdle()
         case "bench":
