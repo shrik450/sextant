@@ -63,7 +63,7 @@ build_app() {
   swift build -c release --product RevueApp >/dev/null
   swift build -c release --product revue >/dev/null
   bash "$here/bundle.sh" "$(swift build -c release --show-bin-path)" "$work" "$(command -v git)" "$REVUE_SYNTAX" >/dev/null
-  plutil -replace CFBundleIdentifier -string dev.shrik450.Revue.perf "$app/Contents/Info.plist"
+  plutil -replace CFBundleIdentifier -string com.shrikanthup.Revue.perf "$app/Contents/Info.plist"
   plutil -remove CFBundleURLTypes "$app/Contents/Info.plist"
   codesign --force --sign - "$app" 2>/dev/null
 }
@@ -82,7 +82,7 @@ measure 30 scroll 40
 quit
 EOF
   rm -f "$log"
-  defaults delete dev.shrik450.Revue.perf >/dev/null 2>&1 || true
+  defaults delete com.shrikanthup.Revue.perf >/dev/null 2>&1 || true
   (sleep 180 && pkill -f "$app/Contents/MacOS/Revue") &
   local watchdog=$!
   open -n -g -W -a "$app" --args --automation "$work/script.txt" --log "$log" --background

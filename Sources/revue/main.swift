@@ -58,7 +58,7 @@ guard isDir(path) else { fail("\(path): not a directory") }
         if dir.pathExtension == "app" { return dir }
         dir = dir.deletingLastPathComponent()
     }
-    return NSWorkspace.shared.urlForApplication(withBundleIdentifier: "dev.shrik450.Revue")
+    return NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.shrikanthup.Revue")
 }
 guard let appURL = locateApp() else { fail("couldn't find Revue.app") }
 

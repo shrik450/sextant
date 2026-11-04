@@ -32,7 +32,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleIdentifier</key><string>dev.shrik450.Revue</string>
+  <key>CFBundleIdentifier</key><string>com.shrikanthup.Revue</string>
   <key>CFBundleName</key><string>Revue</string>
   <key>CFBundleDisplayName</key><string>Revue</string>
   <key>CFBundleExecutable</key><string>Revue</string>
@@ -49,7 +49,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleURLTypes</key>
   <array>
     <dict>
-      <key>CFBundleURLName</key><string>dev.shrik450.Revue</string>
+      <key>CFBundleURLName</key><string>com.shrikanthup.Revue</string>
       <key>CFBundleURLSchemes</key><array><string>revue</string></array>
     </dict>
   </array>
