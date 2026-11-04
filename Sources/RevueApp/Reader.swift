@@ -222,12 +222,13 @@ final class Reader: NSViewController, CodeViewDelegate {
         scrollColumns(toY: primary.visibleRect.minY + n * primary.style.lineHeight, animated: false)
     }
 
-    private func topRow(_ code: CodeView) -> Int? {
-        let r = code.visibleRect
+    private func row(atY y: CGFloat, in code: CodeView) -> Int? {
         guard let lm = code.layoutManager, let tc = code.textContainer else { return nil }
-        let glyph = lm.glyphIndex(for: NSPoint(x: 0, y: r.minY + 2 - code.textContainerOrigin.y), in: tc)
+        let glyph = lm.glyphIndex(for: NSPoint(x: 0, y: y - code.textContainerOrigin.y), in: tc)
         return code.row(at: lm.characterIndexForGlyph(at: glyph))
     }
+
+    private func topRow(_ code: CodeView) -> Int? { row(atY: code.visibleRect.minY + 2, in: code) }
 
     /// The row at the top of the viewport, as a file and line.
     var topPosition: ReaderPosition? {
@@ -338,11 +339,11 @@ final class Reader: NSViewController, CodeViewDelegate {
     @discardableResult
     func nextChange(_ dir: Int) -> Bool {
         let code = primary
-        let marker = code.visibleRect.minY + code.visibleRect.height * 0.25 + 1
-        let stops = changeStops.map { code.rect(ofRow: $0).minY }
-        let target = dir > 0 ? stops.first { $0 > marker + 1 } : stops.last { $0 < marker - 2 }
-        guard let y = target else { return false }
-        scrollColumns(toY: y - code.visibleRect.height * 0.25, animated: true)
+        guard let marker = row(atY: code.visibleRect.minY + code.visibleRect.height * 0.25 + 1, in: code) else { return false }
+        let stops = changeStops
+        let target = dir > 0 ? stops.first { $0 > marker } : stops.last { $0 < marker }
+        guard let r = target else { return false }
+        scrollColumns(toY: code.rect(ofRow: r).minY - code.visibleRect.height * 0.25, animated: true)
         return true
     }
 
@@ -366,11 +367,12 @@ final class Reader: NSViewController, CodeViewDelegate {
     @discardableResult
     func nextFile(_ dir: Int) -> Bool {
         let code = primary
-        let headers = code.rows.indices.filter { code.rows[$0].kind == .header }.map { code.rect(ofRow: $0).minY + code.style.lineHeight }
-        let top = code.visibleRect.minY
-        let target = dir > 0 ? headers.first { $0 > top + 4 } : headers.last { $0 < top - 4 }
-        guard let y = target else { return false }
-        scrollColumns(toY: y, animated: true)
+        guard let top = topRow(code) else { return false }
+        let current = code.rows[top].file
+        let headers = code.rows.indices.filter { code.rows[$0].kind == .header }
+        let target = dir > 0 ? headers.first { code.rows[$0].file > current } : headers.last { code.rows[$0].file < current }
+        guard let r = target else { return false }
+        scrollColumns(toY: code.rect(ofRow: r).minY + code.style.lineHeight, animated: true)
         return true
     }
 

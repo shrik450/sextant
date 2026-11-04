@@ -243,13 +243,15 @@ final class CodeView: NSTextView {
         return NSRange(location: start, length: max(0, end - start))
     }
 
-    /// The rect of a row in view coordinates.
+    /// The rect of a row's first line in view coordinates.
+    ///
+    /// Lays out the text up to the row, since positions past the laid-out text are only estimates.
     func rect(ofRow r: Int) -> NSRect {
-        guard let lm = layoutManager, let tc = textContainer, r < rowStarts.count else { return .zero }
+        guard let lm = layoutManager, r < rowStarts.count else { return .zero }
         let glyphs = lm.glyphRange(forCharacterRange: NSRange(location: rowStarts[r], length: 0), actualCharacterRange: nil)
+        lm.ensureLayout(forGlyphRange: NSRange(location: 0, length: min(glyphs.location + 1, lm.numberOfGlyphs)))
         var rect = lm.lineFragmentRect(forGlyphAt: glyphs.location, effectiveRange: nil)
         if glyphs.location >= lm.numberOfGlyphs { rect = lm.extraLineFragmentRect }
-        _ = tc
         rect.origin.y += textContainerOrigin.y
         return rect
     }
