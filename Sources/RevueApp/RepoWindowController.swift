@@ -92,6 +92,9 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     weak var modeGroup: NSToolbarItemGroup?
     weak var navGroup: NSToolbarItemGroup?
     var sheet: RevisionSheet?
+    var jumpPanel: JumpPanel?
+    /// The enabled menu commands when the jump bar opened, for it to offer.
+    var jumpCommands: [(path: String, item: NSMenuItem)] = []
 
     init(repository: Repository, home: URL?) {
         self.repository = repository
@@ -392,7 +395,10 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
             return f
         }
         if let firstWhole { s.changes.first?.offerWhole(firstWhole) }
-        if keepPosition, res.target.snapshot == .worktree { s.explored = [:] }
+        if keepPosition, res.target.snapshot == .worktree {
+            s.explored = [:]
+            forgetDefinitions(s)
+        }
         s.lastDiffs = diffs
         s.lastKey = key
         s.error = nil

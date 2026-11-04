@@ -19,6 +19,11 @@ final class Session {
     var loadGeneration = 0
     var isLoading = false
     var error: String?
+    /// Every definition in the snapshot, once indexed.
+    var definitions: [LocatedDefinition]?
+    /// How many files are indexed of how many need it, while indexing.
+    var indexing: (done: Int, total: Int)?
+    var indexTask: Task<Void, Never>?
     /// Whether to offer the picker if the review turns out empty.
     var pickerIfEmpty = false
 

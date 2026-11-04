@@ -664,37 +664,6 @@ func statusLetter(_ status: Character) -> (String, NSColor) {
     }
 }
 
-/// Fuzzy-matches paths and ranks them like Open Quickly.
-///
-/// Contiguous and file-name matches come first.
-func rankFuzzy(_ q: String, _ paths: [String]) -> [String] {
-    let query = Array(q.lowercased())
-    var scored: [(Int, String)] = []
-    for p in paths {
-        let lower = p.lowercased()
-        let name = (lower as NSString).lastPathComponent
-        var score: Int
-        if name == q { score = 1000 }
-        else if name.hasPrefix(q) { score = 800 }
-        else if name.contains(q) { score = 600 }
-        else if lower.contains(q) { score = 400 }
-        else {
-            var qi = 0, s = 0, prev: Character = "/"
-            for c in lower where qi < query.count {
-                if c == query[qi] {
-                    s += "/_-. ".contains(prev) ? 10 : 1
-                    qi += 1
-                }
-                prev = c
-            }
-            guard qi == query.count else { continue }
-            score = s
-        }
-        scored.append((score * 1000 - min(999, p.count), p))
-    }
-    return scored.sorted { $0.0 > $1.0 }.map(\.1)
-}
-
 /// Text search results across the snapshot, grouped by file.
 ///
 /// Also lists definitions and usages.

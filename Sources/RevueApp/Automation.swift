@@ -246,7 +246,7 @@ final class Automation {
     }
 
     private func sendKey(_ combo: String) {
-        guard let w = NSApp.keyWindow ?? window?.window else { return }
+        guard let w = (window?.jumpPanel?.isVisible == true ? window?.jumpPanel : nil) ?? NSApp.keyWindow ?? window?.window else { return }
         var flags: NSEvent.ModifierFlags = []
         var key = combo
         let parts = combo.split(separator: "+").map(String.init)
@@ -528,6 +528,7 @@ extension RepoWindowController {
             "read": reader.caretRun.map { c in c.file.keyedRuns.map { repository.reviews.isRead($0.key, in: c.file.diff.change) } } ?? [],
             "panes": panes.map(\.title),
             "focusedPane": focusedPane,
+            "jump": jumpPanel?.isVisible == true ? (jumpPanel?.items ?? []).map { $0.title + " | " + $0.detail } : [],
             "blame": reader.blame != nil,
             "selectedText": reader.selectedText ?? "",
             "jumpBar": reader.jumpBar.components,

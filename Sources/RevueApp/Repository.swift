@@ -11,6 +11,8 @@ final class Repository {
     let commonDir: URL
     let reviews: ReviewStore
     let notes: NotesStore
+    /// The definitions in every version of every file read so far, saved in the git directory.
+    let definitions: DefinitionIndex
 
     /// The main checkout first, then linked worktrees.
     private(set) var worktrees: [Worktree] = []
@@ -31,6 +33,7 @@ final class Repository {
         git = Git(root: commonDir, executable: gitPath)
         reviews = ReviewStore.shared(for: commonDir)
         notes = NotesStore.shared(for: commonDir)
+        definitions = DefinitionIndex(cache: commonDir.appendingPathComponent("revue/definitions.json"))
     }
 
     /// The repository's name, from its main checkout.

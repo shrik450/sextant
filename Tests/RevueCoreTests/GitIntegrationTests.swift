@@ -177,4 +177,43 @@ import Testing
         let commits = try await repo.history(of: "src/math.c", from: "HEAD", count: 50)
         #expect(commits.map(\.subject) == ["Move math into src, make deploy executable", "Initial commit"])
     }
+
+    @Test func blobsNameEachFileByItsContents() async throws {
+        #expect(Self.ready)
+        let worktree = Dictionary(try await repo.blobs(in: .worktree).map { ($0.path, $0.oid) }, uniquingKeysWith: { a, _ in a })
+        let head = Dictionary(try await repo.blobs(in: .commit(try #require(await repo.resolve("HEAD")))).map { ($0.path, $0.oid) }, uniquingKeysWith: { a, _ in a })
+        #expect(worktree["src/lib.rs"] == (try await repo.hashObjects(["src/lib.rs"])).first)
+        #expect(worktree["src/lib.rs"] != head["src/lib.rs"])
+        #expect(worktree["go.mod"] == head["go.mod"])
+        #expect(worktree["notes.md"] != nil && head["notes.md"] == nil)
+    }
+
+    @Test func definitionIndexParsesEachVersionOnceAndKeepsItBetweenLaunches() async throws {
+        #expect(Self.ready)
+        let cache = Self.root.appendingPathComponent(".build/test-definitions.json")
+        try? FileManager.default.removeItem(at: cache)
+        let head = Snapshot.commit(try #require(await repo.resolve("HEAD")))
+        let parsed = ParseCount()
+        let index = DefinitionIndex(cache: cache)
+        let atHead = try await index.definitions(in: head, git: repo) { done, _ in parsed.set(done) }
+        #expect(atHead.contains { $0.name == "main" && $0.path == "main.go" })
+        #expect(atHead.contains { $0.name == "get" && $0.path == "src/lib.rs" && $0.line == 15 })
+        #expect(parsed.value > 3)
+        parsed.set(0)
+        let inWorktree = try await index.definitions(in: .worktree, git: repo) { done, _ in parsed.set(done) }
+        #expect(parsed.value == 3)
+        #expect(inWorktree.contains { $0.name == "get" && $0.path == "src/lib.rs" })
+        parsed.set(0)
+        let relaunched = try await DefinitionIndex(cache: cache).definitions(in: head, git: repo) { done, _ in parsed.set(done) }
+        #expect(parsed.value == 0)
+        #expect(relaunched == atHead)
+    }
+}
+
+/// Counts parsed files from the index's progress reports.
+final class ParseCount: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var value: Int { lock.withLock { count } }
+    func set(_ n: Int) { lock.withLock { count = n } }
 }

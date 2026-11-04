@@ -664,7 +664,8 @@ extension RepoWindowController: NSMenuItemValidation {
     @objc func showChangesTab(_ sender: Any?) { revealNavigator(.changes, focus: true) }
     @objc func showFindTab(_ sender: Any?) { revealNavigator(.find, focus: true) }
 
-    @objc func openQuickly(_ sender: Any?) {
+    /// Puts the keyboard in the file tree's filter.
+    private func focusFileFilter() {
         revealNavigator(.changes)
         window?.makeFirstResponder(navigator.changes.filter)
         navigator.changes.filter.selectText(nil)
@@ -709,7 +710,7 @@ extension RepoWindowController: NSMenuItemValidation {
             revealNavigator(.find)
             window?.makeFirstResponder(navigator.search.field)
         } else {
-            openQuickly(sender)
+            focusFileFilter()
         }
     }
 
