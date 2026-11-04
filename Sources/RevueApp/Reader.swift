@@ -44,14 +44,14 @@ final class Reader: NSViewController, CodeViewDelegate {
     }
     private var columns: [Column] = []
     private let stack = NSStackView()
-    let jumpBar = JumpBar()
+    let header = PaneHeader()
     private let emptyLabel = NSTextField(labelWithString: "")
     private var layout = Layout(left: [], right: nil)
     private var syncing = false
 
     override func loadView() {
         let v = NSView()
-        jumpBar.translatesAutoresizingMaskIntoConstraints = false
+        header.translatesAutoresizingMaskIntoConstraints = false
         stack.orientation = .horizontal
         stack.spacing = 0
         stack.distribution = .fillEqually
@@ -64,13 +64,13 @@ final class Reader: NSViewController, CodeViewDelegate {
         emptyLabel.translatesAutoresizingMaskIntoConstraints = false
         emptyLabel.isHidden = true
         v.addSubview(stack)
-        v.addSubview(jumpBar)
+        v.addSubview(header)
         v.addSubview(emptyLabel)
         NSLayoutConstraint.activate([
-            jumpBar.topAnchor.constraint(equalTo: v.safeAreaLayoutGuide.topAnchor),
-            jumpBar.leadingAnchor.constraint(equalTo: v.leadingAnchor),
-            jumpBar.trailingAnchor.constraint(equalTo: v.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: jumpBar.bottomAnchor),
+            header.topAnchor.constraint(equalTo: v.safeAreaLayoutGuide.topAnchor),
+            header.leadingAnchor.constraint(equalTo: v.leadingAnchor),
+            header.trailingAnchor.constraint(equalTo: v.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: header.bottomAnchor),
             stack.leadingAnchor.constraint(equalTo: v.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: v.trailingAnchor),
             stack.bottomAnchor.constraint(equalTo: v.bottomAnchor),
@@ -188,7 +188,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         let reland = landedSelection != nil && landedSelection == keptSelection
         for c in columns { c.code.recolor(file: fi) }
         if reland, let r = caretRow { placeCaret(atRow: r) }
-        updateJumpBar()
+        updateHeader()
     }
 
     /// Whether everything in view is drawn with its colors.
@@ -201,7 +201,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         emptyLabel.stringValue = message
         emptyLabel.isHidden = false
         stack.isHidden = true
-        jumpBar.update(path: nil, files: [], current: nil, style: Style.current(for: view.effectiveAppearance))
+        header.update(path: nil, files: [], current: nil, style: Style.current(for: view.effectiveAppearance))
     }
 
     /// Lays out and renders again, such as after toggling split, folds, notes or highlighting.
@@ -235,7 +235,7 @@ final class Reader: NSViewController, CodeViewDelegate {
             columns.forEach { $0.code.setSelectedRange(NSRange(location: 0, length: 0)) }
         }
         markUses()
-        updateJumpBar()
+        updateHeader()
     }
 
     /// Says whether a run of changes has been read.
@@ -566,7 +566,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         let rect = code.rect(ofRow: r)
         scrollColumns(toY: offset.map { rect.minY + $0 } ?? max(0, rect.minY - code.visibleRect.height * 0.25), animated: animated)
         if select { placeCaret(atRow: r) }
-        updateJumpBar()
+        updateHeader()
     }
 
     func scrollToTop() { scrollColumns(toY: 0, animated: false) }
@@ -592,7 +592,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         let code = primary
         scrollColumns(toY: code.rect(ofRow: r).minY - code.visibleRect.height * 0.25, animated: animated)
         placeCaret(atRow: r)
-        updateJumpBar()
+        updateHeader()
     }
 
     /// Puts the caret on a row, at its first character that isn't a space.
@@ -649,9 +649,9 @@ final class Reader: NSViewController, CodeViewDelegate {
             syncing = false
         }
         for c in columns { c.code.colorVisibleRows() }
-        let before = jumpBar.currentFile
-        updateJumpBar()
-        if jumpBar.currentFile != before { delegate?.readerCurrentFileChanged(self) }
+        let before = header.currentFile
+        updateHeader()
+        if header.currentFile != before { delegate?.readerCurrentFileChanged(self) }
     }
 
     /// The rows where each run of changed lines starts.
@@ -713,7 +713,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         guard let r = code.rows.firstIndex(where: { $0.file == fi && $0.kind == .header }) else { return }
         scrollColumns(toY: code.rect(ofRow: r).minY + (r == 0 ? 0 : code.style.lineHeight), animated: true)
         if let first = code.rows[r...].firstIndex(where: { $0.file == fi && $0.kind == .line }) { placeCaret(atRow: first) }
-        updateJumpBar()
+        updateHeader()
     }
 
     /// Moves the caret to the next or previous definition in the file.
@@ -728,7 +728,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         guard !overview, let f = files.first, !f.lines.isEmpty else { return false }
         if changedOnly { return stepChangedDefinition(dir, in: f) }
         let here = caret.map { f.lines[$0.line] }.map { $0.kind == .deleted ? max(0, $0.newNo) : $0.newNo - 1 } ?? currentNewLine ?? 0
-        let starts = Set(jumpBar.definitions.map(\.nameLine)).sorted()
+        let starts = Set(header.definitions.map(\.nameLine)).sorted()
         guard let next = dir > 0 ? starts.first(where: { $0 > here }) : starts.last(where: { $0 < here }),
               let i = f.index(ofLine: next + 1), let r = row(for: ReaderPosition(file: 0, line: i), in: primary) else { return false }
         land(onRow: r, animated: true)
@@ -757,7 +757,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         } else {
             placeCaret(atRow: r)
         }
-        updateJumpBar()
+        updateHeader()
     }
 
     /// Moves the caret to a line of the shown file, by index into its lines.
@@ -800,13 +800,13 @@ final class Reader: NSViewController, CodeViewDelegate {
         return p.map { f.lines[min($0.line, f.lines.count - 1)] }.map { $0.newNo > 0 ? $0.newNo - 1 : max(0, $0.oldNo - 1) }
     }
 
-    func updateJumpBar() {
+    func updateHeader() {
         let style = primary.style
         if overview {
-            jumpBar.update(path: nil, files: files, current: currentFile, style: style)
+            header.update(path: nil, files: files, current: currentFile, style: style)
         } else if let f = files.first {
-            jumpBar.update(path: f.path, files: files, current: 0, style: style)
-            jumpBar.updateSymbol(line: currentNewLine)
+            header.update(path: f.path, files: files, current: 0, style: style)
+            header.updateSymbol(line: currentNewLine)
         }
     }
 
@@ -832,7 +832,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         guard v.window?.firstResponder === v || activeColumn == nil || activeColumn === v else { return }
         activeColumn = v
         markActiveColumn()
-        updateJumpBar()
+        updateHeader()
         delegate?.readerCaretMoved(self)
     }
 

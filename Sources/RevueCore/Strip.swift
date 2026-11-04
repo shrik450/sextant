@@ -9,11 +9,12 @@ import Foundation
 /// - Parameters:
 ///   - index: The pane to bring into view.
 ///   - offset: How far the strip is scrolled now.
-///   - paneWidth: Each pane's width. Panes sit one point apart.
+///   - paneWidth: Each pane's width.
+///   - gap: The space between neighbouring panes.
 ///   - viewport: The width that shows.
-///   - total: The width of every pane together.
-public func stripOffset(showing index: Int, from offset: CGFloat, paneWidth: CGFloat, viewport: CGFloat, total: CGFloat) -> CGFloat {
-    let minX = CGFloat(index) * (paneWidth + 1), maxX = minX + paneWidth
+///   - total: The width of every pane together, with the gaps between them.
+public func stripOffset(showing index: Int, from offset: CGFloat, paneWidth: CGFloat, gap: CGFloat, viewport: CGFloat, total: CGFloat) -> CGFloat {
+    let minX = CGFloat(index) * (paneWidth + gap), maxX = minX + paneWidth
     var o = offset
     if minX < o { o = minX }
     if maxX > o + viewport { o = maxX - viewport }

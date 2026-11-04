@@ -76,7 +76,7 @@ extension RepoWindowController {
             }
         case .fileDefinitions(let q):
             guard let f = focusedFile else { return [] }
-            let defs = reader.jumpBar.definitions
+            let defs = reader.header.definitions
             let ranked = q.isEmpty ? defs : defs
                 .compactMap { d in fuzzyScore(q, candidate: d.name, name: d.name).map { ($0, d) } }
                 .sorted { $0.0 > $1.0 }.map(\.1)

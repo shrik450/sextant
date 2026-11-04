@@ -69,73 +69,30 @@ final class SubjectControl: NSStackView {
 }
 
 extension RepoWindowController: NSToolbarDelegate {
-    static let navID = NSToolbarItem.Identifier("nav")
     static let subjectID = NSToolbarItem.Identifier("subject")
-    static let diffModeID = NSToolbarItem.Identifier("diffMode")
-    static let reviewID = NSToolbarItem.Identifier("review")
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.toggleSidebar, .sidebarTrackingSeparator, RepoWindowController.navID, .flexibleSpace, RepoWindowController.subjectID, .flexibleSpace,
-         RepoWindowController.diffModeID, RepoWindowController.reviewID, .inspectorTrackingSeparator, .toggleInspector]
+        [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, RepoWindowController.subjectID, .flexibleSpace,
+         .inspectorTrackingSeparator, .toggleInspector]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(toolbar) }
 
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
-        switch id {
-        case RepoWindowController.navID:
-            let g = NSToolbarItemGroup(itemIdentifier: id,
-                                       images: [NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Previous Pane")!,
-                                                NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "Next Pane")!],
-                                       selectionMode: .momentary, labels: ["Previous Pane", "Next Pane"], target: self, action: #selector(navClicked(_:)))
-            g.subitems[0].toolTip = "Previous Pane (⌘[)"
-            g.subitems[1].toolTip = "Next Pane (⌘])"
-            g.subitems.forEach { $0.autovalidates = false }
-            navGroup = g
-            updateNavButtons()
-            return g
-        case RepoWindowController.subjectID:
-            let item = NSToolbarItem(itemIdentifier: id)
-            let control = SubjectControl()
-            control.subject.target = self
-            control.subject.action = #selector(chooseSubject(_:))
-            control.base.target = self
-            control.base.action = #selector(baseChosen(_:))
-            item.view = control
-            item.label = "Review"
-            item.visibilityPriority = .high
-            subjectControl = control
-            updateSubjectControl()
-            return item
-        case RepoWindowController.diffModeID:
-            let g = NSToolbarItemGroup(itemIdentifier: id,
-                                       images: [NSImage(systemSymbolName: "text.justify.leading", accessibilityDescription: "Unified")!,
-                                                NSImage(systemSymbolName: "rectangle.split.2x1", accessibilityDescription: "Side by Side")!],
-                                       selectionMode: .selectOne, labels: ["Unified", "Side by Side"], target: self, action: #selector(modeChanged(_:)))
-            g.selectedIndex = reader.split ? 1 : 0
-            g.subitems[0].toolTip = "Unified (⌃⌘1)"
-            g.subitems[1].toolTip = "Side by Side (⌃⌘2)"
-            modeGroup = g
-            return g
-        case RepoWindowController.reviewID:
-            let item = NSToolbarItem(itemIdentifier: id)
-            item.image = NSImage(systemSymbolName: "checkmark.circle", accessibilityDescription: "Reviewed")
-            item.label = "Reviewed"
-            item.target = self
-            item.action = #selector(toggleReviewedAction(_:))
-            item.toolTip = "Mark as Reviewed (R)"
-            reviewItem = item
-            return item
-        default:
-            return nil
-        }
+        guard id == RepoWindowController.subjectID else { return nil }
+        let item = NSToolbarItem(itemIdentifier: id)
+        let control = SubjectControl()
+        control.subject.target = self
+        control.subject.action = #selector(chooseSubject(_:))
+        control.base.target = self
+        control.base.action = #selector(baseChosen(_:))
+        item.view = control
+        item.label = "Review"
+        item.visibilityPriority = .high
+        subjectControl = control
+        updateSubjectControl()
+        return item
     }
-
-    @objc private func navClicked(_ sender: NSToolbarItemGroup) {
-        sender.selectedIndex == 0 ? previousPane(nil) : nextPane(nil)
-    }
-
-    @objc private func modeChanged(_ sender: NSToolbarItemGroup) { setSplit(sender.selectedIndex == 1) }
 
     /// The base a subject gets unless the user picks another.
     private var usualBase: String? {

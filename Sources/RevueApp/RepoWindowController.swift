@@ -88,9 +88,6 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     var lastError: String?
     var picker: NSPopover?
     weak var subjectControl: SubjectControl?
-    weak var reviewItem: NSToolbarItem?
-    weak var modeGroup: NSToolbarItemGroup?
-    weak var navGroup: NSToolbarItemGroup?
     var sheet: RevisionSheet?
     var jumpPanel: JumpPanel?
     /// The enabled menu commands when the jump bar opened, for it to offer.
@@ -116,7 +113,6 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         inspector.notes.delegate = self
         inspector.isRead = { [weak repository] f, r in repository?.reviews.isRead(r.key, in: f.diff.change) ?? false }
         panes = [makePane()]
-        strip.onSelect = { [weak self] i in self?.focusPane(i) }
 
         let navItem = NSSplitViewItem(sidebarWithViewController: navigator)
         navItem.minimumThickness = 220
@@ -172,17 +168,39 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         r.wraps = UserDefaults.standard.bool(forKey: "wrapLines")
         r.isRead = { [weak repository] f, run in repository?.reviews.isRead(run.key, in: f.diff.change) ?? false }
         r.keyLoopNext = inspector.outline
-        r.jumpBar.onOpenPath = { [weak self, weak p] path in
+        r.header.onOpenPath = { [weak self, weak p] path in
             guard let self, let p else { return }
             self.open(path, at: .start, in: p)
         }
-        r.jumpBar.onShowOverview = { [weak self, weak p] in
+        r.header.onShowOverview = { [weak self, weak p] in
             guard let self, let p else { return }
             self.showOverview(in: p)
         }
-        r.jumpBar.onSelectSymbol = { [weak self] s in self?.goToDefinition(s) }
+        r.header.onSelectSymbol = { [weak self, weak p] s in
+            guard let self, let p, self.focus(p) else { return }
+            self.goToDefinition(s)
+        }
+        r.header.onToggleSplit = { [weak self, weak p] in
+            guard let self, let p, self.focus(p) else { return }
+            self.setSplit(!self.reader.split)
+        }
+        r.header.onToggleReviewed = { [weak self, weak p] in
+            guard let self, let p, self.focus(p) else { return }
+            self.toggleReviewedAction(nil)
+        }
+        r.header.onClose = { [weak self, weak p] in
+            guard let self, let p, self.focus(p) else { return }
+            self.closePane(nil)
+        }
         _ = r.view
         return p
+    }
+
+    /// Focuses a pane for something done from its header, reporting whether it's still open.
+    private func focus(_ p: Pane) -> Bool {
+        guard let i = panes.firstIndex(where: { $0 === p }) else { return false }
+        focusPane(i)
+        return true
     }
 
     private func updateKeyLoop() {
@@ -449,7 +467,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
                 s.snapshotFiles = files
                 if isFocused(s) { showFilesSoon() }
             }
-            for p in panes(of: s) { p.reader.jumpBar.tree = files }
+            for p in panes(of: s) { p.reader.header.tree = files }
         }
     }
 
@@ -720,7 +738,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     func branch(takeKeyboard: Bool = true) -> Pane {
         let p = makePane()
         p.session = pane.session
-        p.reader.jumpBar.tree = pane.session?.snapshotFiles ?? []
+        p.reader.header.tree = pane.session?.snapshotFiles ?? []
         panes.insert(p, at: focusedPane + 1)
         focusedPane += 1
         showNotes()
@@ -781,8 +799,11 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
 
     /// Lays out the strip, sliding the focused pane into view.
     func showPanes(animated: Bool) {
-        strip.show(panes.map(\.reader.view), titles: panes.map(\.title), focused: focusedPane, animated: animated)
-        updateNavButtons()
+        strip.show(panes.map(\.reader.view), focused: focusedPane, animated: animated)
+        for (i, p) in panes.enumerated() {
+            p.reader.header.isFocusedPane = i == focusedPane || panes.count == 1
+            p.reader.header.setPane(split: p.reader.split, canClose: panes.count > 1)
+        }
     }
 
     /// Points the navigator, inspector, notes and title at the newly focused pane.
@@ -818,11 +839,6 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    func updateNavButtons() {
-        navGroup?.subitems[0].isEnabled = focusedPane > 0
-        navGroup?.subitems[1].isEnabled = focusedPane < panes.count - 1
-    }
-
     private var refreshTask: Task<Void, Never>?
 
     private func filesystemChanged(_ paths: [String]) {
@@ -855,7 +871,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         inspector.refreshReviewState()
         for p in panes {
             p.reader.refreshReadState()
-            if case .overview? = p.focus { p.reader.reload(keepPosition: true) }
+            if case .overview? = p.focus { p.reader.reload(keepPosition: true) } else { p.reader.updateHeader() }
         }
         updateTitle()
     }

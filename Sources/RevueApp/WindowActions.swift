@@ -58,9 +58,6 @@ extension RepoWindowController {
         window.title = repository.name
         window.subtitle = review == nil ? "" : scopeLabel + (changes.isEmpty ? "" : "  ·  \(changes.count) file\(changes.count == 1 ? "" : "s")")
         updateSubjectControl()
-        let reviewed = currentChange.map { changes[$0].reviewed } ?? false
-        reviewItem?.image = NSImage(systemSymbolName: reviewed ? "checkmark.circle.fill" : "checkmark.circle", accessibilityDescription: "Reviewed")
-        reviewItem?.toolTip = reviewed ? "Mark as Not Reviewed (R)" : "Mark as Reviewed (R)"
     }
 
     /// What the inspector says about the review: its commit, pull request, branch or worktree,
@@ -428,7 +425,7 @@ extension RepoWindowController: NSMenuItemValidation {
                 item.attributedTitle = s
                 if case .commit(let cur) = t, cur == c.oid { item.state = .on }
             }
-            let bar = reader.jumpBar
+            let bar = reader.header
             m.popUp(positioning: nil, at: NSPoint(x: 8, y: bar.isFlipped ? bar.bounds.maxY : bar.bounds.minY), in: bar)
         }
     }
@@ -489,7 +486,7 @@ extension RepoWindowController: NSMenuItemValidation {
     @objc func copySymbol(_ sender: Any?) {
         if let w = reader.wordAtCaret, w.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || $0 == "_" || $0 == "$" }) {
             copy(w)
-        } else if let r = selectedReference, !r.old, let s = reader.jumpBar.enclosing(line: r.lines.lowerBound - 1) {
+        } else if let r = selectedReference, !r.old, let s = reader.header.enclosing(line: r.lines.lowerBound - 1) {
             copy(s.name)
         } else {
             NSSound.beep()
@@ -662,8 +659,8 @@ extension RepoWindowController: NSMenuItemValidation {
     func setSplit(_ on: Bool) {
         reader.split = on
         reader.reload(keepPosition: true)
-        modeGroup?.selectedIndex = on ? 1 : 0
         UserDefaults.standard.set(on ? "split" : "unified", forKey: "diffMode")
+        reader.header.setPane(split: on, canClose: panes.count > 1)
     }
 
     @objc func showUnified(_ sender: Any?) { setSplit(false) }
@@ -700,7 +697,7 @@ extension RepoWindowController: NSMenuItemValidation {
         findReferences(w)
     }
 
-    @objc func showSymbols(_ sender: Any?) { reader.jumpBar.showSymbolMenu() }
+    @objc func showSymbols(_ sender: Any?) { reader.header.showSymbolMenu() }
 
     @objc func focusNavigator(_ sender: Any?) {
         if split.splitViewItems[0].isCollapsed { split.splitViewItems[0].isCollapsed = false }

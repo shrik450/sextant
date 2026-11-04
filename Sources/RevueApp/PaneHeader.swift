@@ -1,16 +1,20 @@
 import AppKit
 import RevueCore
 
-/// The bar above the code: where you are, as folders, file and definition, and the size of the
-/// change.
+/// A pane's header: where the pane is, as folders, file and definition, the size of the change,
+/// and what can be done to the pane.
 ///
 /// Each folder or file opens a menu of what sits beside it in the snapshot, like Xcode's jump bar.
+/// The pane's buttons show its diff layout, whether its file is reviewed, and close it.
 @MainActor
-final class JumpBar: NSView, NSMenuDelegate {
+final class PaneHeader: NSView, NSMenuDelegate {
     private let crumbs = NSStackView()
     let symbols = NSPopUpButton(frame: .zero, pullsDown: true)
     private let symbolChevron = NSImageView(image: NSImage(systemSymbolName: "chevron.compact.right", accessibilityDescription: nil)!)
     let stats = NSTextField(labelWithString: "")
+    let splitButton = PaneHeader.button("rectangle.split.2x1", "Side by Side")
+    let reviewedButton = PaneHeader.button("checkmark.circle", "Mark as Reviewed")
+    let closeButton = PaneHeader.button("xmark", "Close Pane")
     /// Every file in the snapshot, sorted, for the folder menus.
     var tree: [String] = []
     private(set) var currentFile: Int?
@@ -21,9 +25,50 @@ final class JumpBar: NSView, NSMenuDelegate {
     var onOpenPath: ((String) -> Void)?
     var onShowOverview: (() -> Void)?
     var onSelectSymbol: ((Symbol) -> Void)?
+    var onToggleSplit: (() -> Void)?
+    var onToggleReviewed: (() -> Void)?
+    var onClose: (() -> Void)?
+
+    /// Whether this is the pane the keyboard and side columns follow, which the header shows by
+    /// dimming the others.
+    var isFocusedPane = true {
+        didSet {
+            guard isFocusedPane != oldValue else { return }
+            for b in buttons { b.contentTintColor = crumbColor }
+        }
+    }
+
+    private var crumbColor: NSColor { isFocusedPane ? .labelColor : .secondaryLabelColor }
+
+    private static func button(_ symbol: String, _ label: String) -> NSButton {
+        let b = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: label)!, target: nil, action: nil)
+        b.isBordered = false
+        b.contentTintColor = .secondaryLabelColor
+        b.toolTip = label
+        b.setContentHuggingPriority(.required, for: .horizontal)
+        b.setContentCompressionResistancePriority(.required, for: .horizontal)
+        return b
+    }
+
+    /// Shows the pane's diff layout and whether it can close, which depend on the window rather
+    /// than the files shown.
+    func setPane(split: Bool, canClose: Bool) {
+        splitButton.image = NSImage(systemSymbolName: split ? "text.justify.leading" : "rectangle.split.2x1", accessibilityDescription: nil)
+        splitButton.toolTip = split ? "Show Unified (⌃⌘1)" : "Show Side by Side (⌃⌘2)"
+        splitButton.setAccessibilityLabel(splitButton.toolTip)
+        closeButton.isHidden = !canClose
+    }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
+        splitButton.target = self
+        splitButton.action = #selector(splitClicked)
+        reviewedButton.target = self
+        reviewedButton.action = #selector(reviewedClicked)
+        closeButton.target = self
+        closeButton.action = #selector(closeClicked)
+        closeButton.toolTip = "Close Pane (⌘W)"
+        reviewedButton.isHidden = true
         crumbs.orientation = .horizontal
         crumbs.spacing = 0
         crumbs.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -42,9 +87,12 @@ final class JumpBar: NSView, NSMenuDelegate {
         symbolChevron.symbolConfiguration = .init(pointSize: 10, weight: .regular)
         symbolChevron.contentTintColor = .tertiaryLabelColor
         symbolChevron.isHidden = true
-        let row = NSStackView(views: [crumbs, symbolChevron, symbols, NSView(), stats])
+        let row = NSStackView(views: [crumbs, symbolChevron, symbols, NSView(), stats, reviewedButton, splitButton, closeButton])
         row.orientation = .horizontal
         row.spacing = 0
+        row.setCustomSpacing(12, after: stats)
+        row.setCustomSpacing(10, after: reviewedButton)
+        row.setCustomSpacing(10, after: splitButton)
         row.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 12)
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
@@ -70,7 +118,8 @@ final class JumpBar: NSView, NSMenuDelegate {
     var components: [String] { crumbs.arrangedSubviews.compactMap { ($0 as? NSButton)?.title } }
 
     func update(path p: String?, files: [FileState], current: Int?, style: Style) {
-        let key = "\(p ?? "\u{0}")|\(current ?? -1)|\(p == nil ? -1 : files.first?.definitions?.count ?? -1)|\(files.count):\(files.first.map { ObjectIdentifier($0).hashValue } ?? 0):\(files.last.map { ObjectIdentifier($0).hashValue } ?? 0):\(p == nil ? 0 : files.first?.lines.count ?? 0)|\(style.theme.name)|\(style.theme.color("success"))|\(style.theme.color("danger"))"
+        let reviewable = current.flatMap { files.indices.contains($0) ? files[$0] : nil }.flatMap { $0.isChange ? $0 : nil }
+        let key = "\(p ?? "\u{0}")|\(current ?? -1)|\(reviewable.map { $0.reviewed ? "r" : "u" } ?? "-")|\(p == nil ? -1 : files.first?.definitions?.count ?? -1)|\(files.count):\(files.first.map { ObjectIdentifier($0).hashValue } ?? 0):\(files.last.map { ObjectIdentifier($0).hashValue } ?? 0):\(p == nil ? 0 : files.first?.lines.count ?? 0)|\(style.theme.name)|\(style.theme.color("success"))|\(style.theme.color("danger"))"
         guard key != shownKey else { return }
         shownKey = key
         currentFile = current
@@ -96,6 +145,12 @@ final class JumpBar: NSView, NSMenuDelegate {
         s.append(NSAttributedString(string: "  −\(addDel.1)", attributes: [.foregroundColor: style.theme.color("danger")]))
         stats.attributedStringValue = s
         stats.isHidden = !files.contains(where: \.isChange)
+        reviewedButton.isHidden = reviewable == nil
+        let reviewed = reviewable?.reviewed == true
+        reviewedButton.image = NSImage(systemSymbolName: reviewed ? "checkmark.circle.fill" : "checkmark.circle", accessibilityDescription: nil)
+        reviewedButton.contentTintColor = reviewed ? style.theme.color("success") : .secondaryLabelColor
+        reviewedButton.toolTip = reviewed ? "Mark as Not Reviewed (R)" : "Mark as Reviewed (R)"
+        reviewedButton.setAccessibilityLabel(reviewedButton.toolTip)
         definitions = p == nil ? [] : files.first?.definitions ?? []
         symbolMenuIsCurrent = false
         symbols.isHidden = true
@@ -145,7 +200,7 @@ final class JumpBar: NSView, NSMenuDelegate {
         b.controlSize = .small
         b.imagePosition = .noImage
         b.imageHugsTitle = true
-        b.contentTintColor = .labelColor
+        b.contentTintColor = crumbColor
         b.lineBreakMode = .byTruncatingMiddle
         b.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return b
@@ -227,6 +282,9 @@ final class JumpBar: NSView, NSMenuDelegate {
     }
 
     @objc private func overviewClicked() { onShowOverview?() }
+    @objc private func splitClicked() { onToggleSplit?() }
+    @objc private func reviewedClicked() { onToggleReviewed?() }
+    @objc private func closeClicked() { onClose?() }
 
     @objc private func crumbClicked(_ sender: NSButton) {
         guard let shownPath else { return }
