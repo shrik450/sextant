@@ -1303,6 +1303,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate, NSToolba
             "currentChange": currentChange.map { changes[$0].path } ?? "",
             "isWhole": focusedFile?.isWhole ?? false,
             "rows": reader.primary.rows.count,
+            "visibleCodeRect": NSStringFromRect(reader.primary.visibleRect),
             "firstResponder": focusName,
             "windowFrame": NSStringFromRect(window?.frame ?? .zero),
             "isKey": window?.isKeyWindow ?? false,

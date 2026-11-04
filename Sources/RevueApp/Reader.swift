@@ -113,6 +113,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         }
         for c in columns { c.code.wraps = wraps; c.gutter.blame = blame }
         linkKeyLoop()
+        view.layoutSubtreeIfNeeded()
     }
 
     /// Where Tab goes after the code (the last column).
@@ -288,8 +289,7 @@ final class Reader: NSViewController, CodeViewDelegate {
     private func scrollColumns(toY y: CGFloat, animated: Bool) {
         for c in columns {
             let clip = c.scroll.contentView
-            let maxY = max(0, c.code.frame.height - clip.bounds.height)
-            let target = NSPoint(x: clip.bounds.minX, y: min(max(0, y), maxY))
+            let target = clip.constrainBoundsRect(NSRect(origin: NSPoint(x: clip.bounds.minX, y: y), size: clip.bounds.size)).origin
             if animated && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
                 NSAnimationContext.runAnimationGroup { ctx in
                     ctx.duration = 0.18

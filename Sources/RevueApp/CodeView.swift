@@ -193,12 +193,27 @@ final class CodeView: NSTextView {
             c.widthTracksTextView = wraps
             isHorizontallyResizable = !wraps
             if wraps {
-                c.containerSize = NSSize(width: enclosingScrollView?.contentSize.width ?? bounds.width, height: .greatestFiniteMagnitude)
-                frame.size.width = enclosingScrollView?.contentSize.width ?? frame.width
+                fitToUncoveredWidth()
             } else {
                 c.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
             }
         }
+    }
+
+    /// The width of the clip view that the floating gutter doesn't cover.
+    private var uncoveredWidth: CGFloat? {
+        guard let clip = enclosingScrollView?.contentView else { return nil }
+        return clip.bounds.width - clip.contentInsets.left - clip.contentInsets.right
+    }
+
+    /// Narrows wrapped text to the width beside the gutter, after the gutter or window changes size.
+    func fitToUncoveredWidth() {
+        setFrameSize(frame.size)
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        guard wraps, let width = uncoveredWidth else { return super.setFrameSize(newSize) }
+        super.setFrameSize(NSSize(width: width, height: newSize.height))
     }
 
     func setContent(_ r: RenderedText, rows: [Row], files: [FileState]) {
@@ -239,21 +254,26 @@ final class CodeView: NSTextView {
         return rect
     }
 
-    /// Calls `body` with each row whose line fragments intersect a rect, and the fragment's rect.
+    /// Calls `body` with each row that intersects `rect` and the rect it takes up, covering all of
+    /// its wrapped fragments.
     func visibleRows(in rect: NSRect, _ body: (Int, NSRect) -> Void) {
         guard let lm = layoutManager, let tc = textContainer else { return }
         let origin = textContainerOrigin
-        let glyphs = lm.glyphRange(forBoundingRect: rect.offsetBy(dx: -origin.x, dy: -origin.y), in: tc)
-        withoutActuallyEscaping(body) { body in
-            lm.enumerateLineFragments(forGlyphRange: glyphs) { frag, _, _, range, _ in
-                let ci = lm.characterIndexForGlyph(at: range.location)
-                guard let r = self.row(at: ci) else { return }
-                body(r, frag.offsetBy(dx: 0, dy: origin.y))
-            }
+        var glyphs = lm.glyphRange(forBoundingRect: rect.offsetBy(dx: -origin.x, dy: -origin.y), in: tc)
+        if let first = row(at: lm.characterIndexForGlyph(at: glyphs.location)) {
+            let start = lm.glyphIndexForCharacter(at: rowStarts[first])
+            glyphs = NSRange(location: start, length: NSMaxRange(glyphs) - start)
+        }
+        var spans: [(row: Int, rect: NSRect)] = []
+        lm.enumerateLineFragments(forGlyphRange: glyphs) { frag, _, _, range, _ in
+            guard let r = self.row(at: lm.characterIndexForGlyph(at: range.location)) else { return }
+            let f = frag.offsetBy(dx: 0, dy: origin.y)
+            if let last = spans.last, last.row == r { spans[spans.count - 1].rect = last.rect.union(f) } else { spans.append((r, f)) }
         }
         if lm.extraLineFragmentRect.height > 0, let last = rows.indices.last, rowStarts[last] >= (textStorage?.length ?? 0) {
-            body(last, lm.extraLineFragmentRect.offsetBy(dx: 0, dy: origin.y))
+            spans.append((last, lm.extraLineFragmentRect.offsetBy(dx: 0, dy: origin.y)))
         }
+        for s in spans { body(s.row, s.rect) }
     }
 
     func line(ofRow r: Int) -> DiffLine? {
@@ -388,22 +408,42 @@ final class Gutter: NSRulerView {
     init(code: CodeView, scrollView: NSScrollView) {
         super.init(scrollView: scrollView, orientation: .verticalRuler)
         clientView = code
+        scrollView.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(scrollViewResized), name: NSView.frameDidChangeNotification, object: scrollView)
     }
+
+    @objc private func scrollViewResized() { updateThickness() }
 
     required init(coder: NSCoder) { fatalError() }
 
     override var isFlipped: Bool { true }
 
+    /// The width of one column of line numbers, fitting the largest line number.
+    private var numberColumnWidth: CGFloat {
+        let maxNo = code.files.reduce(1) { max($0, $1.lines.last.map { max($0.oldNo, $0.newNo) } ?? 1) }
+        return CGFloat(max(3, String(maxNo).count)) * code.style.digitWidth + 12
+    }
+
+    /// The width of the blame column, which narrows so the code keeps at least half the reader.
+    private var blameWidth: CGFloat {
+        guard blame != nil else { return 0 }
+        let digit = code.style.digitWidth
+        let room = (scrollView?.frame.width ?? .infinity) / 2 - numberColumnWidth * CGFloat(columns) - 10
+        return max(8 * digit, min(28 * digit, room)).rounded()
+    }
+
+    /// Fits the gutter to its line numbers, blame and the reader's width, keeping the code's
+    /// horizontal scroll position.
     func updateThickness() {
-        var maxNo = 1
-        for f in code.files { maxNo = max(maxNo, f.lines.last.map { max($0.oldNo, $0.newNo) } ?? 1) }
-        let digits = CGFloat(max(3, String(maxNo).count))
-        let col = digits * code.style.digitWidth + 12
-        let blameWidth: CGFloat = blame == nil ? 0 : 28 * code.style.digitWidth
-        let thickness = ceil(blameWidth + col * CGFloat(columns) + 10)
-        if thickness != ruleThickness {
+        let thickness = ceil(blameWidth + numberColumnWidth * CGFloat(columns) + 10)
+        if thickness != ruleThickness, let scrollView {
+            let clip = scrollView.contentView
+            let scrolledX = max(0, clip.bounds.minX + clip.contentInsets.left)
             ruleThickness = thickness
-            scrollView?.tile()
+            scrollView.tile()
+            code.fitToUncoveredWidth()
+            clip.setBoundsOrigin(NSPoint(x: scrolledX - clip.contentInsets.left, y: clip.bounds.minY))
+            scrollView.reflectScrolledClipView(clip)
         }
         needsDisplay = true
     }
@@ -415,9 +455,8 @@ final class Gutter: NSRulerView {
         t.border.withAlphaComponent(0.5).setFill()
         NSRect(x: bounds.maxX - 1, y: rect.minY, width: 1, height: rect.height).fill()
 
-        let digits = CGFloat(max(3, String(code.files.reduce(1) { max($0, $1.lines.last.map { max($0.oldNo, $0.newNo) } ?? 1) }).count))
-        let col = digits * s.digitWidth + 12
-        let blameWidth: CGFloat = blame == nil ? 0 : 28 * s.digitWidth
+        let col = numberColumnWidth
+        let blameWidth = blameWidth
         let numAttrs: [NSAttributedString.Key: Any] = [.font: s.font, .foregroundColor: t.color("lineNumber")]
         let visible = code.visibleRect
         let offset = convert(NSPoint.zero, from: code).y
@@ -434,7 +473,7 @@ final class Gutter: NSRulerView {
                 lastBlame = nil
                 return
             }
-            let band = NSRect(x: blameWidth, y: y, width: bounds.width - blameWidth - 1, height: s.lineHeight)
+            let band = NSRect(x: blameWidth, y: y, width: bounds.width - blameWidth - 1, height: frag.height)
             switch line.kind {
             case .added: t.color("addNum").setFill(); band.fill()
             case .deleted: t.color("delNum").setFill(); band.fill()
@@ -455,16 +494,22 @@ final class Gutter: NSRulerView {
             }
             if line.kind != .context {
                 (line.kind == .added ? t.color("success") : t.color("danger")).setFill()
-                NSRect(x: bounds.maxX - 4, y: y, width: 3, height: s.lineHeight).fill()
+                NSRect(x: bounds.maxX - 4, y: y, width: 3, height: frag.height).fill()
             }
             if let blame, line.kind != .deleted, let c = blame.commit(forLine: line.newNo - 1) {
                 let label = c.isUncommitted ? "Not committed" : "\(String(c.oid.prefix(7)))  \(c.author)"
                 if label != lastBlame {
                     let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: s.font.pointSize - 1), .foregroundColor: t.fgMuted]
                     let date = c.isUncommitted ? "" : compactDate(c.date)
-                    (label as NSString).draw(with: NSRect(x: 6, y: textY, width: blameWidth - 60, height: s.lineHeight), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], attributes: attrs)
                     let dw = (date as NSString).size(withAttributes: attrs).width
-                    (date as NSString).draw(at: NSPoint(x: blameWidth - 8 - dw, y: textY), withAttributes: attrs)
+                    let oid = c.isUncommitted ? label : String(c.oid.prefix(7))
+                    let oidWidth = (oid as NSString).size(withAttributes: attrs).width
+                    let showsDate = blameWidth - dw - 20 >= oidWidth
+                    let room = blameWidth - (showsDate ? dw + 20 : 12)
+                    let shown = room >= oidWidth + 4 * s.digitWidth ? label : oid
+                    (shown as NSString).draw(with: NSRect(x: 6, y: textY, width: room, height: s.lineHeight),
+                                             options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], attributes: attrs)
+                    if showsDate { (date as NSString).draw(at: NSPoint(x: blameWidth - 8 - dw, y: textY), withAttributes: attrs) }
                     t.border.withAlphaComponent(0.4).setFill()
                     NSRect(x: 0, y: y, width: blameWidth, height: 1).fill()
                 }
@@ -485,7 +530,7 @@ final class Gutter: NSRulerView {
             code.setSelectedRange(NSRange(location: range.location, length: range.length + 1))
         }
         code.window?.makeFirstResponder(code)
-        if blame != nil, p.x < 28 * code.style.digitWidth, let line = code.line(ofRow: r), line.kind != .deleted,
+        if p.x < blameWidth, let line = code.line(ofRow: r), line.kind != .deleted,
            let c = blame?.commit(forLine: line.newNo - 1), !c.isUncommitted {
             onBlameClick?(c, line.newNo)
         }
