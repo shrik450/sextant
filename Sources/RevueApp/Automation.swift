@@ -343,15 +343,15 @@ final class Automation {
         if let e = ev(.leftMouseUp, lb) { w.sendEvent(e) }
     }
 
-    /// Asks the harness, which holds Screen Recording permission, to capture the app's window.
+    /// Asks the harness, which holds Screen Recording permission, to capture the app's window
+    /// by its number, so windows in front of it don't show.
     ///
     /// Waits for the file to appear before returning.
     private func snapshot(to path: String) async {
-        guard let w = NSApp.keyWindow?.sheetParent ?? NSApp.keyWindow ?? window?.window else { return }
+        let visibleKey = NSApp.keyWindow.flatMap { $0.isVisible ? $0 : nil }
+        guard let w = visibleKey?.sheetParent ?? visibleKey ?? window?.window else { return }
         try? FileManager.default.removeItem(atPath: path)
-        let f = w.frame
-        let screenH = NSScreen.screens.first?.frame.height ?? f.maxY
-        log("SNAP \(Int(f.minX)),\(Int(screenH - f.maxY)),\(Int(f.width)),\(Int(f.height)) \(path)")
+        log("SNAP \(w.windowNumber) \(path)")
         for _ in 0..<100 {
             if FileManager.default.fileExists(atPath: path) { break }
             try? await Task.sleep(for: .milliseconds(50))
