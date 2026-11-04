@@ -57,7 +57,7 @@ public func outlineDefinitions(_ definitions: [Symbol]) -> [Symbol] {
 ///   - new: The new side's definitions.
 ///   - old: The old side's definitions.
 public func outline(lines: [DiffLine], new: [Symbol], old: [Symbol]) -> [OutlineItem] {
-    let changedSpans: [ClosedRange<Int>] = changeRuns(lines).map { $0.newLine...($0.newLine + max(1, $0.additions) - 1) }
+    let changedSpans = changedSpans(lines)
     let oldKeys = Set(old.map { "\($0.kind) \($0.name)" })
     let newKeys = Set(new.map { "\($0.kind) \($0.name)" })
     var items = new.map { s -> OutlineItem in
@@ -76,6 +76,40 @@ public func outline(lines: [DiffLine], new: [Symbol], old: [Symbol]) -> [Outline
         return a.change != .deleted && b.change == .deleted
     }
     return nest(items[...])
+}
+
+/// Returns the definitions a change touched directly, in the order the outline lists them.
+///
+/// Added and deleted definitions count, and so do modified ones with changed lines of their
+/// own. A definition marked modified only because a definition inside it changed doesn't.
+///
+/// - Parameters:
+///   - outline: A file's outline.
+///   - lines: The file's lines, whole, as the outline was built from.
+public func changedDefinitions(in outline: [OutlineItem], lines: [DiffLine]) -> [OutlineItem] {
+    let spans = changedSpans(lines)
+    func ownsChange(_ item: OutlineItem) -> Bool {
+        switch item.change {
+        case .none: return false
+        case .added, .deleted: return true
+        case .modified:
+            return spans.contains { span in
+                guard span.overlaps(item.span) else { return false }
+                let shared = max(span.lowerBound, item.span.lowerBound)...min(span.upperBound, item.span.upperBound)
+                return shared.contains { line in !item.children.contains { $0.span.contains(line) } }
+            }
+        }
+    }
+    func visit(_ items: [OutlineItem]) -> [OutlineItem] {
+        items.flatMap { (ownsChange($0) ? [$0] : []) + visit($0.children) }
+    }
+    return visit(outline)
+}
+
+/// The zero-based new-side lines each run of changes covers, or the line now standing where
+/// removed lines were.
+private func changedSpans(_ lines: [DiffLine]) -> [ClosedRange<Int>] {
+    changeRuns(lines).map { $0.newLine...($0.newLine + max(1, $0.additions) - 1) }
 }
 
 private func nest(_ items: ArraySlice<OutlineItem>) -> [OutlineItem] {

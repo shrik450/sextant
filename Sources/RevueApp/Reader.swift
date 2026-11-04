@@ -237,8 +237,13 @@ final class Reader: NSViewController, CodeViewDelegate {
     var isRead: (FileState, FileState.KeyedRun) -> Bool = { _, _ in false }
 
     /// Redraws the change bars after runs were read or unread.
+    /// Redraws changes in their read or unread colors.
     func refreshReadState() {
-        for c in columns { c.gutter.needsDisplay = true }
+        for c in columns {
+            for i in files.indices { c.code.recolor(file: i) }
+            c.code.needsDisplay = true
+            c.gutter.needsDisplay = true
+        }
     }
 
     /// The run of changes the caret is in, with its file.
@@ -709,14 +714,32 @@ final class Reader: NSViewController, CodeViewDelegate {
 
     /// Moves the caret to the next or previous definition in the file.
     ///
+    /// - Parameters:
+    ///   - dir: 1 for the next definition, -1 for the previous one.
+    ///   - changedOnly: Whether to stop only at definitions the change touched directly, as the
+    ///     inspector's outline lists them with Changed Only on.
     /// - Returns: False if there is none in that direction.
     @discardableResult
-    func stepDefinition(_ dir: Int) -> Bool {
+    func stepDefinition(_ dir: Int, changedOnly: Bool) -> Bool {
         guard !overview, let f = files.first, !f.lines.isEmpty else { return false }
+        if changedOnly { return stepChangedDefinition(dir, in: f) }
         let here = caret.map { f.lines[$0.line] }.map { $0.kind == .deleted ? max(0, $0.newNo) : $0.newNo - 1 } ?? currentNewLine ?? 0
         let starts = Set(jumpBar.definitions.map(\.nameLine)).sorted()
         guard let next = dir > 0 ? starts.first(where: { $0 > here }) : starts.last(where: { $0 < here }),
               let i = f.index(ofLine: next + 1), let r = row(for: ReaderPosition(file: 0, line: i), in: primary) else { return false }
+        land(onRow: r, animated: true)
+        return true
+    }
+
+    private func stepChangedDefinition(_ dir: Int, in f: FileState) -> Bool {
+        let here = caret?.line ?? topPosition?.line ?? 0
+        let starts = changedDefinitions(in: f.outline ?? [], lines: f.lines).compactMap { d -> Int? in
+            let old = d.change == .deleted
+            return f.lines.firstIndex { old ? $0.kind == .deleted && $0.oldNo == d.line + 1 : $0.kind != .deleted && $0.newNo == d.line + 1 }
+        }
+        let sorted = Set(starts).sorted()
+        guard let next = dir > 0 ? sorted.first(where: { $0 > here }) : sorted.last(where: { $0 < here }),
+              let r = row(for: ReaderPosition(file: 0, line: next), in: primary) else { return false }
         land(onRow: r, animated: true)
         return true
     }

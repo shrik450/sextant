@@ -199,6 +199,20 @@ private func describe(_ items: [OutlineItem], depth: Int = 0) -> [String] {
         "tail deleted @7",
     ])
     #expect(items[0].children[0].isTouched == false && items[0].isTouched)
+    #expect(changedDefinitions(in: items, lines: lines).map(\.name) == ["fresh", "gone", "edit", "tail"])
+}
+
+@Test func aDefinitionWithChangedLinesOfItsOwnIsAChangedDefinition() {
+    let lines = [
+        DiffLine(kind: .context, oldNo: 1, newNo: 1, text: "struct B {"),
+        DiffLine(kind: .added, oldNo: 0, newNo: 2, text: "  // note"),
+        DiffLine(kind: .context, oldNo: 2, newNo: 3, text: "  func f() {}"),
+        DiffLine(kind: .context, oldNo: 3, newNo: 4, text: "}"),
+    ]
+    let items = outline(lines: lines, new: [definition("B", "class", 0...3), definition("f", "method", 2...2)],
+                        old: [definition("B", "class", 0...2), definition("f", "method", 1...1)])
+    #expect(describe(items) == ["B modified @0", "  f none @2"])
+    #expect(changedDefinitions(in: items, lines: lines).map(\.name) == ["B"])
 }
 
 @Test func foldsEverythingWhenNothingChanged() {

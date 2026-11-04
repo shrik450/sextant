@@ -297,7 +297,8 @@ final class CodeView: NSTextView {
         }
         let kind = f.lines[row.line].kind
         if kind != .context {
-            let wordColor = kind == .added ? t.color("addWord") : t.color("delWord")
+            let changed = kind == .added ? t.color("addWord") : t.color("delWord")
+            let wordColor = isReadLine(row.file, row.line) ? changed.asRead : changed
             for w in f.wordRanges(row.line) where NSMaxRange(w) <= range.length {
                 lm.addTemporaryAttribute(.backgroundColor, value: wordColor, forCharacterRange: NSRange(location: range.location + w.location, length: w.length))
             }
@@ -494,11 +495,11 @@ final class CodeView: NSTextView {
             let full = NSRect(x: rect.minX, y: frag.minY, width: rect.width, height: frag.height)
             switch rows[r].kind {
             case .line:
-                switch line(ofRow: r)?.kind {
-                case .added?: t.color("addLine").setFill(); full.fill()
-                case .deleted?: t.color("delLine").setFill(); full.fill()
-                default: break
-                }
+                let kind = line(ofRow: r)?.kind
+                guard kind == .added || kind == .deleted else { break }
+                let changed = kind == .added ? t.color("addLine") : t.color("delLine")
+                (isReadLine(rows[r].file, rows[r].line) ? changed.asRead : changed).setFill()
+                full.fill()
             case .filler:
                 t.color("emptyLine").setFill(); full.fill()
             case .fold, .gap:
@@ -908,10 +909,11 @@ final class Gutter: NSRulerView {
                 return
             }
             let band = NSRect(x: blameWidth, y: y, width: bounds.width - blameWidth - 1, height: frag.height)
-            switch line.kind {
-            case .added: t.color("addNum").setFill(); band.fill()
-            case .deleted: t.color("delNum").setFill(); band.fill()
-            case .context: break
+            let read = line.kind != .context && code.isReadLine(row.file, row.line)
+            if line.kind != .context {
+                let changed = line.kind == .added ? t.color("addNum") : t.color("delNum")
+                (read ? changed.asRead : changed).setFill()
+                band.fill()
             }
             let textY = y + (s.lineHeight - (s.font.ascender - s.font.descender)) / 2
             func number(_ n: Int, column: Int) {
@@ -927,7 +929,6 @@ final class Gutter: NSRulerView {
                 number(line.kind == .deleted ? line.oldNo : line.newNo, column: 0)
             }
             if line.kind != .context {
-                let read = code.isReadLine(row.file, row.line)
                 (line.kind == .added ? t.color("success") : t.color("danger")).withAlphaComponent(read ? 0.3 : 1).setFill()
                 NSRect(x: bounds.maxX - 4, y: y, width: 3, height: frag.height).fill()
             }
@@ -1025,4 +1026,9 @@ final class Gutter: NSRulerView {
     }
 
     var onBlameClick: ((Blame.Commit, Int) -> Void)?
+}
+
+extension NSColor {
+    /// The color at a third of its strength, as a change's colors show once it's been read.
+    var asRead: NSColor { withAlphaComponent(alphaComponent / 3) }
 }

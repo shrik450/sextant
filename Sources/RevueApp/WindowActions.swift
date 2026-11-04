@@ -587,8 +587,8 @@ extension RepoWindowController: NSMenuItemValidation {
         open(changes[next].path, at: anchor, record: false)
     }
 
-    @objc func nextDefinition(_ sender: Any?) { if !reader.stepDefinition(1) { NSSound.beep() } }
-    @objc func previousDefinition(_ sender: Any?) { if !reader.stepDefinition(-1) { NSSound.beep() } }
+    @objc func nextDefinition(_ sender: Any?) { if !reader.stepDefinition(1, changedOnly: inspector.changedOnly) { NSSound.beep() } }
+    @objc func previousDefinition(_ sender: Any?) { if !reader.stepDefinition(-1, changedOnly: inspector.changedOnly) { NSSound.beep() } }
 
     @objc func olderCommit(_ sender: Any?) { if !navigator.changes.stepCommit(1) { NSSound.beep() } }
     @objc func newerCommit(_ sender: Any?) { if !navigator.changes.stepCommit(-1) { NSSound.beep() } }

@@ -154,9 +154,13 @@ final class ChangesController: NSViewController {
     private var suppress = false
     private var placedSplit = false
 
+    /// Whether every file shows, rather than changed files with the rest folded away.
+    ///
+    /// Choosing changed files folds away again any unchanged files the user unfolded.
     var showsUnchanged: Bool {
         get { UserDefaults.standard.bool(forKey: "showUnchangedFiles") }
         set {
+            if !newValue { revealed = [] }
             UserDefaults.standard.set(newValue, forKey: "showUnchangedFiles")
             mode.selectedSegment = newValue ? 1 : 0
             rebuild()
@@ -197,6 +201,7 @@ final class ChangesController: NSViewController {
         outline.menu = NSMenu()
         outline.menu?.delegate = self
         outline.onSpace = { [weak self] in self?.toggleSelected() }
+        outline.onReturn = { [weak self] in self?.enterSelected() }
         outline.setAccessibilityLabel("Files")
         let outlineScroll = NSScrollView()
         outlineScroll.documentView = outline
@@ -456,12 +461,32 @@ final class ChangesController: NSViewController {
         expansion[i.path] = true
     }
 
+    /// Remembers a folder the user closed, and folds away again the unchanged files they had
+    /// unfolded inside it.
     @objc private func itemCollapsed(_ n: Notification) {
         guard !suppress, let i = n.userInfo?["NSObject"] as? Item else { return }
         expansion[i.path] = false
+        let unfolded = revealed.filter { $0 == i.path || $0.hasPrefix(i.path + "/") }
+        guard !unfolded.isEmpty else { return }
+        revealed.subtract(unfolded)
+        Task { [weak self] in self?.rebuild() }
     }
 
     @objc private func modeChanged() { showsUnchanged = mode.selectedSegment == 1 }
+
+    /// Moves into the reader, which already shows the selected file, or opens or closes the
+    /// selected folder.
+    private func enterSelected() {
+        guard outline.selectedRowIndexes.count == 1, let i = outline.item(atRow: outline.selectedRow) as? Item else { return }
+        switch i.kind {
+        case .file, .allChanges:
+            delegate?.navigatorFocusReader()
+        case .folder:
+            if outline.isItemExpanded(i) { outline.collapseItem(i) } else { outline.expandItem(i) }
+        case .folded:
+            break
+        }
+    }
 
     /// The changed files the selected rows stand for, folders standing for the changes inside them.
     private func changedPaths(_ rows: IndexSet) -> [String] {
@@ -568,9 +593,13 @@ extension ChangesController: NSOutlineViewDataSource, NSOutlineViewDelegate {
         return cell
     }
 
+    /// Keeps folded unchanged files out of the selection, so moving through the tree goes from
+    /// change to change; clicking them unfolds them instead.
+    func outlineView(_ o: NSOutlineView, shouldSelectItem item: Any) -> Bool { (item as? Item)?.kind != .folded }
+
     func outlineViewSelectionDidChange(_ notification: Notification) {
         guard !suppress, outline.selectedRowIndexes.count == 1, let i = outline.item(atRow: outline.selectedRow) as? Item else { return }
-        if i.kind == .folded { reveal(i) } else { activate(i) }
+        activate(i)
     }
 }
 

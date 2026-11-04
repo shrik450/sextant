@@ -168,16 +168,16 @@ final class Inspector: NSViewController, NSSplitViewDelegate {
     private func rebuild() {
         var out: [Entry] = []
         if let f = file {
-            if f.hasLanguage, f.hasTags != false {
-                let shown = changedOnly ? pruned(items) : items
-                let entries = shown.map(entry)
-                out.append(Entry(.section("Outline"), children: entries.isEmpty ? [Entry(.message(items.isEmpty ? "No definitions" : "No changed definitions"))] : entries))
-            }
             if f.isChange, !f.keyedRuns.isEmpty {
                 let flat = flatten(items)
                 out.append(Entry(.section("Changes"), children: f.keyedRuns.map { r in
                     Entry(.change(r, enclosing: flat.last { $0.change != .deleted && $0.span.contains(r.run.newLine) }?.name, read: isRead(f, r)))
                 }))
+            }
+            if f.hasLanguage, f.hasTags != false {
+                let shown = changedOnly ? pruned(items) : items
+                let entries = shown.map(entry)
+                out.append(Entry(.section("Outline"), children: entries.isEmpty ? [Entry(.message(items.isEmpty ? "No definitions" : "No changed definitions"))] : entries))
             }
         } else if !files.isEmpty {
             out.append(Entry(.section("Files"), children: files.indices.map { Entry(.file(files[$0], index: $0)) }))
