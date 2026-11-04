@@ -75,38 +75,45 @@ public final class SyntaxLanguage: Sendable {
 
     /// Returns the syntax tokens for the whole text.
     ///
-    /// Later tokens are more specific and win where they overlap.
+    /// Later tokens are more specific and win where they overlap. Runs in its own autorelease
+    /// pool, since the text it bridges is as big as the file and background tasks never drain one.
     public func tokens(_ text: String) -> [Token] {
-        guard let q = highlightsQuery, let tree = parse(text) else { return [] }
-        return q.execute(in: tree).resolve(with: .init(string: text)).highlights().compactMap { r in
-            TokenKind(capture: r.name).map { Token(range: r.range, kind: $0) }
+        autoreleasepool {
+            guard let q = highlightsQuery, let tree = parse(text) else { return [] }
+            return q.execute(in: tree).resolve(with: .init(string: text)).highlights().compactMap { r in
+                TokenKind(capture: r.name).map { Token(range: r.range, kind: $0) }
+            }
         }
     }
 
     /// Returns the definitions and references in the text, in document order.
+    ///
+    /// Runs in its own autorelease pool, like `tokens(_:)`.
     public func symbols(_ text: String) -> [Symbol] {
-        guard let q = tagsQuery, let tree = parse(text) else { return [] }
-        let ns = text as NSString
-        let lines = LineIndex(text)
-        var out: [Symbol] = []
-        for match in q.execute(in: tree).resolve(with: .init(string: text)) {
-            guard let nameCapture = match.captures(named: "name").first else { continue }
-            for c in match.captures {
-                guard let capture = c.name, capture.hasPrefix("definition.") || capture.hasPrefix("reference.") else { continue }
-                let isDef = capture.hasPrefix("definition.")
-                let range = isDef ? SyntaxLanguage.declaration(around: nameCapture.node, within: c.node).range : c.node.range
-                out.append(Symbol(
-                    name: ns.substring(with: nameCapture.node.range),
-                    kind: String(capture.drop { $0 != "." }.dropFirst()),
-                    isDefinition: isDef,
-                    range: range,
-                    nameRange: nameCapture.node.range,
-                    nameLine: lines.line(at: nameCapture.node.range.location),
-                    lines: lines.line(at: range.location)...lines.line(at: max(range.location, NSMaxRange(range) - 1))
-                ))
+        autoreleasepool {
+            guard let q = tagsQuery, let tree = parse(text) else { return [] }
+            let ns = text as NSString
+            let lines = LineIndex(text)
+            var out: [Symbol] = []
+            for match in q.execute(in: tree).resolve(with: .init(string: text)) {
+                guard let nameCapture = match.captures(named: "name").first else { continue }
+                for c in match.captures {
+                    guard let capture = c.name, capture.hasPrefix("definition.") || capture.hasPrefix("reference.") else { continue }
+                    let isDef = capture.hasPrefix("definition.")
+                    let range = isDef ? SyntaxLanguage.declaration(around: nameCapture.node, within: c.node).range : c.node.range
+                    out.append(Symbol(
+                        name: ns.substring(with: nameCapture.node.range),
+                        kind: String(capture.drop { $0 != "." }.dropFirst()),
+                        isDefinition: isDef,
+                        range: range,
+                        nameRange: nameCapture.node.range,
+                        nameLine: lines.line(at: nameCapture.node.range.location),
+                        lines: lines.line(at: range.location)...lines.line(at: max(range.location, NSMaxRange(range) - 1))
+                    ))
+                }
             }
+            return out.sorted { $0.range.location < $1.range.location }
         }
-        return out.sorted { $0.range.location < $1.range.location }
     }
 
     /// Returns the declaration a definition's name belongs to.

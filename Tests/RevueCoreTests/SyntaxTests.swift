@@ -99,3 +99,23 @@ import Testing
     #expect(per[2].isEmpty)
     #expect(per[3] == [Token(range: NSRange(location: 0, length: 1), kind: .variable)])
 }
+
+/// Returns the bytes currently allocated on the heap, in megabytes.
+private func liveHeapMB() -> Int {
+    var stats = malloc_statistics_t()
+    malloc_zone_statistics(nil, &stats)
+    return stats.size_in_use / 1_048_576
+}
+
+@Test func parsingInABackgroundTaskDoesNotKeepMemory() async throws {
+    let rust = try #require(SyntaxRuntime.shared?.language(forPath: "lib.rs"))
+    let text = (0..<600).map { "fn f\($0)(x: u64) -> u64 { let y = \"s\($0)\"; x + \($0) } // c\($0)" }.joined(separator: "\n")
+    let grown = await Task.detached {
+        func parse(_ n: Int) { for _ in 0..<n { _ = rust.tokens(text); _ = rust.symbols(text) } }
+        parse(20)
+        let warm = liveHeapMB()
+        parse(100)
+        return liveHeapMB() - warm
+    }.value
+    #expect(grown < 4, "parsing kept \(grown) MB")
+}
