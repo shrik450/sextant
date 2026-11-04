@@ -138,15 +138,7 @@ final class Repository {
 
     private static var savedBases: [String: String] { UserDefaults.standard.dictionary(forKey: "bases") as? [String: String] ?? [:] }
 
-    private func baseKey(_ s: Subject) -> String {
-        let id = switch s {
-        case .worktree(let root): "worktree:" + root.standardizedFileURL.path
-        case .branch(let b): "branch:" + b
-        case .pullRequest(let n): "pr:\(n)"
-        default: ""
-        }
-        return commonDir.standardizedFileURL.path + "|" + id
-    }
+    private func baseKey(_ s: Subject) -> String { commonDir.standardizedFileURL.path + "|" + s.key }
 
     /// Reads a typed revision expression as something to review.
     func review(for spec: RevisionSpec, in worktree: URL?) async throws -> Review {

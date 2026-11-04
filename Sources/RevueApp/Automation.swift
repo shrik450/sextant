@@ -329,7 +329,7 @@ extension RepoWindowController {
         case navigator.changes.commits: return "commits"
         case navigator.search.outline: return "search"
         case navigator.search.field: return "searchField"
-        case navigator.notes.table: return "notes"
+        case inspector.notes.table: return "notes"
         case inspector.outline: return "inspector"
         default:
             if r is CodeView { return "reader" }
@@ -403,7 +403,7 @@ extension RepoWindowController {
             switch e.kind {
             case .section(let t): return "# \(t)"
             case .symbol(let s): return "\(s.name) \(s.change)"
-            case .change(let r, let enclosing): return "change @\(r.newLine + 1) +\(r.additions) -\(r.deletions)" + (enclosing.map { " in \($0)" } ?? "")
+            case .change(let k, let enclosing, let read): return "change @\(k.run.newLine + 1) +\(k.run.additions) -\(k.run.deletions)" + (enclosing.map { " in \($0)" } ?? "") + (read ? " read" : "")
             case .file(let f, _): return f.path
             case .card(let text): return "card: " + text.string.replacingOccurrences(of: "\n", with: " | ")
             case .message(let m): return "(\(m))"
@@ -474,7 +474,13 @@ extension RepoWindowController {
             "picker": pickerRows,
             "navigatorTab": "\(navigator.tab)",
             "searchStatus": navigator.search.status.stringValue,
-            "notes": notes.notes.map(\.reference),
+            "notes": reviewNotes.map { ["title": $0.title, "text": $0.text] },
+            "caretColumn": reader.caretColumn ?? -1,
+            "caretWord": reader.wordAtCaret ?? "",
+            "selectionRows": reader.selection?.lines.count ?? 0,
+            "uses": reader.activeCode.uses.count,
+            "jumpLabels": reader.activeCode.jumpLabels.map(\.label),
+            "read": reader.caretRun.map { c in c.file.keyedRuns.map { repository.reviews.isRead($0.key, in: c.file.diff.change) } } ?? [],
             "back": backStack.count,
             "forward": forwardStack.count,
             "blame": reader.blame != nil,

@@ -146,6 +146,12 @@ protocol CodeViewDelegate: AnyObject {
     func codeView(_ v: CodeView, jumpToDefinitionOf word: String, row: Int)
     func codeViewMenu(_ v: CodeView, row: Int?) -> NSMenu?
     func codeViewCaretMoved(_ v: CodeView)
+    /// Offers a key press to the reader before the view handles it, for keys that span columns
+    /// such as typing a jump.
+    ///
+    /// - Returns: Whether the reader handled it.
+    func codeView(_ v: CodeView, intercept event: NSEvent) -> Bool
+    func codeViewAddNote(_ v: CodeView)
 }
 
 /// One read-only column of code.
@@ -284,20 +290,29 @@ final class CodeView: NSTextView {
         return files[rows[r].file].lines[rows[r].line]
     }
 
-    /// Shows the caret while the view has focus, though the text can't be edited.
-    override var shouldDrawInsertionPoint: Bool {
-        window?.firstResponder === self && window?.isKeyWindow == true && selectedRange().length == 0
-    }
+    /// The caret is drawn as a highlight around the token it's on instead, so the word a lookup
+    /// uses is the word you see.
+    override var shouldDrawInsertionPoint: Bool { false }
 
     /// Whether this column highlights the caret's line, which only the column with the caret does.
     var showsCurrentLine = true { didSet { if showsCurrentLine != oldValue { needsDisplay = true } } }
 
     /// The row the caret is on, while nothing is selected.
-    private var caretRow: Int? {
+    var caretRow: Int? {
         let sel = selectedRange()
         guard sel.length == 0, !rows.isEmpty else { return nil }
         return row(at: sel.location)
     }
+
+    /// Says whether a line of a file, by file index and line index, is in a run of changes that's
+    /// been read.
+    var isReadLine: (Int, Int) -> Bool = { _, _ in false }
+
+    /// The uses of a name to highlight, as ranges of the text.
+    var uses: [NSRange] = [] { didSet { needsDisplay = true } }
+
+    /// Labels for the places a typed jump can land, as text offsets.
+    var jumpLabels: [(index: Int, label: String)] = [] { didSet { needsDisplay = true } }
 
     override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {
         if !movingVertically { goalColumn = nil }
@@ -307,7 +322,69 @@ final class CodeView: NSTextView {
         for r in [before, after].compactMap({ $0 }) where r < rows.count {
             setNeedsDisplay(NSRect(x: visibleRect.minX, y: rect(ofRow: r).minY, width: visibleRect.width, height: rect(ofRow: r).height + style.lineHeight))
         }
+        enclosingScrollView?.verticalRulerView?.needsDisplay = true
         if !stillSelecting { codeDelegate?.codeViewCaretMoved(self) }
+    }
+
+    /// The rect of the token the caret is on, or of the character after it.
+    var caretRect: NSRect? {
+        guard let r = caretRow, rows[r].kind == .line, let lm = layoutManager, let tc = textContainer else { return nil }
+        let at = selectedRange().location
+        let line = charRange(ofRow: r)
+        let range = identifier(at: at).flatMap { NSLocationInRange($0.location, line) ? $0 : nil }
+            ?? NSRange(location: at, length: at < NSMaxRange(line) ? 1 : 0)
+        let glyphs = lm.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+        var rect = lm.boundingRect(forGlyphRange: glyphs, in: tc)
+        if range.length == 0 { rect.size.width = style.digitWidth }
+        rect.origin.x += textContainerOrigin.x
+        rect.origin.y += textContainerOrigin.y
+        let frag = self.rect(ofRow: r)
+        return NSRect(x: rect.minX - 2, y: frag.minY + 1, width: rect.width + 4, height: min(frag.height, style.lineHeight) - 2)
+    }
+
+    private func drawCaret() {
+        guard showsCurrentLine, let rect = caretRect else { return }
+        let focused = window?.firstResponder === self && window?.isKeyWindow == true
+        let path = NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4)
+        let accent = NSColor.controlAccentColor
+        if focused {
+            accent.withAlphaComponent(0.22).setFill()
+            path.fill()
+            accent.setStroke()
+            path.lineWidth = 1.5
+        } else {
+            NSColor.secondaryLabelColor.withAlphaComponent(0.6).setStroke()
+            path.lineWidth = 1
+        }
+        path.stroke()
+    }
+
+    private func drawUses(in rect: NSRect) {
+        guard !uses.isEmpty, let lm = layoutManager, let tc = textContainer else { return }
+        style.theme.color("attention").withAlphaComponent(0.28).setFill()
+        for u in uses {
+            let glyphs = lm.glyphRange(forCharacterRange: u, actualCharacterRange: nil)
+            let r = lm.boundingRect(forGlyphRange: glyphs, in: tc).offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+            guard r.intersects(rect) else { continue }
+            NSBezierPath(roundedRect: r.insetBy(dx: -1, dy: 1), xRadius: 3, yRadius: 3).fill()
+        }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard !jumpLabels.isEmpty, let lm = layoutManager, let tc = textContainer else { return }
+        let font = NSFont.monospacedSystemFont(ofSize: style.font.pointSize - 1, weight: .bold)
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.white]
+        for (index, label) in jumpLabels {
+            let glyph = lm.glyphIndexForCharacter(at: index)
+            let at = lm.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: tc).offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+            let size = (label as NSString).size(withAttributes: attrs)
+            let box = NSRect(x: at.minX - 1, y: at.midY - size.height / 2 - 1, width: size.width + 6, height: size.height + 2)
+            guard box.intersects(dirtyRect) else { continue }
+            NSColor.systemPink.setFill()
+            NSBezierPath(roundedRect: box, xRadius: 3, yRadius: 3).fill()
+            (label as NSString).draw(at: NSPoint(x: box.minX + 3, y: box.minY + 1), withAttributes: attrs)
+        }
     }
 
     override func becomeFirstResponder() -> Bool {
@@ -358,9 +435,12 @@ final class CodeView: NSTextView {
                 break
             }
         }
+        drawUses(in: rect)
+        drawCaret()
     }
 
     override func mouseDown(with event: NSEvent) {
+        lineSelectionStart = nil
         let p = convert(event.locationInWindow, from: nil)
         let ci = characterIndexForInsertion(at: p)
         if ci < (textStorage?.length ?? 0), let action = textStorage?.attribute(.revueAction, at: ci, effectiveRange: nil) as? ReaderAction,
@@ -390,13 +470,135 @@ final class CodeView: NSTextView {
     }
 
     override func keyDown(with event: NSEvent) {
+        if codeDelegate?.codeView(self, intercept: event) == true { return }
         let mods = event.modifierFlags.intersection([.command, .option, .control])
-        if mods.isEmpty, event.charactersIgnoringModifiers == " " {
-            event.modifierFlags.contains(.shift) ? scrollPageUp(nil) : scrollPageDown(nil)
-            return
+        if mods == [.control], let c = event.charactersIgnoringModifiers {
+            if c == "d" { halfPage(1); return }
+            if c == "u" { halfPage(-1); return }
+        }
+        if mods.isEmpty, let c = event.characters {
+            switch c {
+            case " ": page(event.modifierFlags.contains(.shift) ? -1 : 1); return
+            case "j": readLine(1); return
+            case "k": readLine(-1); return
+            case "w": stepName(1); return
+            case "b": stepName(-1); return
+            case "V": toggleLineSelection(); return
+            case "\u{1b}":
+                if selectedRange().length > 0 { collapseSelection(); return }
+            default: break
+            }
         }
         if mods.isEmpty, NSApp.mainMenu?.performKeyEquivalent(with: event) == true { return }
         interpretKeyEvents([event])
+    }
+
+    /// The row where `V` started selecting whole lines, while it's still doing so.
+    private var lineSelectionStart: Int?
+
+    /// Starts or stops selecting whole lines from the caret's line.
+    private func toggleLineSelection() {
+        if lineSelectionStart != nil { collapseSelection(); return }
+        guard let r = row(at: head), rows[r].kind == .line else { NSSound.beep(); return }
+        selectLines(from: r, to: r)
+        lineSelectionStart = r
+    }
+
+    /// Selects whole rows, keeping `to` as the end that moves.
+    func selectLines(from a: Int, to b: Int) {
+        let lo = min(a, b), hi = max(a, b)
+        let range = NSRange(location: rowStarts[lo], length: NSMaxRange(charRange(ofRow: hi)) - rowStarts[lo])
+        setSelectedRange(range)
+        anchorIndex = a <= b ? range.location : NSMaxRange(range)
+        headIndex = a <= b ? NSMaxRange(range) : range.location
+        scrollRangeToVisible(NSRange(location: rowStarts[b], length: 0))
+    }
+
+    private func collapseSelection() {
+        lineSelectionStart = nil
+        let r = row(at: head).flatMap { rows[$0].kind == .line ? $0 : nil }
+        moveCaret(to: r.map(landingIndex(ofRow:)) ?? selectedRange().location, extend: false)
+    }
+
+    /// The text offset where the caret lands on a row: its first changed name, else its first
+    /// name, else its first character that isn't a space.
+    func landingIndex(ofRow r: Int) -> Int {
+        let range = charRange(ofRow: r)
+        guard rows[r].kind == .line, let text = textStorage?.attributedSubstring(from: range).string else { return range.location }
+        let f = files[rows[r].file]
+        let line = rows[r].line
+        return range.location + min(range.length, landingColumn(in: text, tokens: f.tokens?[line] ?? [], changed: f.wordRanges(line)))
+    }
+
+    /// Moves to the next or previous line, landing on its first changed name, or extends a
+    /// selection of whole lines.
+    private func readLine(_ dir: Int) {
+        guard let r = row(at: head), let n = lineRow(from: r, dir) else { NSSound.beep(); return }
+        if let start = lineSelectionStart {
+            selectLines(from: start, to: n)
+            lineSelectionStart = start
+            return
+        }
+        moveCaret(to: landingIndex(ofRow: n), extend: false)
+    }
+
+    /// Moves to the next or previous name, going on to the next or previous line at either end.
+    private func stepName(_ dir: Int) {
+        lineSelectionStart = nil
+        let h = head
+        guard var r = row(at: h) else { return }
+        var first = true
+        while true {
+            if rows[r].kind == .line {
+                let range = charRange(ofRow: r)
+                let f = files[rows[r].file]
+                let text = textStorage?.attributedSubstring(from: range).string ?? ""
+                let names = identifiers(in: text, tokens: f.tokens?[rows[r].line] ?? []).map { $0.location + range.location }
+                let pick = dir > 0 ? names.first { !first || $0 > h } : names.last { !first || $0 < identifierStart(h) }
+                if let pick { moveCaret(to: pick, extend: false); return }
+            }
+            first = false
+            guard let n = lineRow(from: r, dir) else { NSSound.beep(); return }
+            r = n
+        }
+    }
+
+    private func identifierStart(_ i: Int) -> Int { identifier(at: i).map { NSLocationInRange(i, $0) ? $0.location : i } ?? i }
+
+    /// Scrolls by a page and brings the caret along if it went out of view.
+    private func page(_ dir: Int) {
+        dir > 0 ? scrollPageDown(nil) : scrollPageUp(nil)
+        carryCaretIntoView()
+    }
+
+    /// Moves the caret and the view down or up by half the view's height, keeping the caret where
+    /// it was on screen.
+    private func halfPage(_ dir: Int) {
+        lineSelectionStart = nil
+        guard let clip = enclosingScrollView?.contentView else { return }
+        let lines = max(1, Int(visibleRect.height / 2 / style.lineHeight))
+        var r = row(at: head) ?? 0
+        let before = rect(ofRow: r).minY
+        for _ in 0..<lines {
+            guard let n = lineRow(from: r, dir) else { break }
+            r = n
+        }
+        let dy = rect(ofRow: r).minY - before
+        let target = clip.constrainBoundsRect(NSRect(origin: NSPoint(x: clip.bounds.minX, y: clip.bounds.minY + dy), size: clip.bounds.size)).origin
+        clip.setBoundsOrigin(target)
+        enclosingScrollView?.reflectScrolledClipView(clip)
+        setSelectedRange(NSRange(location: landingIndex(ofRow: r), length: 0))
+        anchorIndex = selectedRange().location
+        headIndex = anchorIndex
+    }
+
+    /// Puts the caret on the first line in view if it's out of view.
+    private func carryCaretIntoView() {
+        guard selectedRange().length == 0, let r = row(at: head), !visibleRect.insetBy(dx: 0, dy: style.lineHeight).intersects(rect(ofRow: r)) else { return }
+        var first: Int?
+        visibleRows(in: visibleRect.insetBy(dx: 0, dy: style.lineHeight)) { row, _ in if first == nil, rows[row].kind == .line { first = row } }
+        guard let first else { return }
+        setSelectedRange(NSRange(location: landingIndex(ofRow: first), length: 0))
     }
 
     /// The fixed end of a selection being extended, and the end that moves.
@@ -417,6 +619,7 @@ final class CodeView: NSTextView {
     /// A text view that can't be edited doesn't move its insertion point, so the move commands
     /// below do it here.
     private func moveCaret(to index: Int, extend: Bool) {
+        lineSelectionStart = nil
         let i = max(0, min(index, textStorage?.length ?? 0))
         let sel = selectedRange()
         let anchor = extend ? (sel == NSRange(location: min(anchorIndex, headIndex), length: abs(headIndex - anchorIndex)) ? anchorIndex : sel.location) : i
@@ -602,12 +805,16 @@ final class Gutter: NSRulerView {
 
         let col = numberColumnWidth
         let blameWidth = blameWidth
-        let numAttrs: [NSAttributedString.Key: Any] = [.font: s.font, .foregroundColor: t.color("lineNumber")]
+        let plainNumbers: [NSAttributedString.Key: Any] = [.font: s.font, .foregroundColor: t.color("lineNumber")]
+        let caretNumbers: [NSAttributedString.Key: Any] = [.font: s.boldFont, .foregroundColor: t.fg]
+        let caretRow = code.showsCurrentLine ? code.caretRow : nil
         let visible = code.visibleRect
         let offset = convert(NSPoint.zero, from: code).y
         var lastBlame: String?
+        let badgeRow = hoverRow ?? (code.selectedRange().length > 0 ? code.selectedRows.last : nil)
 
         code.visibleRows(in: visible) { r, frag in
+            let numAttrs = r == caretRow ? caretNumbers : plainNumbers
             let y = frag.minY + offset
             let row = code.rows[r]
             guard row.kind == .line, let line = code.line(ofRow: r) else {
@@ -638,9 +845,11 @@ final class Gutter: NSRulerView {
                 number(line.kind == .deleted ? line.oldNo : line.newNo, column: 0)
             }
             if line.kind != .context {
-                (line.kind == .added ? t.color("success") : t.color("danger")).setFill()
+                let read = code.isReadLine(row.file, row.line)
+                (line.kind == .added ? t.color("success") : t.color("danger")).withAlphaComponent(read ? 0.3 : 1).setFill()
                 NSRect(x: bounds.maxX - 4, y: y, width: 3, height: frag.height).fill()
             }
+            if r == badgeRow { drawAddBadge(at: y) }
             if let blame, line.kind != .deleted, let c = blame.commit(forLine: line.newNo - 1) {
                 let label = c.isUncommitted ? "Not committed" : "\(String(c.oid.prefix(7)))  \(c.author)"
                 if label != lastBlame {
@@ -663,22 +872,74 @@ final class Gutter: NSRulerView {
         }
     }
 
-    override func mouseDown(with event: NSEvent) {
+    /// The line row under the pointer, which shows the button for adding a note.
+    private var hoverRow: Int? { didSet { if hoverRow != oldValue { needsDisplay = true } } }
+    /// The row a drag down the gutter started from.
+    private var dragStart: Int?
+    private var addingNote = false
+
+    private func badgeRect(at y: CGFloat) -> NSRect {
+        let size: CGFloat = 16
+        return NSRect(x: blameWidth + 3, y: y + (code.style.lineHeight - size) / 2, width: size, height: size)
+    }
+
+    private func drawAddBadge(at y: CGFloat) {
+        let box = badgeRect(at: y)
+        NSColor.controlAccentColor.setFill()
+        NSBezierPath(roundedRect: box, xRadius: 4, yRadius: 4).fill()
+        let plus = NSImage(systemSymbolName: "plus", accessibilityDescription: "Add Note")?
+            .withSymbolConfiguration(.init(pointSize: 10, weight: .bold).applying(.init(paletteColors: [.white])))
+        plus?.draw(in: box.insetBy(dx: 3, dy: 3))
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+    }
+
+    private func lineRow(at event: NSEvent) -> (row: Int, y: CGFloat)? {
         let p = convert(event.locationInWindow, from: nil)
         let inCode = code.convert(p, from: self)
         let ci = code.characterIndexForInsertion(at: NSPoint(x: code.textContainerOrigin.x, y: inCode.y))
-        guard let r = code.row(at: ci) else { return }
-        let range = code.charRange(ofRow: r)
-        if event.modifierFlags.contains(.shift) {
-            code.setSelectedRange(NSUnionRange(code.selectedRange(), NSRange(location: range.location, length: range.length + 1)))
+        guard let r = code.row(at: ci), code.rows[r].kind == .line else { return nil }
+        return (r, code.rect(ofRow: r).minY + convert(NSPoint.zero, from: code).y)
+    }
+
+    override func mouseMoved(with event: NSEvent) { hoverRow = lineRow(at: event)?.row }
+    override func mouseExited(with event: NSEvent) { hoverRow = nil }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let (r, y) = lineRow(at: event) else { return }
+        let p = convert(event.locationInWindow, from: nil)
+        let selected = code.selectedRange().length > 0 ? code.selectedRows : []
+        addingNote = badgeRect(at: y).contains(p)
+        if addingNote, selected.contains(r), let first = selected.first {
+            dragStart = r == first ? selected.last : first
+        } else if event.modifierFlags.contains(.shift), let first = selected.first ?? code.caretRow {
+            dragStart = first
+            code.selectLines(from: first, to: r)
         } else {
-            code.setSelectedRange(NSRange(location: range.location, length: range.length + 1))
+            dragStart = r
+            code.selectLines(from: r, to: r)
         }
         code.window?.makeFirstResponder(code)
-        if p.x < blameWidth, let line = code.line(ofRow: r), line.kind != .deleted,
+        if !addingNote, p.x < blameWidth, let line = code.line(ofRow: r), line.kind != .deleted,
            let c = blame?.commit(forLine: line.newNo - 1), !c.isUncommitted {
             onBlameClick?(c, line.newNo)
         }
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let start = dragStart, let (r, _) = lineRow(at: event) else { return }
+        code.selectLines(from: start, to: r)
+        code.autoscroll(with: event)
+        hoverRow = nil
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        defer { addingNote = false; dragStart = nil }
+        if addingNote { code.codeDelegate?.codeViewAddNote(code) }
     }
 
     var onBlameClick: ((Blame.Commit, Int) -> Void)?

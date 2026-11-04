@@ -22,6 +22,18 @@ public enum Subject: Sendable, Hashable {
         default: false
         }
     }
+
+    /// A string that names the subject, for keeping things like notes and bases with it.
+    public var key: String {
+        switch self {
+        case .worktree(let root): "worktree:" + root.standardizedFileURL.path
+        case .branch(let b): "branch:" + b
+        case .pullRequest(let n): "pr:\(n)"
+        case .commit(let c): "commit:" + c
+        case .comparison(let a, let b, let since): "compare:" + a + (since ? "..." : "..") + b
+        case .stash(let s): "stash:" + s
+        }
+    }
 }
 
 /// The part of a review being read.

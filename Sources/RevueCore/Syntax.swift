@@ -94,7 +94,7 @@ public final class SyntaxLanguage: Sendable {
             for c in match.captures {
                 guard let capture = c.name, capture.hasPrefix("definition.") || capture.hasPrefix("reference.") else { continue }
                 let isDef = capture.hasPrefix("definition.")
-                let range = c.node.range
+                let range = isDef ? SyntaxLanguage.declaration(around: nameCapture.node, within: c.node).range : c.node.range
                 out.append(Symbol(
                     name: ns.substring(with: nameCapture.node.range),
                     kind: String(capture.drop { $0 != "." }.dropFirst()),
@@ -107,6 +107,19 @@ public final class SyntaxLanguage: Sendable {
             }
         }
         return out.sorted { $0.range.location < $1.range.location }
+    }
+
+    /// Returns the declaration a definition's name belongs to.
+    ///
+    /// Some tags queries capture a member's definition as the whole type around it, so the
+    /// nearest declaration above the name inside the capture is the definition's own.
+    static func declaration(around name: Node, within capture: Node) -> Node {
+        var n = name.parent
+        while let node = n, node.range != capture.range {
+            if let type = node.nodeType, type.hasSuffix("declaration") || type.hasSuffix("definition") { return node }
+            n = node.parent
+        }
+        return capture
     }
 }
 

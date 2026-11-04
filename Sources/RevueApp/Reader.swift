@@ -11,6 +11,8 @@ protocol ReaderDelegate: AnyObject {
     func readerCurrentFileChanged()
     func readerBlameClicked(_ commit: Blame.Commit, line: Int)
     func readerCaretMoved()
+    func readerAddNote()
+    func readerPeek()
 }
 
 /// Where the reader is, as a file and the line of it that is at the top (or selected).
@@ -138,6 +140,8 @@ final class Reader: NSViewController, CodeViewDelegate {
     func show(files: [FileState], overview: Bool, at position: ReaderPosition? = nil) {
         self.files = files
         self.overview = overview
+        usesWord = nil
+        cancelJump()
         reload(keepPosition: false)
         if let position { scroll(to: position, animated: false) } else { scrollToTop() }
         for f in files where f.tokens == nil && f.language != nil {
@@ -181,21 +185,239 @@ final class Reader: NSViewController, CodeViewDelegate {
         let style = Style.current(for: view.effectiveAppearance)
         let byID = Dictionary(notes.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let sides = layout.right.map { [layout.left, $0] } ?? [layout.left]
+        let files = self.files
+        let isRead = self.isRead
         for (i, rows) in sides.enumerated() {
             let c = columns[i]
             c.code.style = style
+            c.code.isReadLine = { fi, li in files[fi].run(at: li).map { isRead(files[fi], $0) } ?? false }
             c.code.setContent(render(rows, side: sides.count == 2 ? i : -1, files: files, notes: byID, style: style), rows: rows, files: files)
             c.scroll.backgroundColor = style.theme.canvas
             c.gutter.columns = sides.count == 2 || !files.contains(where: \.isChange) ? 1 : 2
             c.gutter.updateThickness()
         }
         if let pos { scroll(to: pos, animated: false, offset: topOffset) }
-        if let kept { restore(kept) } else { columns.forEach { $0.code.setSelectedRange(NSRange(location: 0, length: 0)) } }
+        if let kept {
+            restore(kept)
+            if kept == landedSelection, let r = caretRow { placeCaret(atRow: r) }
+        } else {
+            columns.forEach { $0.code.setSelectedRange(NSRange(location: 0, length: 0)) }
+        }
+        markUses()
         updateJumpBar()
     }
 
+    /// Says whether a run of changes has been read.
+    var isRead: (FileState, FileState.KeyedRun) -> Bool = { _, _ in false }
+
+    /// Redraws the change bars after runs were read or unread.
+    func refreshReadState() {
+        for c in columns { c.gutter.needsDisplay = true }
+    }
+
+    /// The run of changes the caret is in, with its file.
+    var caretRun: (file: FileState, run: FileState.KeyedRun)? {
+        guard let p = caret, files.indices.contains(p.file), let r = files[p.file].run(at: p.line) else { return nil }
+        return (files[p.file], r)
+    }
+
+    /// The caret's column in its line, as a UTF-16 offset.
+    var caretColumn: Int? {
+        let code = activeCode
+        guard let r = caretRow, code.rows.indices.contains(r) else { return nil }
+        return code.selectedRange().location - code.rowStarts[r]
+    }
+
+    /// Where the caret is on screen, for anchoring a popover to the word it's on.
+    var caretAnchor: (NSRect, NSView)? {
+        let code = activeCode
+        guard let rect = code.caretRect else { return nil }
+        return (rect, code)
+    }
+
+    /// Opens the folded unchanged lines nearest the caret.
+    ///
+    /// - Returns: False if there are none.
+    @discardableResult
+    func unfoldNearest() -> Bool {
+        let code = activeCode
+        guard let r = caretRow ?? topRow(code) else { return false }
+        let folds = code.rows.indices.filter { if case .fold = code.rows[$0].kind { true } else { false } }
+        guard let nearest = folds.min(by: { abs($0 - r) < abs($1 - r) }), case .fold(let range) = code.rows[nearest].kind else { return false }
+        files[code.rows[nearest].file].unfolded.insert(range.lowerBound)
+        reload(keepPosition: true)
+        return true
+    }
+
+    /// The name whose uses are highlighted.
+    private(set) var usesWord: String?
+
+    /// Highlights every use of the name at the caret in what the reader shows.
+    ///
+    /// - Returns: False if the caret isn't on a name.
+    @discardableResult
+    func highlightUses() -> Bool {
+        guard let w = wordAtCaret, w.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" || $0 == "$" }) else { return false }
+        usesWord = w
+        markUses()
+        return true
+    }
+
+    func clearUses() {
+        usesWord = nil
+        markUses()
+    }
+
+    private func markUses() {
+        for c in columns {
+            guard let w = usesWord, let s = c.code.textStorage?.string as NSString? else { c.code.uses = []; continue }
+            var found: [NSRange] = []
+            for (r, row) in c.code.rows.enumerated() where row.kind == .line {
+                let range = c.code.charRange(ofRow: r)
+                found += wholeWordMatches(of: w, in: s.substring(with: range)).map { NSRange(location: $0.location + range.location, length: $0.length) }
+            }
+            c.code.uses = found
+        }
+    }
+
+    /// Moves the caret to the next or previous highlighted use.
+    ///
+    /// - Returns: False if there's none in that direction.
+    @discardableResult
+    func stepUse(_ dir: Int) -> Bool {
+        let code = activeCode
+        let at = code.selectedRange().location
+        let start = code.identifier(at: at).map { NSLocationInRange(at, NSRange(location: $0.location, length: $0.length + 1)) ? $0.location : at } ?? at
+        guard let next = dir > 0 ? code.uses.first(where: { $0.location > start }) : code.uses.last(where: { $0.location < start }) else { return false }
+        code.setSelectedRange(NSRange(location: next.location, length: 0))
+        code.scrollRangeToVisible(next)
+        return true
+    }
+
+    private enum Jump {
+        /// Waiting for the two characters to look for.
+        case typing(String)
+        /// Waiting for the label of one of several places.
+        case picking(targets: [(code: CodeView, index: Int)], labels: [String], typed: String)
+    }
+
+    private var jump: Jump? { didSet { showJumpPrompt() } }
+    private lazy var jumpPrompt: NSTextField = {
+        let f = NSTextField(labelWithString: "")
+        f.font = .systemFont(ofSize: 12, weight: .medium)
+        f.textColor = .white
+        f.wantsLayer = true
+        f.layer?.backgroundColor = NSColor.systemPink.cgColor
+        f.layer?.cornerRadius = 6
+        f.alignment = .center
+        f.translatesAutoresizingMaskIntoConstraints = false
+        f.isHidden = true
+        view.addSubview(f)
+        NSLayoutConstraint.activate([
+            f.centerXAnchor.constraint(equalTo: stack.centerXAnchor),
+            f.bottomAnchor.constraint(equalTo: stack.bottomAnchor, constant: -16),
+            f.heightAnchor.constraint(equalToConstant: 24),
+        ])
+        return f
+    }()
+
+    /// Starts a jump: two typed characters, then a label if they appear in more than one place
+    /// on screen.
+    func startJump() {
+        focus()
+        jump = .typing("")
+    }
+
+    private func cancelJump() {
+        guard jump != nil else { return }
+        jump = nil
+        for c in columns { c.code.jumpLabels = [] }
+    }
+
+    private func showJumpPrompt() {
+        switch jump {
+        case nil: jumpPrompt.isHidden = true
+        case .typing(let q)?:
+            jumpPrompt.isHidden = false
+            jumpPrompt.stringValue = q.count < 2 ? "   Jump to: \(q)▏   " : "   No “\(q)” in view   "
+        case .picking(_, _, let typed)?:
+            jumpPrompt.isHidden = false
+            jumpPrompt.stringValue = "   Type a label\(typed.isEmpty ? "" : ": " + typed)   "
+        }
+    }
+
+    private func handleJump(_ event: NSEvent, _ state: Jump) {
+        if event.keyCode == 53 { cancelJump(); return }
+        let backspace = event.keyCode == 51
+        guard let c = event.characters, backspace || (c.count == 1 && !(c.first?.isNewline ?? true)) else { cancelJump(); return }
+        switch state {
+        case .typing(let q):
+            let query = backspace ? String(q.dropLast()) : (q.count < 2 ? q : "") + c
+            guard query.count == 2 else { jump = .typing(query); return }
+            let targets = jumpTargets(query)
+            switch targets.count {
+            case 0: NSSound.beep(); jump = .typing(query)
+            case 1: land(targets[0])
+            default:
+                let labels = jumpLabels(targets.count)
+                for col in columns { col.code.jumpLabels = zip(targets, labels).filter { $0.0.code === col.code }.map { ($0.0.index, $0.1) } }
+                jump = .picking(targets: targets, labels: labels, typed: "")
+            }
+        case .picking(let targets, let labels, let typed):
+            if backspace { for col in columns { col.code.jumpLabels = [] }; jump = .typing(""); return }
+            let t = typed + c
+            if let i = labels.firstIndex(of: t) { land(targets[i]); return }
+            guard labels.contains(where: { $0.hasPrefix(t) }) else { NSSound.beep(); cancelJump(); return }
+            jump = .picking(targets: targets, labels: labels, typed: t)
+        }
+    }
+
+    private func jumpTargets(_ query: String) -> [(code: CodeView, index: Int)] {
+        var out: [(code: CodeView, index: Int)] = []
+        for c in columns {
+            var rows: [Int] = []
+            c.code.visibleRows(in: c.code.visibleRect) { r, _ in if c.code.rows[r].kind == .line { rows.append(r) } }
+            let s = (c.code.textStorage?.string ?? "") as NSString
+            let lines = rows.map { s.substring(with: c.code.charRange(ofRow: $0)) }
+            out += RevueCore.jumpTargets(for: query, in: lines).map { (c.code, c.code.rowStarts[rows[$0.line]] + $0.column) }
+        }
+        return out
+    }
+
+    private func land(_ target: (code: CodeView, index: Int)) {
+        cancelJump()
+        view.window?.makeFirstResponder(target.code)
+        target.code.setSelectedRange(NSRange(location: target.index, length: 0))
+        activeColumn = target.code
+        markActiveColumn()
+    }
+
+    func codeView(_ v: CodeView, intercept event: NSEvent) -> Bool {
+        if let jump { handleJump(event, jump); return true }
+        let plain = event.modifierFlags.intersection([.command, .option, .control]).isEmpty
+        if plain, event.characters == "*" {
+            if !highlightUses() { NSSound.beep() }
+            return true
+        }
+        if plain, event.keyCode == 36 || event.keyCode == 76, !event.modifierFlags.contains(.shift) {
+            delegate?.readerPeek()
+            return true
+        }
+        if plain, event.keyCode == 53, usesWord != nil, v.selectedRange().length == 0 {
+            clearUses()
+            return true
+        }
+        return false
+    }
+
+    func codeViewAddNote(_ v: CodeView) { delegate?.readerAddNote() }
+
+    /// Where the caret last landed by itself, so it can land again once highlighting shows which
+    /// names the line has.
+    private var landedSelection: KeptSelection?
+
     /// A selection by line, which survives the text being rendered again.
-    private struct KeptSelection {
+    private struct KeptSelection: Equatable {
         var side: Int
         var position: ReaderPosition
         var column: Int
@@ -344,11 +566,11 @@ final class Reader: NSViewController, CodeViewDelegate {
     func placeCaret(atRow r: Int) {
         guard let code = columns.reversed().map(\.code).first(where: { $0.rows.indices.contains(r) && $0.rows[r].kind == .line })
             ?? (primary.rows.indices.contains(r) ? primary : nil) else { return }
-        let range = code.charRange(ofRow: r)
-        let text = (code.textStorage?.string ?? "") as NSString
-        var i = range.location
-        while i < NSMaxRange(range), text.character(at: i) == 0x20 || text.character(at: i) == 0x09 { i += 1 }
-        if i == NSMaxRange(range) { i = range.location }
+        place(in: code, at: code.landingIndex(ofRow: r))
+        landedSelection = keptSelection
+    }
+
+    private func place(in code: CodeView, at i: Int) {
         if isFocused, view.window?.firstResponder !== code { view.window?.makeFirstResponder(code) }
         code.setSelectedRange(NSRange(location: i, length: 0))
         activeColumn = code
@@ -472,10 +694,15 @@ final class Reader: NSViewController, CodeViewDelegate {
         return true
     }
 
-    /// Puts the caret on a line without scrolling.
-    func placeCaret(at p: ReaderPosition) {
+    /// Puts the caret on a line without scrolling, at a column or where it lands on that line.
+    func placeCaret(at p: ReaderPosition, column: Int? = nil) {
         guard let r = row(for: p, in: primary) else { return }
-        placeCaret(atRow: r)
+        if let column, let code = columns.reversed().map(\.code).first(where: { $0.rows.indices.contains(r) && $0.rows[r].kind == .line }) {
+            let range = code.charRange(ofRow: r)
+            place(in: code, at: range.location + min(column, range.length))
+        } else {
+            placeCaret(atRow: r)
+        }
         updateJumpBar()
     }
 

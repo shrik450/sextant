@@ -10,16 +10,17 @@ protocol InspectorDelegate: AnyObject {
 }
 
 /// The right column, which explains what the reader shows: the file's outline with what the
-/// change touched, its runs of changes, and what's being reviewed.
+/// change touched, its runs of changes, and what's being reviewed, with the review's notes
+/// below.
 ///
 /// It follows the caret, and clicking a row moves the reader there.
 @MainActor
-final class Inspector: NSViewController {
+final class Inspector: NSViewController, NSSplitViewDelegate {
     final class Entry {
         enum Kind {
             case section(String)
             case symbol(OutlineItem)
-            case change(ChangeRun, enclosing: String?)
+            case change(FileState.KeyedRun, enclosing: String?, read: Bool)
             case file(FileState, index: Int)
             case card(NSAttributedString)
             case message(String)
@@ -28,19 +29,24 @@ final class Inspector: NSViewController {
         var children: [Entry]
         init(_ kind: Kind, children: [Entry] = []) { self.kind = kind; self.children = children }
 
-        var isSection: Bool { if case .section = kind { true } else { false } }
+        var sectionTitle: String? { if case .section(let t) = kind { t } else { nil } }
     }
 
     weak var delegate: InspectorDelegate?
-    let outline = NSOutlineView()
+    let outline = KeyOutlineView()
+    let notes = NotesPane()
+    private let split = NSSplitView()
     private var sections: [Entry] = []
     private var file: FileState?
     private var items: [OutlineItem] = []
-    private var runs: [ChangeRun] = []
     private var files: [FileState] = []
     private var card: (title: String, text: NSAttributedString)?
     private var generation = 0
     private var suppress = false
+    /// The sections the user folded, by title.
+    private var folded: Set<String> = []
+    /// Says whether a run of changes has been read.
+    var isRead: (FileState, FileState.KeyedRun) -> Bool = { _, _ in false }
 
     var changedOnly: Bool {
         get { UserDefaults.standard.bool(forKey: "outlineChangedOnly") }
@@ -54,7 +60,6 @@ final class Inspector: NSViewController {
         outline.outlineTableColumn = column
         outline.headerView = nil
         outline.style = .sourceList
-        outline.floatsGroupRows = false
         outline.usesAutomaticRowHeights = true
         outline.indentationPerLevel = 10
         outline.autoresizesOutlineColumn = false
@@ -68,7 +73,33 @@ final class Inspector: NSViewController {
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
-        view = scroll
+        addChild(notes)
+        split.isVertical = false
+        split.dividerStyle = .thin
+        split.delegate = self
+        split.addArrangedSubview(scroll)
+        split.addArrangedSubview(notes.view)
+        split.setHoldingPriority(.defaultLow, forSubviewAt: 0)
+        split.setHoldingPriority(.defaultLow + 1, forSubviewAt: 1)
+        split.autosaveName = "RevueInspectorSplit"
+        view = split
+    }
+
+    private var placedDivider = false
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        guard !placedDivider, split.bounds.height > 0 else { return }
+        placedDivider = true
+        if UserDefaults.standard.object(forKey: "NSSplitView Subview Frames RevueInspectorSplit") == nil {
+            split.setPosition(split.bounds.height * 0.6, ofDividerAt: 0)
+        }
+    }
+
+    func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat { 120 }
+
+    func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
+        splitView.bounds.height - 90
     }
 
     /// Shows a file's outline and changes, working the outline out in the background.
@@ -77,7 +108,6 @@ final class Inspector: NSViewController {
         file = f
         files = []
         self.card = card
-        runs = f.isChange ? changeRuns(f.lines) : []
         generation += 1
         let gen = generation
         if isNew { items = [] }
@@ -103,7 +133,6 @@ final class Inspector: NSViewController {
         file = nil
         files = changes
         items = []
-        runs = []
         self.card = card
         generation += 1
         rebuild()
@@ -113,7 +142,6 @@ final class Inspector: NSViewController {
         file = nil
         files = []
         items = []
-        runs = []
         self.card = card
         generation += 1
         rebuild()
@@ -125,7 +153,7 @@ final class Inspector: NSViewController {
     }
 
     func refreshReviewState() {
-        guard !files.isEmpty else { return }
+        guard !files.isEmpty || file?.isChange == true else { return }
         rebuild()
     }
 
@@ -137,10 +165,10 @@ final class Inspector: NSViewController {
                 let entries = shown.map(entry)
                 out.append(Entry(.section("Outline"), children: entries.isEmpty ? [Entry(.message(items.isEmpty ? "No definitions" : "No changed definitions"))] : entries))
             }
-            if f.isChange, !runs.isEmpty {
+            if f.isChange, !f.keyedRuns.isEmpty {
                 let flat = flatten(items)
-                out.append(Entry(.section("Changes"), children: runs.map { r in
-                    Entry(.change(r, enclosing: flat.last { $0.change != .deleted && $0.span.contains(r.newLine) }?.name))
+                out.append(Entry(.section("Changes"), children: f.keyedRuns.map { r in
+                    Entry(.change(r, enclosing: flat.last { $0.change != .deleted && $0.span.contains(r.run.newLine) }?.name, read: isRead(f, r)))
                 }))
             }
         } else if !files.isEmpty {
@@ -151,8 +179,19 @@ final class Inspector: NSViewController {
         suppress = true
         outline.reloadData()
         outline.expandItem(nil, expandChildren: true)
+        for s in sections where s.sectionTitle.map(folded.contains) == true { outline.collapseItem(s) }
         suppress = false
         if let caret = lastCaret { follow(lineIndex: caret) }
+    }
+
+    func outlineViewItemDidCollapse(_ notification: Notification) {
+        guard !suppress, let title = (notification.userInfo?["NSObject"] as? Entry)?.sectionTitle else { return }
+        folded.insert(title)
+    }
+
+    func outlineViewItemDidExpand(_ notification: Notification) {
+        guard !suppress, let title = (notification.userInfo?["NSObject"] as? Entry)?.sectionTitle else { return }
+        folded.remove(title)
     }
 
     private func entry(_ i: OutlineItem) -> Entry {
@@ -191,7 +230,7 @@ final class Inspector: NSViewController {
             for section in sections {
                 if case .section("Outline") = section.kind, let e = innermost(section.children) { rows.insert(outline.row(forItem: e)) }
                 if case .section("Changes") = section.kind, let e = section.children.first(where: {
-                    if case .change(let r, _) = $0.kind { r.lines.contains(lineIndex) } else { false }
+                    if case .change(let r, _, _) = $0.kind { r.run.lines.contains(lineIndex) } else { false }
                 }) {
                     rows.insert(outline.row(forItem: e))
                 }
@@ -214,7 +253,7 @@ final class Inspector: NSViewController {
         case .symbol(let s):
             guard let f = file, let i = f.index(ofLine: s.line + 1, old: s.change == .deleted) else { return }
             delegate?.inspectorJump(toLineIndex: i)
-        case .change(let r, _): delegate?.inspectorJump(toLineIndex: r.lines.lowerBound)
+        case .change(let r, _, _): delegate?.inspectorJump(toLineIndex: r.run.lines.lowerBound)
         case .file(_, let i): delegate?.inspectorShowChange(i)
         default: break
         }
@@ -234,7 +273,7 @@ extension Inspector: NSOutlineViewDataSource, NSOutlineViewDelegate {
 
     func outlineView(_ o: NSOutlineView, isItemExpandable item: Any) -> Bool { !((item as? Entry)?.children.isEmpty ?? true) }
 
-    func outlineView(_ o: NSOutlineView, isGroupItem item: Any) -> Bool { (item as? Entry)?.isSection == true }
+    func outlineView(_ o: NSOutlineView, isGroupItem item: Any) -> Bool { false }
 
     func outlineView(_ o: NSOutlineView, shouldSelectItem item: Any) -> Bool {
         guard let e = item as? Entry else { return false }
@@ -266,13 +305,15 @@ extension Inspector: NSOutlineViewDataSource, NSOutlineViewDelegate {
                      marker: s.change)
             cell.toolTip = "\(s.kind) \(s.name)" + (s.change == .none ? "" : " (\(s.change))")
             return cell
-        case .change(let r, let enclosing):
+        case .change(let keyed, let enclosing, let read):
+            let r = keyed.run
             let cell = InspectorRowCell.make(o)
-            let t = NSMutableAttributedString(string: changeTitle(r), attributes: [.font: NSFont.systemFont(ofSize: 12)])
+            let t = NSMutableAttributedString(string: changeTitle(r), attributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: read ? NSColor.secondaryLabelColor : NSColor.labelColor])
             if r.additions > 0 { t.append(NSAttributedString(string: "  +\(r.additions)", attributes: [.foregroundColor: NSColor.systemGreen, .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)])) }
             if r.deletions > 0 { t.append(NSAttributedString(string: "  −\(r.deletions)", attributes: [.foregroundColor: NSColor.systemRed, .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)])) }
             if let enclosing { t.append(NSAttributedString(string: "  " + enclosing, attributes: [.foregroundColor: NSColor.secondaryLabelColor, .font: NSFont.systemFont(ofSize: 11)])) }
-            cell.set(symbol: "plusminus", title: t, marker: .none)
+            cell.set(symbol: read ? "checkmark.circle.fill" : "plusminus", title: t, marker: .none)
+            cell.setAccessibilityValue(read ? "Read" : "Not read")
             return cell
         case .file(let f, _):
             let cell = InspectorRowCell.make(o)
@@ -339,7 +380,7 @@ final class InspectorSectionCell: NSTableCellView {
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: 26),
             title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
-            title.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
+            title.centerYAnchor.constraint(equalTo: centerYAnchor, constant: 1),
             toggle.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
             toggle.centerYAnchor.constraint(equalTo: title.centerYAnchor),
         ])

@@ -101,7 +101,28 @@ final class FileState {
         unfolded = []
         tokens = nil
         words = nil
+        runs = nil
     }
+
+    private var runs: [KeyedRun]?
+
+    /// A run of changed lines with the key its read state is kept under.
+    struct KeyedRun {
+        var run: ChangeRun
+        var key: String
+    }
+
+    /// The file's runs of changes, with their keys.
+    var keyedRuns: [KeyedRun] {
+        if let runs { return runs }
+        let file = diff.change.reviewKey
+        let r = isChange ? changeRuns(lines).map { KeyedRun(run: $0, key: changeKey(file: file, lines: lines[$0.lines])) } : []
+        runs = r
+        return r
+    }
+
+    /// The run of changes holding a line, by index into the file's lines.
+    func run(at line: Int) -> KeyedRun? { keyedRuns.first { $0.run.lines.contains(line) } }
 
     /// Returns the text of one side as it is in the file.
     ///
@@ -165,10 +186,10 @@ final class FileState {
 
     /// The line index a note is anchored to, if its code is still there.
     func anchor(of note: Note) -> Int? {
-        guard note.path == path else { return nil }
-        let no = note.lines.upperBound
-        guard let i = lines.firstIndex(where: { note.old ? ($0.kind == .deleted && $0.oldNo == no) : ($0.kind != .deleted && $0.newNo == no) }) else { return nil }
-        return note.code.last.map { $0 == lines[i].text } ?? true ? i : nil
+        guard let on = note.lines, on.path == path else { return nil }
+        let no = on.range.upperBound
+        guard let i = lines.firstIndex(where: { on.old ? ($0.kind == .deleted && $0.oldNo == no) : ($0.kind != .deleted && $0.newNo == no) }) else { return nil }
+        return on.code.last.map { $0 == lines[i].text } ?? true ? i : nil
     }
 }
 

@@ -19,6 +19,8 @@ struct Location: Equatable {
     struct Caret: Equatable {
         var path: String
         var line: SideLine
+        /// The caret's column in the line, as a UTF-16 offset.
+        var column: Int?
     }
 
     var review: Review
@@ -34,7 +36,7 @@ enum Anchor {
     /// A line placed comfortably in view, with the caret on it.
     case line(SideLine)
     /// The view and caret put back as they were.
-    case restore(top: SideLine, caret: SideLine?)
+    case restore(top: SideLine, caret: Location.Caret?)
 }
 
 /// A repository's window: what's being reviewed, and the navigator, reader and inspector that
@@ -110,8 +112,10 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         reader.delegate = self
         reader.split = UserDefaults.standard.string(forKey: "diffMode") == "split"
         reader.wraps = UserDefaults.standard.bool(forKey: "wrapLines")
-        reader.notes = notes.notes
+        reader.isRead = { [weak repository] f, r in repository?.reviews.isRead(r.key, in: f.diff.change) ?? false }
         inspector.delegate = self
+        inspector.notes.delegate = self
+        inspector.isRead = reader.isRead
 
         let navItem = NSSplitViewItem(sidebarWithViewController: navigator)
         navItem.minimumThickness = 220
@@ -153,7 +157,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         window.setFrameAutosaveName("RevueWindow")
         if !window.setFrameUsingName("RevueWindow") { window.center() }
 
-        navigator.notes.setNotes(notes.notes)
+        showNotes()
         NotificationCenter.default.addObserver(self, selector: #selector(reviewsChanged(_:)), name: ReviewStore.didChange, object: repository.reviews)
         NotificationCenter.default.addObserver(self, selector: #selector(notesChanged(_:)), name: NotesStore.didChange, object: notes)
         watch()
@@ -224,6 +228,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         }
         review = r
         pendingLocation = location
+        if isNew { showNotes() }
         watch()
         updateTitle()
         load(keepPosition: !isNew)
@@ -423,7 +428,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
             if let i = f.index(ofLine: l.number, old: l.old) { reader.scroll(to: ReaderPosition(file: 0, line: i), animated: false, select: true) }
         case .restore(let top, let caret):
             if let i = f.index(ofLine: top.number, old: top.old) { reader.scroll(to: ReaderPosition(file: 0, line: i), animated: false, offset: 0) }
-            if let caret, let i = f.index(ofLine: caret.number, old: caret.old) { reader.placeCaret(at: ReaderPosition(file: 0, line: i)) }
+            if let caret, let i = f.index(ofLine: caret.line.number, old: caret.line.old) { reader.placeCaret(at: ReaderPosition(file: 0, line: i), column: caret.column) }
         case .firstChange:
             if f.isChange && reader.hasChanges { reader.scrollToFirstChange() } else { reader.placeCaret(at: ReaderPosition(file: 0, line: 0)) }
         case .lastChange:
@@ -454,7 +459,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
             }
         }
         if let caret, let i = changes.firstIndex(where: { $0.path == caret.path }), let l = changes[i].index(ofLine: caret.line.number, old: caret.line.old) {
-            reader.placeCaret(at: ReaderPosition(file: i, line: l))
+            reader.placeCaret(at: ReaderPosition(file: i, line: l), column: caret.column)
         }
         navigator.changes.showFocus(.overview)
         inspector.showOverview(changes, card: card())
@@ -473,7 +478,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
             return (f.path, SideLine(number: n, old: old))
         }
         let top = side(reader.topPosition)
-        let caret = side(reader.caret).map { Location.Caret(path: $0.path, line: $0.line) }
+        let caret = side(reader.caret).map { Location.Caret(path: $0.path, line: $0.line, column: reader.caretColumn) }
         switch focus {
         case .overview: return Location(review: r, place: .overview(path: top?.path), top: top?.line ?? SideLine(number: 1, old: false), caret: caret)
         case .file(let p): return Location(review: r, place: .file(p), top: top?.line ?? SideLine(number: 1, old: false), caret: caret)
@@ -502,7 +507,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
                 showOverview(record: false, at: path, top: loc.top, caret: loc.caret)
             }
         case .file(let p):
-            open(p, at: .restore(top: loc.top, caret: loc.caret?.path == p ? loc.caret?.line : nil), record: false)
+            open(p, at: .restore(top: loc.top, caret: loc.caret?.path == p ? loc.caret : nil), record: false)
         }
     }
 
@@ -555,14 +560,24 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         navigator.changes.refreshReviewState()
         navigator.changes.refreshCommitProgress()
         inspector.refreshReviewState()
+        reader.refreshReadState()
         if case .overview? = focus { reader.reload(keepPosition: true) }
         updateTitle()
     }
 
     @objc private func notesChanged(_ n: Notification) {
-        reader.notes = notes.notes
-        reader.reload(keepPosition: true)
-        navigator.notes.setNotes(notes.notes)
+        showNotes()
+        if !reader.files.isEmpty { reader.reload(keepPosition: true) }
+    }
+
+    /// The notes on what's being reviewed.
+    var reviewNotes: [Note] { review.map { notes.notes(about: $0.subject) } ?? [] }
+
+    /// Shows the review's notes in the inspector, and its notes on lines beside them in the reader.
+    func showNotes() {
+        let n = reviewNotes
+        reader.notes = n.filter { $0.lines != nil }
+        inspector.notes.setNotes(n)
     }
 
     func toggleReviewed(_ paths: [String], advance: Bool) {
@@ -630,18 +645,7 @@ extension RepoWindowController: NavigatorDelegate {
 
     func navigatorToggleReviewed(_ paths: [String]) { toggleReviewed(paths, advance: false) }
 
-    func navigatorOpenNote(_ note: Note) {
-        open(note.path, at: .line(SideLine(number: note.lines.upperBound, old: note.old)), record: focus != .file(note.path))
-    }
-
-    func navigatorDeleteNotes(_ ids: Set<UUID>) { notes.remove(ids) }
-
     func navigatorFocusReader() { reader.focus() }
-
-    func navigatorCopyNotes(_ selection: [Note]?) {
-        guard !(selection ?? notes.notes).isEmpty else { NSSound.beep(); return }
-        copy(notes.markdown(selection))
-    }
 
     func navigatorSearch(_ query: String, word: Bool, caseSensitive: Bool) {
         guard let t = target else { return }
@@ -684,6 +688,10 @@ extension RepoWindowController: ReaderDelegate {
 
     func readerEditNote(_ id: UUID) { editNote(id) }
 
+    func readerAddNote() { addNote(nil) }
+
+    func readerPeek() { peekDefinition(nil) }
+
     func readerCurrentFileChanged() {
         updateTitle()
         if case .overview? = focus { inspector.follow(lineIndex: reader.currentFile) }
@@ -699,6 +707,26 @@ extension RepoWindowController: ReaderDelegate {
         let r = Review(subject: .commit(commit.oid))
         select(r, then: Location(review: r, place: .file(f.path), top: SideLine(number: line, old: false), caret: Location.Caret(path: f.path, line: SideLine(number: line, old: false))))
     }
+}
+
+extension RepoWindowController: NotesPaneDelegate {
+    func notesPaneOpen(_ note: Note) {
+        guard let on = note.lines else { return }
+        open(on.path, at: .line(SideLine(number: on.range.upperBound, old: on.old)), record: focus != .file(on.path))
+    }
+
+    func notesPaneEdit(_ note: Note, relativeTo rect: NSRect, of view: NSView) { editNote(note.id, relativeTo: (rect, view)) }
+
+    func notesPaneDelete(_ ids: Set<UUID>) { notes.remove(ids) }
+
+    func notesPaneCopy(_ selection: [Note]?) {
+        let list = selection ?? reviewNotes
+        guard !list.isEmpty else { NSSound.beep(); return }
+        copy(markdown(list))
+    }
+
+    func notesPaneAddOnLines() { addNote(nil) }
+    func notesPaneAddOnReview() { addReviewNote(nil) }
 }
 
 extension RepoWindowController: InspectorDelegate {

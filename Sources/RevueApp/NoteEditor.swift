@@ -103,12 +103,12 @@ final class NoteEditor: NSViewController, NSTextViewDelegate {
         return false
     }
 
-    /// Shows the editor next to a rect in a view.
-    func show(relativeTo rect: NSRect, of view: NSView) {
+    /// Shows the editor next to a rect in a view, on the given side of it.
+    func show(relativeTo rect: NSRect, of view: NSView, edge: NSRectEdge = .maxY) {
         let p = NSPopover()
         p.behavior = .transient
         p.contentViewController = self
         popover = p
-        p.show(relativeTo: rect, of: view, preferredEdge: .maxY)
+        p.show(relativeTo: rect, of: view, preferredEdge: edge)
     }
 }

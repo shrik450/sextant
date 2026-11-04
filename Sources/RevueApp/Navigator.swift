@@ -10,31 +10,25 @@ protocol NavigatorDelegate: AnyObject {
     func navigatorFileMenu(_ paths: [String]) -> NSMenu?
     func navigatorCommitMenu(_ commit: Commit) -> NSMenu?
     func navigatorSearch(_ query: String, word: Bool, caseSensitive: Bool)
-    func navigatorOpenNote(_ note: Note)
-    func navigatorDeleteNotes(_ ids: Set<UUID>)
-    func navigatorCopyNotes(_ notes: [Note]?)
     /// Tells the delegate that choosing is done (Return in a field) and reading comes next.
     func navigatorFocusReader()
 }
 
 /// The left column, which chooses what to read.
 ///
-/// Changes lists the review's commits and its files as a tree, Find searches the snapshot, and
-/// Notes lists the review's notes.
+/// Changes lists the review's commits and its files as a tree, and Find searches the snapshot.
 @MainActor
 final class Navigator: NSViewController {
-    enum Tab: Int, CaseIterable { case changes, find, notes }
+    enum Tab: Int, CaseIterable { case changes, find }
 
     weak var delegate: NavigatorDelegate? {
         didSet {
             changes.delegate = delegate
             search.delegate = delegate
-            notes.delegate = delegate
         }
     }
     let changes = ChangesController()
     let search = SearchController()
-    let notes = NotesController()
     private let tabs = NSSegmentedControl()
     private let container = NSView()
     private(set) var tab: Tab = .changes
@@ -42,8 +36,8 @@ final class Navigator: NSViewController {
 
     override func loadView() {
         let v = NSView()
-        let symbols = ["list.bullet.indent", "magnifyingglass", "text.bubble"]
-        let names = ["Changes", "Find", "Notes"]
+        let symbols = ["list.bullet.indent", "magnifyingglass"]
+        let names = ["Changes", "Find"]
         tabs.segmentCount = symbols.count
         tabs.trackingMode = .selectOne
         tabs.segmentStyle = .automatic
@@ -68,7 +62,7 @@ final class Navigator: NSViewController {
             container.bottomAnchor.constraint(equalTo: v.bottomAnchor),
         ])
         view = v
-        for c in [changes, search, notes] as [NSViewController] { addChild(c) }
+        for c in [changes, search] as [NSViewController] { addChild(c) }
         show(.changes)
     }
 
@@ -79,7 +73,7 @@ final class Navigator: NSViewController {
         tab = t
         tabs.selectedSegment = t.rawValue
         container.subviews.forEach { $0.removeFromSuperview() }
-        let v = [changes, search, notes][t.rawValue].view
+        let v = [changes, search][t.rawValue].view
         v.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(v)
         NSLayoutConstraint.activate([
@@ -96,7 +90,6 @@ final class Navigator: NSViewController {
         switch tab {
         case .changes: changes.outline
         case .find: search.outline
-        case .notes: notes.table
         }
     }
 }
@@ -841,121 +834,3 @@ extension SearchController: NSMenuDelegate {
     }
 }
 
-/// The review's notes.
-///
-/// Select one to go to it, or copy them all as Markdown to hand off.
-@MainActor
-final class NotesController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
-    weak var delegate: NavigatorDelegate?
-    let table = KeyTableView()
-    private let copyButton = NSButton(title: "Copy All", target: nil, action: nil)
-    private let empty = NSTextField(labelWithString: "No notes")
-    private(set) var notes: [Note] = []
-
-    override func loadView() {
-        let v = NSView()
-        let col = NSTableColumn(identifier: .init("n"))
-        table.addTableColumn(col)
-        table.headerView = nil
-        table.style = .inset
-        table.usesAutomaticRowHeights = true
-        table.allowsMultipleSelection = true
-        table.dataSource = self
-        table.delegate = self
-        table.target = self
-        table.action = #selector(clicked)
-        table.onDelete = { [weak self] in self?.deleteSelected() }
-        table.menu = NSMenu()
-        table.menu?.addItem(withTitle: "Copy as Markdown", action: #selector(copySelected), keyEquivalent: "").target = self
-        table.menu?.addItem(withTitle: "Delete", action: #selector(deleteSelected), keyEquivalent: "").target = self
-        let scroll = NSScrollView()
-        scroll.documentView = table
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.drawsBackground = false
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        copyButton.target = self
-        copyButton.action = #selector(copyAll)
-        copyButton.controlSize = .regular
-        copyButton.toolTip = "Copy every note as Markdown"
-        copyButton.translatesAutoresizingMaskIntoConstraints = false
-        empty.textColor = .secondaryLabelColor
-        empty.translatesAutoresizingMaskIntoConstraints = false
-        v.addSubview(scroll)
-        v.addSubview(copyButton)
-        v.addSubview(empty)
-        NSLayoutConstraint.activate([
-            scroll.topAnchor.constraint(equalTo: v.topAnchor),
-            scroll.leadingAnchor.constraint(equalTo: v.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: v.trailingAnchor),
-            scroll.bottomAnchor.constraint(equalTo: copyButton.topAnchor, constant: -8),
-            copyButton.trailingAnchor.constraint(equalTo: v.trailingAnchor, constant: -10),
-            copyButton.bottomAnchor.constraint(equalTo: v.bottomAnchor, constant: -10),
-            empty.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
-            empty.centerYAnchor.constraint(equalTo: scroll.centerYAnchor),
-        ])
-        view = v
-    }
-
-    func setNotes(_ n: [Note]) {
-        notes = n.sorted { ($0.path, $0.lines.lowerBound) < ($1.path, $1.lines.lowerBound) }
-        table.reloadData()
-        empty.isHidden = !notes.isEmpty
-        copyButton.isEnabled = !notes.isEmpty
-    }
-
-    func numberOfRows(in tableView: NSTableView) -> Int { notes.count }
-
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let id = NSUserInterfaceItemIdentifier("NoteCell")
-        let cell = (tableView.makeView(withIdentifier: id, owner: nil) as? NSTableCellView) ?? {
-            let c = NSTableCellView()
-            c.identifier = id
-            let ref = NSTextField(labelWithString: ""), text = NSTextField(wrappingLabelWithString: "")
-            ref.font = .monospacedSystemFont(ofSize: 11, weight: .medium)
-            ref.textColor = .secondaryLabelColor
-            ref.lineBreakMode = .byTruncatingHead
-            ref.tag = 1
-            text.maximumNumberOfLines = 3
-            text.lineBreakMode = .byTruncatingTail
-            text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            text.tag = 2
-            for v in [ref, text] { v.translatesAutoresizingMaskIntoConstraints = false; c.addSubview(v) }
-            NSLayoutConstraint.activate([
-                ref.topAnchor.constraint(equalTo: c.topAnchor, constant: 5),
-                ref.leadingAnchor.constraint(equalTo: c.leadingAnchor, constant: 4),
-                ref.trailingAnchor.constraint(lessThanOrEqualTo: c.trailingAnchor, constant: -4),
-                text.topAnchor.constraint(equalTo: ref.bottomAnchor, constant: 2),
-                text.leadingAnchor.constraint(equalTo: ref.leadingAnchor),
-                text.trailingAnchor.constraint(equalTo: c.trailingAnchor, constant: -4),
-                text.bottomAnchor.constraint(equalTo: c.bottomAnchor, constant: -5),
-            ])
-            return c
-        }()
-        let n = notes[row]
-        (cell.viewWithTag(1) as? NSTextField)?.stringValue = n.reference
-        (cell.viewWithTag(2) as? NSTextField)?.stringValue = n.text
-        cell.toolTip = "\(n.reference)\n\(n.context)"
-        return cell
-    }
-
-    @objc private func clicked() {
-        let r = table.selectedRow
-        guard r >= 0, r < notes.count, table.selectedRowIndexes.count == 1 else { return }
-        delegate?.navigatorOpenNote(notes[r])
-    }
-
-    func tableViewSelectionDidChange(_ notification: Notification) { clicked() }
-
-    private var selected: [Note] {
-        let rows = table.clickedRow >= 0 && !table.selectedRowIndexes.contains(table.clickedRow) ? IndexSet(integer: table.clickedRow) : table.selectedRowIndexes
-        return rows.compactMap { $0 < notes.count ? notes[$0] : nil }
-    }
-
-    @objc private func copyAll() { delegate?.navigatorCopyNotes(nil) }
-    @objc private func copySelected() { delegate?.navigatorCopyNotes(selected) }
-    @objc private func deleteSelected() {
-        let ids = Set(selected.map(\.id))
-        if !ids.isEmpty { delegate?.navigatorDeleteNotes(ids) }
-    }
-}

@@ -64,6 +64,23 @@ import Testing
         #expect(defs.contains { $0.name == "helper" && $0.kind == "function" && $0.lines.lowerBound == 8 })
         #expect(syms.contains { $0.name == "helper" && !$0.isDefinition && $0.lines.lowerBound == 4 })
     }
+
+    @Test func membersSpanTheirOwnLinesNotTheTypeAroundThem() throws {
+        let swift = try #require(runtime?.language(forPath: "a.swift"))
+        let text = """
+        struct Parser {
+            var tokens: [String]
+
+            func next() -> String? {
+                nil
+            }
+        }
+        """
+        let defs = swift.symbols(text).filter(\.isDefinition)
+        #expect(defs.first { $0.name == "Parser" }?.lines == 0...6)
+        #expect(defs.first { $0.name == "tokens" }?.lines == 1...1)
+        #expect(defs.first { $0.name == "next" }?.lines == 3...5)
+    }
 }
 
 @Test func tokensSplitAcrossLinesStayInOrder() {

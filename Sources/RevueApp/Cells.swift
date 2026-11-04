@@ -2,25 +2,40 @@ import AppKit
 import UniformTypeIdentifiers
 import RevueCore
 
-/// A table view that reports space and delete presses and lets bare-key menu shortcuts through.
+/// Returns the arrow key a list treats `j` or `k` as, the way the reader moves its caret with
+/// them, or the event itself for any other key.
+private func listArrow(for event: NSEvent) -> NSEvent {
+    guard event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
+          let key = event.charactersIgnoringModifiers, key == "j" || key == "k" else { return event }
+    let arrow = String(Character(UnicodeScalar(key == "j" ? NSDownArrowFunctionKey : NSUpArrowFunctionKey)!))
+    return NSEvent.keyEvent(with: .keyDown, location: event.locationInWindow, modifierFlags: [.function, .numericPad], timestamp: event.timestamp,
+                            windowNumber: event.windowNumber, context: nil, characters: arrow, charactersIgnoringModifiers: arrow,
+                            isARepeat: event.isARepeat, keyCode: key == "j" ? 125 : 126) ?? event
+}
+
+/// A table view that reports space, Return and delete presses, steps with `j` and `k`, and lets
+/// bare-key menu shortcuts through.
 final class KeyTableView: NSTableView {
     var onSpace: (() -> Void)?
     var onDelete: (() -> Void)?
+    var onReturn: (() -> Void)?
     override func keyDown(with event: NSEvent) {
         let plain = event.modifierFlags.intersection([.command, .option, .control]).isEmpty
         if plain, event.charactersIgnoringModifiers == " ", let onSpace { onSpace(); return }
         if plain, let onDelete, event.keyCode == 51 || event.keyCode == 117 { onDelete(); return }
-        super.keyDown(with: event)
+        if plain, let onReturn, event.keyCode == 36 || event.keyCode == 76 { onReturn(); return }
+        super.keyDown(with: listArrow(for: event))
     }
 }
 
-/// An outline view that reports space and delete presses and lets bare-key menu shortcuts through.
+/// An outline view that reports space presses, steps with `j` and `k`, and lets bare-key menu
+/// shortcuts through.
 final class KeyOutlineView: NSOutlineView {
     var onSpace: (() -> Void)?
     override func keyDown(with event: NSEvent) {
         let plain = event.modifierFlags.intersection([.command, .option, .control]).isEmpty
         if plain, event.charactersIgnoringModifiers == " ", let onSpace { onSpace(); return }
-        super.keyDown(with: event)
+        super.keyDown(with: listArrow(for: event))
     }
 }
 

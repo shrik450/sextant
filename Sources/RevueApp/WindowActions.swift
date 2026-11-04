@@ -483,36 +483,91 @@ extension RepoWindowController: NSMenuItemValidation {
     }
 
     @objc func addNote(_ sender: Any?) {
-        guard let r = selectedReference, let (rect, view) = reader.rect(file: r.file, line: r.line) else { NSSound.beep(); return }
-        let context = "\(subjectLabel.title)  ·  \(scopeLabel)"
+        guard let subject = review?.subject, let r = selectedReference, let (rect, view) = reader.rect(file: r.file, line: r.line) else { NSSound.beep(); return }
         let editor = NoteEditor(reference: lineReference(path: r.path, lines: r.lines, old: r.old), text: "", canDelete: false) { [weak self] text in
-            self?.notes.add(Note(path: r.path, lines: r.lines, old: r.old, text: text, code: r.code, context: context))
+            self?.notes.add(Note(subject: subject.key, lines: Note.Lines(path: r.path, range: r.lines, old: r.old, code: r.code), text: text))
         }
         editor.show(relativeTo: rect, of: view)
     }
 
-    func editNote(_ id: UUID) {
-        guard let note = notes.notes.first(where: { $0.id == id }), let (rect, view) = reader.rect(ofNote: id) else { return }
-        let editor = NoteEditor(reference: note.reference, text: note.text, canDelete: true, onSave: { [weak self] text in
+    /// Writes a note on the whole review, which heads the notes when they're copied.
+    @objc func addReviewNote(_ sender: Any?) {
+        guard let subject = review?.subject else { NSSound.beep(); return }
+        if split.splitViewItems[2].isCollapsed { split.splitViewItems[2].isCollapsed = false }
+        let pane = inspector.notes.view
+        let editor = NoteEditor(reference: "Whole review  ·  \(subjectLabel.title)", text: "", canDelete: false) { [weak self] text in
+            self?.notes.add(Note(subject: subject.key, lines: nil, text: text))
+        }
+        editor.show(relativeTo: NSRect(x: 0, y: pane.bounds.maxY - 28, width: pane.bounds.width, height: 28), of: pane, edge: .minX)
+    }
+
+    /// Opens the editor for a note, beside the note in the reader or wherever `anchor` says.
+    func editNote(_ id: UUID, relativeTo anchor: (NSRect, NSView)? = nil) {
+        guard let note = notes.notes.first(where: { $0.id == id }), let (rect, view) = anchor ?? reader.rect(ofNote: id) else { return }
+        let editor = NoteEditor(reference: note.title, text: note.text, canDelete: true, onSave: { [weak self] text in
             var n = note
             n.text = text
             self?.notes.update(n)
         }, onDelete: { [weak self] in self?.notes.remove([id]) })
-        editor.show(relativeTo: rect, of: view)
+        editor.show(relativeTo: rect, of: view, edge: anchor == nil ? .maxY : .minX)
     }
 
-    @objc func copyAllNotes(_ sender: Any?) { navigatorCopyNotes(nil) }
+    @objc func copyAllNotes(_ sender: Any?) { notesPaneCopy(nil) }
 
-    /// Moves to the next change, continuing into the next changed file at the end of this one.
+    /// Moves to the next change in the file, stopping at its end.
     @objc func nextChange(_ sender: Any?) {
-        if reader.nextChange(1) { return }
-        stepFile(1, anchor: .firstChange)
+        if !reader.nextChange(1) { NSSound.beep() }
     }
 
     @objc func previousChange(_ sender: Any?) {
-        if reader.nextChange(-1) { return }
-        stepFile(-1, anchor: .lastChange)
+        if !reader.nextChange(-1) { NSSound.beep() }
     }
+
+    /// Marks the run of changes at the caret read, then moves to the next unread one in the file,
+    /// or marks it unread if it was read.
+    ///
+    /// Reading the last unread run marks the file reviewed.
+    @objc func toggleChangeRead(_ sender: Any?) {
+        guard let (f, run) = reader.caretRun else { NSSound.beep(); return }
+        let reviews = repository.reviews
+        let read = !reviews.isRead(run.key, in: f.diff.change)
+        reviews.setRead(run.key, in: f.diff.change, all: f.keyedRuns.map(\.key), to: read)
+        guard read, let fi = reader.files.firstIndex(where: { $0 === f }) else { return }
+        let unread = f.keyedRuns.filter { !reviews.isRead($0.key, in: f.diff.change) }
+        if let next = unread.first(where: { $0.run.lines.lowerBound > run.run.lines.lowerBound }) ?? unread.first {
+            reader.land(onLine: next.run.lines.lowerBound, file: fi)
+        }
+    }
+
+    /// Shows the definition of the name at the caret in a popover, without leaving the file.
+    @objc func peekDefinition(_ sender: Any?) {
+        guard let t = target, let word = reader.wordAtCaret, let anchor = reader.caretAnchor else { NSSound.beep(); return }
+        let from = reader.selection.map { reader.files[$0.file].path }
+        searchGeneration += 1
+        let gen = searchGeneration
+        busy += 1
+        Task {
+            defer { busy -= 1 }
+            guard let (_, definitions) = try? await lookUp(word, in: t), gen == searchGeneration else { return }
+            let defs = nearest(definitions, to: from)
+            let git = self.git
+            let peek = Peek(word: word, definitions: defs, snapshot: t.snapshot, git: git, style: reader.activeCode.style)
+            peek.onOpen = { [weak self] d in self?.open(d.path, at: .line(SideLine(number: d.line, old: false))) }
+            peek.onKey = { [weak self] event in self?.reader.activeCode.keyDown(with: event) }
+            peek.show(relativeTo: anchor.0, of: anchor.1)
+        }
+    }
+
+    @objc func jumpToText(_ sender: Any?) {
+        guard !reader.files.isEmpty else { NSSound.beep(); return }
+        reader.startJump()
+    }
+
+    @objc func highlightUses(_ sender: Any?) { if !reader.highlightUses() { NSSound.beep() } }
+    @objc func nextUse(_ sender: Any?) { if !reader.stepUse(1) { NSSound.beep() } }
+    @objc func previousUse(_ sender: Any?) { if !reader.stepUse(-1) { NSSound.beep() } }
+
+    @objc func showNearbyUnchanged(_ sender: Any?) { if !reader.unfoldNearest() { NSSound.beep() } }
 
     @objc func nextFile(_ sender: Any?) {
         if case .overview? = focus { if !reader.nextFile(1) { NSSound.beep() }; return }
@@ -603,7 +658,6 @@ extension RepoWindowController: NSMenuItemValidation {
 
     @objc func showChangesTab(_ sender: Any?) { revealNavigator(.changes, focus: true) }
     @objc func showFindTab(_ sender: Any?) { revealNavigator(.find, focus: true) }
-    @objc func showNotesTab(_ sender: Any?) { revealNavigator(.notes, focus: true) }
 
     @objc func openQuickly(_ sender: Any?) {
         revealNavigator(.changes)
@@ -705,7 +759,7 @@ extension RepoWindowController: NSMenuItemValidation {
         case #selector(toggleReviewedAction(_:)):
             let paths = actionPaths
             let files = changes.filter { paths.contains($0.path) }
-            item.title = !files.isEmpty && files.allSatisfy(\.reviewed) ? "Mark as Not Reviewed" : "Mark as Reviewed"
+            item.title = !files.isEmpty && files.allSatisfy(\.reviewed) ? "Mark File as Not Reviewed" : "Mark File as Reviewed"
             return !files.isEmpty
         case #selector(goBack(_:)): return !backStack.isEmpty
         case #selector(goForward(_:)): return !forwardStack.isEmpty
@@ -713,7 +767,16 @@ extension RepoWindowController: NSMenuItemValidation {
             return reading
         case #selector(copyReference(_:)), #selector(copyReferenceWithCode(_:)), #selector(addNote(_:)): return reader.selection != nil
         case #selector(jumpToDefinitionAction(_:)), #selector(findReferencesAction(_:)), #selector(copySymbol(_:)): return reader.wordAtCaret != nil
-        case #selector(copyAllNotes(_:)): return !notes.notes.isEmpty
+        case #selector(copyAllNotes(_:)): return !reviewNotes.isEmpty
+        case #selector(addReviewNote(_:)): return review != nil
+        case #selector(toggleChangeRead(_:)):
+            guard let (f, run) = reader.caretRun else { return false }
+            item.title = repository.reviews.isRead(run.key, in: f.diff.change) ? "Mark Change as Unread" : "Mark Change as Read"
+            return true
+        case #selector(peekDefinition(_:)): return reader.wordAtCaret != nil
+        case #selector(jumpToText(_:)), #selector(showNearbyUnchanged(_:)): return !reader.files.isEmpty
+        case #selector(highlightUses(_:)): return reader.wordAtCaret != nil
+        case #selector(nextUse(_:)), #selector(previousUse(_:)): return reader.usesWord != nil
         case #selector(olderCommit(_:)), #selector(newerCommit(_:)): return commitRows
         case #selector(showWholeReview(_:)): return review.map { $0.scope != .everything } ?? false
         case #selector(showUncommitted(_:)):
