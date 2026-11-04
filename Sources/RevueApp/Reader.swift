@@ -10,6 +10,7 @@ protocol ReaderDelegate: AnyObject {
     func readerMenu(file: Int?, line: Int?) -> NSMenu?
     func readerCurrentFileChanged()
     func readerBlameClicked(_ commit: Blame.Commit, line: Int)
+    func readerCaretMoved()
 }
 
 /// Where the reader is, as a file and the line of it that is at the top (or selected).
@@ -129,7 +130,9 @@ final class Reader: NSViewController, CodeViewDelegate {
 
     /// The column with keyboard focus, else the new side.
     var activeCode: CodeView {
-        columns.first { $0.code.window?.firstResponder === $0.code }?.code ?? columns.last!.code
+        columns.first { $0.code.window?.firstResponder === $0.code }?.code
+            ?? activeColumn.flatMap { c in columns.contains { $0.code === c } ? c : nil }
+            ?? columns.last!.code
     }
 
     func show(files: [FileState], overview: Bool, at position: ReaderPosition? = nil) {
@@ -169,6 +172,7 @@ final class Reader: NSViewController, CodeViewDelegate {
     /// Lays out and renders again, such as after toggling split, folds, notes or highlighting.
     func reload(keepPosition: Bool) {
         let pos = keepPosition ? topPosition : nil
+        let kept = keepPosition ? keptSelection : nil
         let topOffset = keepPosition ? offsetWithinTopRow : 0
         emptyLabel.isHidden = true
         stack.isHidden = false
@@ -186,9 +190,35 @@ final class Reader: NSViewController, CodeViewDelegate {
             c.gutter.updateThickness()
         }
         if let pos { scroll(to: pos, animated: false, offset: topOffset) }
+        if let kept { restore(kept) } else { columns.forEach { $0.code.setSelectedRange(NSRange(location: 0, length: 0)) } }
         updateJumpBar()
     }
 
+    /// A selection by line, which survives the text being rendered again.
+    private struct KeptSelection {
+        var side: Int
+        var position: ReaderPosition
+        var column: Int
+        var length: Int
+    }
+
+    private var keptSelection: KeptSelection? {
+        let code = activeCode
+        guard let r = caretRow, code.rows.indices.contains(r), code.rows[r].kind == .line else { return nil }
+        let sel = code.selectedRange()
+        return KeptSelection(side: columns.firstIndex { $0.code === code } ?? 0, position: ReaderPosition(file: code.rows[r].file, line: code.rows[r].line),
+                             column: sel.location - code.rowStarts[r], length: sel.length)
+    }
+
+    private func restore(_ k: KeptSelection) {
+        let code = columns.indices.contains(k.side) ? columns[k.side].code : primary
+        guard let r = code.rows.firstIndex(where: { $0.file == k.position.file && $0.kind == .line && $0.line == k.position.line }) else { return }
+        let range = code.charRange(ofRow: r)
+        let start = range.location + min(k.column, range.length)
+        code.setSelectedRange(NSRange(location: start, length: min(k.length, (code.textStorage?.length ?? start) - start)))
+        activeColumn = code
+        markActiveColumn()
+    }
     /// The new side, or the only column.
     var primary: CodeView { columns.last!.code }
 
@@ -270,18 +300,15 @@ final class Reader: NSViewController, CodeViewDelegate {
         return rows.firstIndex { $0.file == p.file && $0.kind == .line && $0.line >= p.line } ?? rows.firstIndex { $0.file == p.file }
     }
 
+    /// Scrolls to a line, putting it a quarter of the way down unless `offset` places it.
+    ///
+    /// - Parameter select: Whether to put the caret on the line too.
     func scroll(to p: ReaderPosition, animated: Bool, offset: CGFloat? = nil, select: Bool = false) {
         guard let r = row(for: p, in: primary) else { return }
         let code = primary
         let rect = code.rect(ofRow: r)
-        let viewport = code.visibleRect.height
-        let y = offset.map { rect.minY + $0 } ?? max(0, rect.minY - viewport * 0.25)
-        scrollColumns(toY: y, animated: animated)
-        if select {
-            let range = code.charRange(ofRow: r)
-            code.setSelectedRange(NSRange(location: range.location, length: 0))
-            code.showFindIndicator(for: range)
-        }
+        scrollColumns(toY: offset.map { rect.minY + $0 } ?? max(0, rect.minY - code.visibleRect.height * 0.25), animated: animated)
+        if select { placeCaret(atRow: r) }
         updateJumpBar()
     }
 
@@ -301,6 +328,57 @@ final class Reader: NSViewController, CodeViewDelegate {
             }
             c.scroll.reflectScrolledClipView(clip)
         }
+    }
+
+    /// Scrolls a row a quarter of the way down the view and puts the caret on it.
+    private func land(onRow r: Int, animated: Bool) {
+        let code = primary
+        scrollColumns(toY: code.rect(ofRow: r).minY - code.visibleRect.height * 0.25, animated: animated)
+        placeCaret(atRow: r)
+        updateJumpBar()
+    }
+
+    /// Puts the caret on a row, at its first character that isn't a space.
+    ///
+    /// In side by side, the caret goes to the column where the row is a line, the new side first.
+    func placeCaret(atRow r: Int) {
+        guard let code = columns.reversed().map(\.code).first(where: { $0.rows.indices.contains(r) && $0.rows[r].kind == .line })
+            ?? (primary.rows.indices.contains(r) ? primary : nil) else { return }
+        let range = code.charRange(ofRow: r)
+        let text = (code.textStorage?.string ?? "") as NSString
+        var i = range.location
+        while i < NSMaxRange(range), text.character(at: i) == 0x20 || text.character(at: i) == 0x09 { i += 1 }
+        if i == NSMaxRange(range) { i = range.location }
+        if isFocused, view.window?.firstResponder !== code { view.window?.makeFirstResponder(code) }
+        code.setSelectedRange(NSRange(location: i, length: 0))
+        activeColumn = code
+        markActiveColumn()
+    }
+
+    private func markActiveColumn() {
+        for c in columns { c.code.showsCurrentLine = c.code === activeCode }
+    }
+
+    /// The column the caret was last put in, which keeps it when focus leaves the reader.
+    private weak var activeColumn: CodeView?
+
+    /// The row the caret is on.
+    var caretRow: Int? {
+        let code = activeCode
+        return code.row(at: code.selectedRange().location)
+    }
+
+    /// The line the caret is on.
+    var caret: ReaderPosition? {
+        let code = activeCode
+        guard let r = caretRow, code.rows.indices.contains(r), code.rows[r].kind == .line else { return nil }
+        return ReaderPosition(file: code.rows[r].file, line: code.rows[r].line)
+    }
+
+    /// Whether the caret is in view, so moves start from it rather than from the top of the view.
+    private var caretInView: Bool {
+        guard let r = caretRow else { return false }
+        return primary.visibleRect.intersects(primary.rect(ofRow: r))
     }
 
     @objc private func scrolled(_ n: Notification) {
@@ -333,17 +411,18 @@ final class Reader: NSViewController, CodeViewDelegate {
         return stops
     }
 
-    /// Moves to the next or previous change.
+    /// Moves to the next or previous change from the caret, or from the top of the view when the
+    /// caret is out of sight.
     ///
     /// - Returns: False if there is no change in that direction.
     @discardableResult
     func nextChange(_ dir: Int) -> Bool {
         let code = primary
-        guard let marker = row(atY: code.visibleRect.minY + code.visibleRect.height * 0.25 + 1, in: code) else { return false }
+        let from = caretInView ? caretRow : row(atY: code.visibleRect.minY + code.visibleRect.height * 0.25 + 1, in: code)
+        guard let from else { return false }
         let stops = changeStops
-        let target = dir > 0 ? stops.first { $0 > marker } : stops.last { $0 < marker }
-        guard let r = target else { return false }
-        scrollColumns(toY: code.rect(ofRow: r).minY - code.visibleRect.height * 0.25, animated: true)
+        guard let r = dir > 0 ? stops.first(where: { $0 > from }) : stops.last(where: { $0 < from }) else { return false }
+        land(onRow: r, animated: true)
         return true
     }
 
@@ -351,35 +430,59 @@ final class Reader: NSViewController, CodeViewDelegate {
 
     func scrollToFirstChange() {
         guard let first = changeStops.first else { return }
-        let code = primary
-        scrollColumns(toY: code.rect(ofRow: first).minY - code.visibleRect.height * 0.25, animated: false)
-        updateJumpBar()
+        land(onRow: first, animated: false)
     }
 
     func scrollToLastChange() {
         guard let last = changeStops.last else { return }
-        let code = primary
-        scrollColumns(toY: code.rect(ofRow: last).minY - code.visibleRect.height * 0.25, animated: false)
-        updateJumpBar()
+        land(onRow: last, animated: false)
     }
 
-    /// Moves to the next or previous file's header in the overview.
+    /// Moves to the next or previous file in the overview.
     @discardableResult
     func nextFile(_ dir: Int) -> Bool {
         let code = primary
-        guard let top = topRow(code) else { return false }
-        let current = code.rows[top].file
-        let headers = code.rows.indices.filter { code.rows[$0].kind == .header }
-        let target = dir > 0 ? headers.first { code.rows[$0].file > current } : headers.last { code.rows[$0].file < current }
-        guard let r = target else { return false }
-        scrollColumns(toY: code.rect(ofRow: r).minY + code.style.lineHeight, animated: true)
+        guard let from = caretInView ? caretRow : topRow(code) else { return false }
+        let current = code.rows[from].file
+        guard let next = dir > 0 ? files.indices.first(where: { $0 > current }) : files.indices.last(where: { $0 < current }) else { return false }
+        scrollToFile(next)
         return true
     }
 
+    /// Scrolls the overview to a file, with the caret on its first line.
     func scrollToFile(_ fi: Int) {
         let code = primary
         guard let r = code.rows.firstIndex(where: { $0.file == fi && $0.kind == .header }) else { return }
         scrollColumns(toY: code.rect(ofRow: r).minY + (r == 0 ? 0 : code.style.lineHeight), animated: true)
+        if let first = code.rows[r...].firstIndex(where: { $0.file == fi && $0.kind == .line }) { placeCaret(atRow: first) }
+        updateJumpBar()
+    }
+
+    /// Moves the caret to the next or previous definition in the file.
+    ///
+    /// - Returns: False if there is none in that direction.
+    @discardableResult
+    func stepDefinition(_ dir: Int) -> Bool {
+        guard !overview, let f = files.first, !f.lines.isEmpty else { return false }
+        let here = caret.map { f.lines[$0.line] }.map { $0.kind == .deleted ? max(0, $0.newNo) : $0.newNo - 1 } ?? currentNewLine ?? 0
+        let starts = Set(jumpBar.definitions.map(\.nameLine)).sorted()
+        guard let next = dir > 0 ? starts.first(where: { $0 > here }) : starts.last(where: { $0 < here }),
+              let i = f.index(ofLine: next + 1), let r = row(for: ReaderPosition(file: 0, line: i), in: primary) else { return false }
+        land(onRow: r, animated: true)
+        return true
+    }
+
+    /// Puts the caret on a line without scrolling.
+    func placeCaret(at p: ReaderPosition) {
+        guard let r = row(for: p, in: primary) else { return }
+        placeCaret(atRow: r)
+        updateJumpBar()
+    }
+
+    /// Moves the caret to a line of the shown file, by index into its lines.
+    func land(onLine i: Int, file: Int = 0) {
+        guard let r = row(for: ReaderPosition(file: file, line: i), in: primary) else { return }
+        land(onRow: r, animated: true)
     }
 
     /// The selected source lines of the active column, as a file and line indices.
@@ -399,7 +502,7 @@ final class Reader: NSViewController, CodeViewDelegate {
     }
 
     func focus() {
-        view.window?.makeFirstResponder(primary)
+        view.window?.makeFirstResponder(activeColumn.flatMap { c in columns.contains { $0.code === c } ? c : nil } ?? primary)
     }
 
     var isFocused: Bool { columns.contains { $0.code.window?.firstResponder === $0.code } }
@@ -409,15 +512,20 @@ final class Reader: NSViewController, CodeViewDelegate {
         activeCode.performTextFinderAction(sender)
     }
 
+    /// The zero-based new-side line at the caret when it's in view, else at the top of the view.
+    private var currentNewLine: Int? {
+        guard !overview, let f = files.first, !f.lines.isEmpty else { return nil }
+        let p = (caretInView ? caret : nil) ?? topPosition
+        return p.map { f.lines[min($0.line, f.lines.count - 1)] }.map { $0.newNo > 0 ? $0.newNo - 1 : max(0, $0.oldNo - 1) }
+    }
+
     func updateJumpBar() {
-        let cur = currentFile
-        let style = Style.current(for: view.effectiveAppearance)
+        let style = primary.style
         if overview {
-            jumpBar.update(path: nil, files: files, current: cur, style: style)
+            jumpBar.update(path: nil, files: files, current: currentFile, style: style)
         } else if let f = files.first {
             jumpBar.update(path: f.path, files: files, current: 0, style: style)
-            let top = f.lines.isEmpty ? nil : topPosition.map { f.lines[min($0.line, f.lines.count - 1)] }
-            jumpBar.updateSymbol(line: top.map { $0.newNo > 0 ? $0.newNo - 1 : max(0, $0.oldNo - 1) })
+            jumpBar.updateSymbol(line: currentNewLine)
         }
     }
 
@@ -439,169 +547,16 @@ final class Reader: NSViewController, CodeViewDelegate {
         delegate?.readerJumpToDefinition(word, file: r.file, line: r.line)
     }
 
+    func codeViewCaretMoved(_ v: CodeView) {
+        guard v.window?.firstResponder === v || activeColumn == nil || activeColumn === v else { return }
+        activeColumn = v
+        markActiveColumn()
+        updateJumpBar()
+        delegate?.readerCaretMoved()
+    }
+
     func codeViewMenu(_ v: CodeView, row: Int?) -> NSMenu? {
         let r = row.map { v.rows[$0] }
         return delegate?.readerMenu(file: r?.file, line: r?.kind == .line ? r?.line : nil)
-    }
-}
-
-/// The bar above the code, showing where you are (path, symbol) and the size of the change.
-@MainActor
-final class JumpBar: NSView {
-    let path = NSPathControl()
-    let symbols = NSPopUpButton(frame: .zero, pullsDown: true)
-    let stats = NSTextField(labelWithString: "")
-    private(set) var currentFile: Int?
-    private var definitions: [Symbol] = []
-    private var shownKey = ""
-    var onSelectSymbol: ((Symbol) -> Void)?
-    var onSelectPath: ((String) -> Void)?
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        path.pathStyle = .standard
-        path.isEditable = false
-        path.focusRingType = .none
-        path.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        path.controlSize = .small
-        path.target = self
-        path.action = #selector(pathClicked)
-        path.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        symbols.isBordered = false
-        symbols.controlSize = .small
-        symbols.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        (symbols.cell as? NSPopUpButtonCell)?.arrowPosition = .arrowAtBottom
-        symbols.setContentCompressionResistancePriority(.defaultLow - 1, for: .horizontal)
-        symbols.isHidden = true
-        stats.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
-        stats.setContentCompressionResistancePriority(.required, for: .horizontal)
-        stats.setContentHuggingPriority(.required, for: .horizontal)
-        let row = NSStackView(views: [path, symbols, NSView(), stats])
-        row.orientation = .horizontal
-        row.spacing = 2
-        row.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 12)
-        row.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(row)
-        NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 28),
-            row.leadingAnchor.constraint(equalTo: leadingAnchor),
-            row.trailingAnchor.constraint(equalTo: trailingAnchor),
-            row.topAnchor.constraint(equalTo: topAnchor),
-            row.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func draw(_ dirtyRect: NSRect) {
-        NSColor.windowBackgroundColor.setFill()
-        bounds.fill()
-        NSColor.separatorColor.setFill()
-        NSRect(x: 0, y: 0, width: bounds.width, height: 1).fill()
-    }
-
-    override var isFlipped: Bool { false }
-
-    func update(path p: String?, files: [FileState], current: Int?, style: Style) {
-        let key = "\(p ?? "\u{0}")|\(current ?? -1)|\(files.map { "\(ObjectIdentifier($0).hashValue):\($0.lines.count)" })|\(style.theme.name)|\(style.theme.color("success"))|\(style.theme.color("danger"))"
-        guard key != shownKey else { return }
-        shownKey = key
-        currentFile = current
-        var items: [NSPathControlItem] = []
-        func item(_ title: String, image: NSImage?) -> NSPathControlItem {
-            let i = NSPathControlItem()
-            i.title = title
-            i.image = image
-            return i
-        }
-        let shown = p ?? current.map { files[$0].path }
-        if p == nil {
-            items.append(item("All Changes", image: NSImage(systemSymbolName: "square.stack", accessibilityDescription: nil)))
-        }
-        if let shown {
-            let comps = shown.split(separator: "/").map(String.init)
-            for (i, c) in comps.enumerated() {
-                let isFile = i == comps.count - 1
-                items.append(item(c, image: isFile ? nil : NSImage(systemSymbolName: "folder", accessibilityDescription: nil)))
-            }
-        }
-        path.pathItems = items
-        path.toolTip = shown
-        let addDel: (Int, Int)
-        if p == nil {
-            addDel = files.reduce((0, 0)) { ($0.0 + $1.diff.additions, $0.1 + $1.diff.deletions) }
-        } else {
-            addDel = files.first.map { ($0.diff.additions, $0.diff.deletions) } ?? (0, 0)
-        }
-        let showStats = files.contains(where: \.isChange)
-        let s = NSMutableAttributedString(string: "+\(addDel.0)", attributes: [.foregroundColor: style.theme.color("success")])
-        s.append(NSAttributedString(string: "  −\(addDel.1)", attributes: [.foregroundColor: style.theme.color("danger")]))
-        stats.attributedStringValue = s
-        stats.isHidden = !showStats
-        if p != nil, let f = files.first, let lang = f.language, lang.hasTags {
-            let text = f.sideText(old: false).joined(separator: "\n")
-            definitions = lang.symbols(text).filter(\.isDefinition)
-            symbols.isHidden = definitions.isEmpty
-            rebuildSymbolMenu()
-        } else {
-            definitions = []
-            symbols.isHidden = true
-        }
-    }
-
-    private func rebuildSymbolMenu() {
-        let menu = NSMenu()
-        menu.addItem(withTitle: "", action: nil, keyEquivalent: "")
-        for (i, d) in definitions.enumerated() {
-            let depth = definitions[..<i].filter { $0.range.location <= d.range.location && NSMaxRange($0.range) >= NSMaxRange(d.range) }.count
-            let item = menu.addItem(withTitle: d.name, action: #selector(symbolChosen(_:)), keyEquivalent: "")
-            item.target = self
-            item.tag = i
-            item.indentationLevel = min(depth, 6)
-            item.image = NSImage(systemSymbolName: symbolImage(d.kind), accessibilityDescription: d.kind)
-        }
-        symbols.menu = menu
-    }
-
-    private func symbolImage(_ kind: String) -> String {
-        switch kind {
-        case "class", "struct", "type", "interface", "enum", "trait", "protocol": "cube"
-        case "module", "namespace", "impl": "shippingbox"
-        case "method", "function": "function"
-        case "constant", "variable", "field", "property": "character.textbox"
-        default: "number"
-        }
-    }
-
-    /// Returns the innermost definition around a zero-based, new-side line.
-    func enclosing(line: Int) -> Symbol? {
-        definitions.last { $0.lines.contains(line) }
-    }
-
-    /// Shows the definition enclosing a zero-based, new-side line.
-    func updateSymbol(line: Int?) {
-        guard !symbols.isHidden, let line else { return }
-        let enclosing = enclosing(line: line) ?? definitions.last { $0.lines.lowerBound <= line }
-        symbols.menu?.item(at: 0)?.title = enclosing?.name ?? "No Selection"
-        symbols.synchronizeTitleAndSelectedItem()
-        symbols.setTitle(enclosing?.name ?? "No Selection")
-    }
-
-    @objc private func symbolChosen(_ sender: NSMenuItem) {
-        guard sender.tag < definitions.count else { return }
-        onSelectSymbol?(definitions[sender.tag])
-    }
-
-    @objc private func pathClicked() {
-        guard let clicked = path.clickedPathItem, let idx = path.pathItems.firstIndex(of: clicked) else { return }
-        let titles = path.pathItems.map(\.title)
-        let offset = titles.first == "All Changes" ? 1 : 0
-        guard idx >= offset else { return }
-        onSelectPath?(titles[offset...idx].joined(separator: "/"))
-    }
-
-    func showSymbolMenu() {
-        guard !symbols.isHidden else { NSSound.beep(); return }
-        symbols.performClick(nil)
     }
 }

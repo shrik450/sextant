@@ -6,11 +6,12 @@
 #
 # The repository covers languages, renames, binary files, mode changes, deletions, CRLF, tabs,
 # unicode, missing trailing newlines, long lines, lock files, a feature branch with a merge,
-# stashes, and staged, unstaged and untracked working-tree changes.
+# stashes, and staged, unstaged and untracked working-tree changes. It also has a branch that
+# only exists on a remote, and a linked worktree at <dir>-agent with a commit and uncommitted work.
 
 set -euo pipefail
 dir=$1
-rm -rf "$dir"
+rm -rf "$dir" "$dir-agent"
 mkdir -p "$dir"
 cd "$dir"
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
@@ -235,6 +236,24 @@ export function greet(user: User): string {
 }
 EOF
 commit -am "Add greet()"
+
+git checkout -q -b feature/remote main
+echo "Remote-only change." >> docs/guide.md
+git add docs/guide.md
+commit -m "Document the remote branch"
+git update-ref refs/remotes/origin/feature/remote-only HEAD
+git update-ref refs/remotes/origin/main main
+git checkout -q feature/peek
+git branch -q -D feature/remote
+
+git worktree add -q -b feature/agent "$dir-agent" main
+(
+  cd "$dir-agent"
+  edit 's/fmt.Println("hello")/fmt.Println("hello from the agent")/' main.go
+  commit -am "Agent: greet from the agent"
+  echo "// unfinished" >> web/app.ts
+  echo "Agent scratch notes." > agent-notes.txt
+)
 
 echo "stashed change" >> README.md
 git stash push -q -m "experiment with README"

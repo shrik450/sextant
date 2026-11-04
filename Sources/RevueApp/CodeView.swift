@@ -145,6 +145,7 @@ protocol CodeViewDelegate: AnyObject {
     func codeView(_ v: CodeView, perform action: ReaderAction)
     func codeView(_ v: CodeView, jumpToDefinitionOf word: String, row: Int)
     func codeViewMenu(_ v: CodeView, row: Int?) -> NSMenu?
+    func codeViewCaretMoved(_ v: CodeView)
 }
 
 /// One read-only column of code.
@@ -283,10 +284,54 @@ final class CodeView: NSTextView {
         return files[rows[r].file].lines[rows[r].line]
     }
 
+    /// Shows the caret while the view has focus, though the text can't be edited.
+    override var shouldDrawInsertionPoint: Bool {
+        window?.firstResponder === self && window?.isKeyWindow == true && selectedRange().length == 0
+    }
+
+    /// Whether this column highlights the caret's line, which only the column with the caret does.
+    var showsCurrentLine = true { didSet { if showsCurrentLine != oldValue { needsDisplay = true } } }
+
+    /// The row the caret is on, while nothing is selected.
+    private var caretRow: Int? {
+        let sel = selectedRange()
+        guard sel.length == 0, !rows.isEmpty else { return nil }
+        return row(at: sel.location)
+    }
+
+    override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {
+        if !movingVertically { goalColumn = nil }
+        let before = caretRow
+        super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
+        let after = caretRow
+        for r in [before, after].compactMap({ $0 }) where r < rows.count {
+            setNeedsDisplay(NSRect(x: visibleRect.minX, y: rect(ofRow: r).minY, width: visibleRect.width, height: rect(ofRow: r).height + style.lineHeight))
+        }
+        if !stillSelecting { codeDelegate?.codeViewCaretMoved(self) }
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        defer { needsDisplay = true }
+        return super.becomeFirstResponder()
+    }
+
+    override func resignFirstResponder() -> Bool {
+        defer { needsDisplay = true }
+        return super.resignFirstResponder()
+    }
+
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
         let t = style.theme
+        let current = showsCurrentLine ? caretRow : nil
+        let focused = window?.firstResponder === self
         visibleRows(in: rect) { r, frag in
+            defer {
+                if r == current {
+                    t.color("selection").withAlphaComponent(focused ? 0.16 : 0.07).setFill()
+                    NSRect(x: rect.minX, y: frag.minY, width: rect.width, height: frag.height).fill(using: .sourceOver)
+                }
+            }
             let full = NSRect(x: rect.minX, y: frag.minY, width: rect.width, height: frag.height)
             switch rows[r].kind {
             case .line:
@@ -351,8 +396,106 @@ final class CodeView: NSTextView {
             return
         }
         if mods.isEmpty, NSApp.mainMenu?.performKeyEquivalent(with: event) == true { return }
-        super.keyDown(with: event)
+        interpretKeyEvents([event])
     }
+
+    /// The fixed end of a selection being extended, and the end that moves.
+    private var anchorIndex = 0
+    private var headIndex = 0
+    /// The column vertical moves aim for, kept while moving up and down through shorter lines.
+    private var goalColumn: Int?
+    private var movingVertically = false
+
+    private var head: Int {
+        let sel = selectedRange()
+        if sel == NSRange(location: min(anchorIndex, headIndex), length: abs(headIndex - anchorIndex)) { return headIndex }
+        return sel.location
+    }
+
+    /// Moves the caret, or the moving end of the selection, and keeps it in view.
+    ///
+    /// A text view that can't be edited doesn't move its insertion point, so the move commands
+    /// below do it here.
+    private func moveCaret(to index: Int, extend: Bool) {
+        let i = max(0, min(index, textStorage?.length ?? 0))
+        let sel = selectedRange()
+        let anchor = extend ? (sel == NSRange(location: min(anchorIndex, headIndex), length: abs(headIndex - anchorIndex)) ? anchorIndex : sel.location) : i
+        setSelectedRange(NSRange(location: min(anchor, i), length: abs(i - anchor)))
+        anchorIndex = anchor
+        headIndex = i
+        scrollRangeToVisible(NSRange(location: i, length: 0))
+    }
+
+    /// The next row in a direction that holds a line of code.
+    private func lineRow(from r: Int, _ dir: Int) -> Int? {
+        var n = r + dir
+        while rows.indices.contains(n), rows[n].kind != .line { n += dir }
+        return rows.indices.contains(n) ? n : nil
+    }
+
+    private func moveVertically(_ dir: Int, extend: Bool) {
+        let h = head
+        guard let r = row(at: h), let n = lineRow(from: r, dir) else { NSSound.beep(); return }
+        let col = goalColumn ?? (h - rowStarts[r])
+        let range = charRange(ofRow: n)
+        movingVertically = true
+        moveCaret(to: range.location + min(col, range.length), extend: extend)
+        movingVertically = false
+        goalColumn = col
+    }
+
+    private func moveHorizontally(_ dir: Int, extend: Bool) {
+        let sel = selectedRange()
+        if !extend, sel.length > 0 { moveCaret(to: dir < 0 ? sel.location : NSMaxRange(sel), extend: false); return }
+        let h = head
+        guard let r = row(at: h) else { return }
+        let range = charRange(ofRow: r)
+        if dir < 0, h == range.location, let p = lineRow(from: r, -1) { moveCaret(to: NSMaxRange(charRange(ofRow: p)), extend: extend); return }
+        if dir > 0, h == NSMaxRange(range), let n = lineRow(from: r, 1) { moveCaret(to: rowStarts[n], extend: extend); return }
+        moveCaret(to: h + dir, extend: extend)
+    }
+
+    private func moveByWord(_ forward: Bool, extend: Bool) {
+        guard let s = textStorage, s.length > 0 else { return }
+        moveCaret(to: s.nextWord(from: min(head, s.length - 1), forward: forward), extend: extend)
+    }
+
+    private func moveToLineEdge(_ end: Bool, extend: Bool) {
+        guard let r = row(at: head) else { return }
+        let range = charRange(ofRow: r)
+        moveCaret(to: end ? NSMaxRange(range) : range.location, extend: extend)
+    }
+
+    private func moveToDocumentEdge(_ end: Bool, extend: Bool) {
+        guard let r = end ? lineRow(from: rows.count, -1) : lineRow(from: -1, 1) else { return }
+        let range = charRange(ofRow: r)
+        moveCaret(to: end ? NSMaxRange(range) : range.location, extend: extend)
+    }
+
+    override func moveUp(_ sender: Any?) { moveVertically(-1, extend: false) }
+    override func moveDown(_ sender: Any?) { moveVertically(1, extend: false) }
+    override func moveUpAndModifySelection(_ sender: Any?) { moveVertically(-1, extend: true) }
+    override func moveDownAndModifySelection(_ sender: Any?) { moveVertically(1, extend: true) }
+    override func moveLeft(_ sender: Any?) { moveHorizontally(-1, extend: false) }
+    override func moveRight(_ sender: Any?) { moveHorizontally(1, extend: false) }
+    override func moveBackward(_ sender: Any?) { moveHorizontally(-1, extend: false) }
+    override func moveForward(_ sender: Any?) { moveHorizontally(1, extend: false) }
+    override func moveLeftAndModifySelection(_ sender: Any?) { moveHorizontally(-1, extend: true) }
+    override func moveRightAndModifySelection(_ sender: Any?) { moveHorizontally(1, extend: true) }
+    override func moveWordLeft(_ sender: Any?) { moveByWord(false, extend: false) }
+    override func moveWordRight(_ sender: Any?) { moveByWord(true, extend: false) }
+    override func moveWordLeftAndModifySelection(_ sender: Any?) { moveByWord(false, extend: true) }
+    override func moveWordRightAndModifySelection(_ sender: Any?) { moveByWord(true, extend: true) }
+    override func moveToLeftEndOfLine(_ sender: Any?) { moveToLineEdge(false, extend: false) }
+    override func moveToRightEndOfLine(_ sender: Any?) { moveToLineEdge(true, extend: false) }
+    override func moveToBeginningOfLine(_ sender: Any?) { moveToLineEdge(false, extend: false) }
+    override func moveToEndOfLine(_ sender: Any?) { moveToLineEdge(true, extend: false) }
+    override func moveToLeftEndOfLineAndModifySelection(_ sender: Any?) { moveToLineEdge(false, extend: true) }
+    override func moveToRightEndOfLineAndModifySelection(_ sender: Any?) { moveToLineEdge(true, extend: true) }
+    override func moveToBeginningOfDocument(_ sender: Any?) { moveToDocumentEdge(false, extend: false) }
+    override func moveToEndOfDocument(_ sender: Any?) { moveToDocumentEdge(true, extend: false) }
+    override func moveToBeginningOfDocumentAndModifySelection(_ sender: Any?) { moveToDocumentEdge(false, extend: true) }
+    override func moveToEndOfDocumentAndModifySelection(_ sender: Any?) { moveToDocumentEdge(true, extend: true) }
 
     /// Returns the range of the identifier (letters, digits, `_`, `$`) at or just before a
     /// character index.

@@ -68,20 +68,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
+    /// Opens the repository containing a path, reviewing a revision or all the work in that
+    /// checkout.
+    ///
+    /// A repository has one window, whichever worktree it's opened from; opening another of its
+    /// worktrees reviews that one in the same window.
     func openRepo(path: String, spec: String?, completion: ((RepoWindowController?) -> Void)? = nil) {
         let url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
         Task {
             do {
                 let loc = try await Git.locate(url.hasDirectoryPath || isDirectory(url) ? url : url.deletingLastPathComponent(), executable: gitPath)
-                if let existing = controllers.first(where: { $0.repo.root.standardizedFileURL == loc.root.standardizedFileURL }) {
+                if let existing = controllers.first(where: { $0.repository.commonDir.standardizedFileURL == loc.commonDir.standardizedFileURL }) {
                     existing.showWindow(nil)
                     existing.window?.makeKeyAndOrderFront(nil)
-                    if let spec { await existing.open(spec: spec) }
+                    if let spec { await existing.open(spec: spec, in: loc.root) } else { existing.openWork(in: loc.root) }
                     NSApp.activate()
                     completion?(existing)
                     return
                 }
-                let wc = RepoWindowController(repo: Repo(location: loc, gitPath: gitPath))
+                let wc = RepoWindowController(repository: Repository(commonDir: loc.commonDir, gitPath: gitPath), home: loc.root)
                 controllers.append(wc)
                 wc.showWindow(nil)
                 wc.window?.makeKeyAndOrderFront(nil)
@@ -119,7 +124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private func saveOpenRepos() {
         guard automation == nil else { return }
-        UserDefaults.standard.set(controllers.map(\.repo.root.path), forKey: "openRepos")
+        UserDefaults.standard.set(controllers.compactMap { $0.home?.path }, forKey: "openRepos")
     }
 
     @objc func openDocument(_ sender: Any?) {
@@ -165,8 +170,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             i.tag = tag
             m.addItem(i)
         }
-        let arrowDown = String(Character(UnicodeScalar(NSDownArrowFunctionKey)!))
-        let arrowUp = String(Character(UnicodeScalar(NSUpArrowFunctionKey)!))
+        /// Adds a hidden second shortcut for the item above, such as a Mac-style key beside a letter key.
+        func alternate(_ m: NSMenu, _ key: String, _ mods: NSEvent.ModifierFlags) {
+            guard let above = m.items.last else { return }
+            item(m, above.title, above.action, key, mods, tag: above.tag)
+            m.items.last?.isHidden = true
+            m.items.last?.allowsKeyEquivalentWhenHidden = true
+        }
+        let down = String(Character(UnicodeScalar(NSDownArrowFunctionKey)!))
+        let up = String(Character(UnicodeScalar(NSUpArrowFunctionKey)!))
+        let left = String(Character(UnicodeScalar(NSLeftArrowFunctionKey)!))
+        let right = String(Character(UnicodeScalar(NSRightArrowFunctionKey)!))
 
         _ = menu("Revue") { m in
             item(m, "About Revue", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), "", [])
@@ -214,68 +228,78 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             item(fm, "Find Previous", #selector(NSResponder.performTextFinderAction(_:)), "g", [.command, .shift], tag: NSTextFinder.Action.previousMatch.rawValue)
             item(fm, "Use Selection for Find", #selector(NSResponder.performTextFinderAction(_:)), "e", tag: NSTextFinder.Action.setSearchString.rawValue)
             fm.addItem(.separator())
-            item(fm, "Find in Repository…", #selector(W.findInRepository(_:)), "f", [.command, .shift])
+            item(fm, "Find in Files…", #selector(W.findInRepository(_:)), "f", [.command, .shift])
             item(fm, "Find References", #selector(W.findReferencesAction(_:)), "f", [.command, .control, .shift])
-            item(fm, "Filter", #selector(W.focusFilter(_:)), "f", [.command, .option])
+            item(fm, "Find File…", #selector(W.focusFilter(_:)), "f", [.command, .option])
             find.submenu = fm
             m.addItem(find)
         }
         _ = menu("View") { m in
             item(m, "Changes", #selector(W.showChangesTab(_:)), "1")
-            item(m, "Files", #selector(W.showFilesTab(_:)), "2")
-            item(m, "Search", #selector(W.showSearchTab(_:)), "3")
-            item(m, "Notes", #selector(W.showNotesTab(_:)), "4")
+            item(m, "Find", #selector(W.showFindTab(_:)), "2")
+            item(m, "Notes", #selector(W.showNotesTab(_:)), "3")
             m.addItem(.separator())
             item(m, "Unified", #selector(W.showUnified(_:)), "1", [.command, .control])
             item(m, "Side by Side", #selector(W.showSideBySide(_:)), "2", [.command, .control])
             item(m, "Show Unchanged Lines", #selector(W.toggleShowAll(_:)), "f", [])
+            item(m, "Show Unchanged Files", #selector(W.toggleUnchangedFiles(_:)), "u", [.command, .control])
             item(m, "Wrap Lines", #selector(W.toggleWrap(_:)), "w", [.command, .control, .shift])
             item(m, "Blame", #selector(W.toggleBlame(_:)), "b", [.command, .option])
             m.addItem(.separator())
-            item(m, "Toggle Sidebar", #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.command, .control])
-            item(m, "Hide Navigator", #selector(W.toggleNavigator(_:)), "n", [.command, .control])
+            item(m, "Show Navigator", #selector(NSSplitViewController.toggleSidebar(_:)), "0")
+            item(m, "Show Inspector", #selector(NSSplitViewController.toggleInspector(_:)), "0", [.command, .option])
             m.addItem(.separator())
             item(m, "Bigger", #selector(W.biggerFont(_:)), "+")
             item(m, "Bigger", #selector(W.biggerFont(_:)), "=")
             m.items.last?.isHidden = true
             m.items.last?.allowsKeyEquivalentWhenHidden = true
             item(m, "Smaller", #selector(W.smallerFont(_:)), "-")
-            item(m, "Actual Size", #selector(W.actualSizeFont(_:)), "0")
+            item(m, "Actual Size", #selector(W.actualSizeFont(_:)), "0", [.command, .control])
             m.addItem(.separator())
         }
         _ = menu("Go") { m in
             item(m, "Back", #selector(W.goBack(_:)), "[")
             item(m, "Forward", #selector(W.goForward(_:)), "]")
             m.addItem(.separator())
+            item(m, "Choose What to Review…", #selector(W.chooseSubject(_:)), "r", [.command, .shift])
             item(m, "Open Quickly…", #selector(W.openQuickly(_:)), "o", [.command, .shift])
             item(m, "Go to Line…", #selector(W.goToLine(_:)), "l")
+            m.addItem(.separator())
             item(m, "Jump to Definition", #selector(W.jumpToDefinitionAction(_:)), "j", [.command, .control])
-            item(m, "Symbols", #selector(W.showSymbols(_:)), "6", [.control])
+            item(m, "Definitions", #selector(W.showSymbols(_:)), "6", [.control])
+            item(m, "Next Definition", #selector(W.nextDefinition(_:)), down, [.control, .option])
+            item(m, "Previous Definition", #selector(W.previousDefinition(_:)), up, [.control, .option])
             item(m, "File History", #selector(W.showFileHistory(_:)), "h", [.command, .control])
             m.addItem(.separator())
             item(m, "All Changes", #selector(W.showAllChanges(_:)), "a", [.command, .shift])
             item(m, "Next Change", #selector(W.nextChange(_:)), "j", [])
+            alternate(m, down, [.command, .option])
             item(m, "Previous Change", #selector(W.previousChange(_:)), "k", [])
+            alternate(m, up, [.command, .option])
             item(m, "Next File", #selector(W.nextFile(_:)), "n", [])
+            alternate(m, right, [.command, .option])
             item(m, "Previous File", #selector(W.previousFile(_:)), "p", [])
+            alternate(m, left, [.command, .option])
             item(m, "Next Unreviewed File", #selector(W.nextUnreviewed(_:)), "u", [])
+            alternate(m, "u", [.command, .option])
             m.addItem(.separator())
+            item(m, "All Commits", #selector(W.showWholeReview(_:)), "a", [.command, .control])
             item(m, "Uncommitted Changes", #selector(W.showUncommitted(_:)), "u", [.command, .shift])
-            item(m, "Current Branch", #selector(W.showBranch(_:)), "b", [.command, .shift])
-            item(m, "Revision…", #selector(W.goToRevision(_:)), "r", [.command, .shift])
-            item(m, "Older Commit", #selector(W.olderCommit(_:)), arrowDown, [.command])
-            item(m, "Newer Commit", #selector(W.newerCommit(_:)), arrowUp, [.command])
+            item(m, "Older Commit", #selector(W.olderCommit(_:)), down, [.command, .control])
+            item(m, "Newer Commit", #selector(W.newerCommit(_:)), up, [.command, .control])
             m.addItem(.separator())
-            item(m, "History", #selector(W.focusSidebar(_:)), "1", [.command, .option])
-            item(m, "Navigator", #selector(W.focusNavigator(_:)), "2", [.command, .option])
-            item(m, "Reader", #selector(W.focusReader(_:)), "3", [.command, .option])
+            item(m, "Navigator", #selector(W.focusNavigator(_:)), "1", [.command, .option])
+            item(m, "Reader", #selector(W.focusReader(_:)), "2", [.command, .option])
+            item(m, "Inspector", #selector(W.focusInspector(_:)), "3", [.command, .option])
         }
         _ = menu("Review") { m in
             item(m, "Mark as Reviewed", #selector(W.toggleReviewedAction(_:)), "r", [])
+            alternate(m, "r", [.command, .control])
             item(m, "Mark All as Reviewed", #selector(W.markAllReviewed(_:)), "r", [.command, .option])
             item(m, "Mark All as Not Reviewed", #selector(W.markAllNotReviewed(_:)), "r", [.command, .option, .shift])
             m.addItem(.separator())
             item(m, "Add Note", #selector(W.addNote(_:)), "c", [])
+            alternate(m, "n", [.command, .option])
             item(m, "Copy Notes as Markdown", #selector(W.copyAllNotes(_:)), "")
         }
         let window = menu("Window") { m in

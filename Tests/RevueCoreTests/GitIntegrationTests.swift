@@ -27,7 +27,7 @@ import Testing
 
     @Test func uncommittedIncludesUntrackedAndHashesWorktree() async throws {
         #expect(Self.ready)
-        let files = try await repo.diff(.uncommitted)
+        let files = try await repo.diff(.worktree(since: nil))
         let paths = files.map(\.path)
         #expect(paths == ["dir with space/file name.txt", "main.go", "notes.md", "scripts/build.py", "src/lib.rs"])
         #expect(files.allSatisfy { $0.change.newOid != zeroOid })
@@ -75,7 +75,7 @@ import Testing
 
     @Test func wholeFileReproducesBothSides() async throws {
         #expect(Self.ready)
-        for target in [Target.uncommitted, .staged, .unstaged] {
+        for target in [Target.worktree(since: nil), .staged, .unstaged] {
             for file in try await repo.diff(target) where !file.change.isAdded && !file.isBinary && !file.change.isDeleted {
                 let old = try await repo.oldLines(of: file)
                 let all = wholeFile(file.hunks, oldLines: old)

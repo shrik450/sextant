@@ -4,15 +4,19 @@ import Foundation
 let usage = """
 usage: revue [path] [revision]
 
-Opens the repository containing <path> (default: current directory) in Revue.
+Opens the repository containing <path> (default: the current directory) in Revue.
 
 revision:
-  (none)            uncommitted changes, or the latest commit if the tree is clean
+  (none)            all the work in the checkout: its commits since the base branch,
+                    and whatever isn't committed yet
+  uncommitted       only what isn't committed yet
   staged            staged changes
   unstaged          unstaged changes
-  <commit>          one commit (sha, branch, tag, HEAD~2, stash@{0}, …)
-  <a>..<b>          diff between two revisions
-  <a>...<b>         changes on <b> since it diverged from <a>
+  <branch>          a branch, since it split from the base branch
+  #<number>         an open pull request (needs the GitHub CLI)
+  <commit>          one commit (sha, tag, HEAD~2, stash@{0}, …)
+  <a>..<b>          the difference between two revisions
+  <a>...<b>         the changes on <b> since it split from <a>
 """
 
 func fail(_ msg: String) -> Never {
@@ -83,7 +87,7 @@ let gitCommand: [String] = {
 let (status, top) = git(["rev-parse", "--show-toplevel"])
 guard status == 0 else { fail("not a git repository: \(path)") }
 
-if let r = rev, !["staged", "unstaged", "uncommitted", "cached", "worktree", "index"].contains(r.lowercased()) {
+if let r = rev, !["staged", "unstaged", "uncommitted", "cached", "worktree", "working", "wip", "index"].contains(r.lowercased()), !(r.hasPrefix("#") && Int(r.dropFirst()) != nil) {
     let sides: [String]
     if let range = r.range(of: "...") {
         sides = [String(r[..<range.lowerBound]), String(r[range.upperBound...])]

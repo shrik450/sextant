@@ -1,4 +1,5 @@
 import AppKit
+import RevueCore
 
 /// Drives the app from a script so behaviour can be verified without a human.
 ///
@@ -314,5 +315,201 @@ final class Automation {
             if FileManager.default.fileExists(atPath: path) { break }
             try? await Task.sleep(for: .milliseconds(50))
         }
+    }
+}
+
+/// What the window shows, as plain values, for scripts to check.
+extension RepoWindowController {
+    private var focusName: String {
+        guard let r = window?.firstResponder else { return "" }
+        let editing = (r as? NSTextView)?.delegate as? NSView
+        switch editing ?? (r as? NSView) {
+        case navigator.changes.outline: return "files"
+        case navigator.changes.filter: return "filesFilter"
+        case navigator.changes.commits: return "commits"
+        case navigator.search.outline: return "search"
+        case navigator.search.field: return "searchField"
+        case navigator.notes.table: return "notes"
+        case inspector.outline: return "inspector"
+        default:
+            if r is CodeView { return "reader" }
+            if let picker = picker?.contentViewController as? SubjectPicker, editing === picker.field { return "picker" }
+            return String(describing: type(of: r))
+        }
+    }
+
+    private func describe(_ s: Subject?) -> String {
+        switch s {
+        case .worktree(let root)?: "worktree:\(root.path)"
+        case .branch(let b)?: "branch:\(b)"
+        case .pullRequest(let n)?: "pr:\(n)"
+        case .commit(let c)?: "commit:\(c)"
+        case .comparison(let a, let b, let since)?: "comparison:\(a)\(since ? "..." : "..")\(b)"
+        case .stash(let s)?: "stash:\(s)"
+        case nil: "none"
+        }
+    }
+
+    private func describe(_ s: Scope?) -> String {
+        switch s {
+        case .everything?: "everything"
+        case .uncommitted?: "uncommitted"
+        case .staged?: "staged"
+        case .unstaged?: "unstaged"
+        case .commits(let n, let o)?: "commits:\(n.prefix(7))..\(o.prefix(7))"
+        case nil: "none"
+        }
+    }
+
+    private func describe(_ t: Target?) -> String {
+        switch t {
+        case .worktree(let since)?: "worktree:\(since?.prefix(7) ?? "HEAD")"
+        case .staged?: "staged"
+        case .unstaged?: "unstaged"
+        case .commit(let c)?: "commit:\(c.prefix(7))"
+        case .range(let b, let h)?: "range:\(b.prefix(7))..\(h.prefix(7))"
+        case .stash(let s)?: "stash:\(s.prefix(7))"
+        case nil: "none"
+        }
+    }
+
+    /// The visible rows of an outline, indented by level.
+    private func rows(of o: NSOutlineView, _ text: (Any) -> String) -> [String] {
+        (0..<min(o.numberOfRows, 120)).compactMap { r in
+            guard let item = o.item(atRow: r) else { return nil }
+            let mark = o.selectedRowIndexes.contains(r) ? "> " : ""
+            return mark + String(repeating: "  ", count: o.level(forRow: r)) + text(item)
+        }
+    }
+
+    func stateSnapshot() -> [String: Any] {
+        let focusString: String = switch focus {
+        case .overview?: "overview"
+        case .file(let p)?: "file:\(p)"
+        case nil: ""
+        }
+        let loc = currentLocation()
+        let tree = rows(of: navigator.changes.outline) { item in
+            guard let i = item as? ChangesController.Item else { return "?" }
+            switch i.kind {
+            case .allChanges: return "All Changes \(i.reviewed)/\(i.changed)"
+            case .folder: return "\(i.name)/ \(i.reviewed)/\(i.changed)"
+            case .folded: return "⋯ \(i.changed) unchanged"
+            case .file: return (i.showsFolder ? i.path : i.name) + (i.file.map { " [\(statusLetter($0.diff.change.status).0)\($0.reviewed ? " ✓" : "")]" } ?? "")
+            }
+        }
+        let inspectorRows = rows(of: inspector.outline) { item in
+            guard let e = item as? Inspector.Entry else { return "?" }
+            switch e.kind {
+            case .section(let t): return "# \(t)"
+            case .symbol(let s): return "\(s.name) \(s.change)"
+            case .change(let r, let enclosing): return "change @\(r.newLine + 1) +\(r.additions) -\(r.deletions)" + (enclosing.map { " in \($0)" } ?? "")
+            case .file(let f, _): return f.path
+            case .card(let text): return "card: " + text.string.replacingOccurrences(of: "\n", with: " | ")
+            case .message(let m): return "(\(m))"
+            }
+        }
+        let scopes: [String] = navigator.changes.scopeRows.enumerated().map { i, r in
+            let mark = navigator.changes.commits.selectedRowIndexes.contains(i) ? "> " : ""
+            switch r {
+            case .everything(let t, _): return mark + t
+            case .uncommitted(let n): return mark + "Uncommitted \(n)"
+            case .commit(let c): return mark + "\(c.shortOid) \(c.subject)"
+            }
+        }
+        var pickerRows: [String] = []
+        if let p = picker, p.isShown, let vc = p.contentViewController as? SubjectPicker {
+            pickerRows = vc.rows.enumerated().map { i, r in
+                let mark = vc.table.selectedRow == i ? "> " : ""
+                switch r {
+                case .section(let s): return "# " + s
+                case .worktree(let w): return mark + "worktree \(w.name) \(w.branch ?? "")"
+                case .pullRequest(let pr): return mark + "pr #\(pr.number) \(pr.headRefName)"
+                case .branch(let b): return mark + "branch \(b.name)"
+                case .commit(let c): return mark + "commit \(c.shortOid) \(c.subject)"
+                case .stash(let s): return mark + "stash \(s.ref)"
+                case .typed(let t, _): return mark + "typed \(t)"
+                }
+            }
+        }
+        let caretText: String = reader.caret.map { p in
+            guard reader.files.indices.contains(p.file), !reader.files[p.file].lines.isEmpty else { return "" }
+            let f = reader.files[p.file]
+            let (n, old) = f.lineNumber(at: p.line)
+            let code = reader.activeCode
+            let col = code.selectedRange().location - code.charRange(ofRow: reader.caretRow ?? 0).location
+            return "\(f.path):\(n)\(old ? " (old)" : ""):\(col + 1)"
+        } ?? ""
+        return [
+            "repo": repository.commonDir.path,
+            "home": home?.path ?? "",
+            "subject": describe(review?.subject),
+            "base": review?.base ?? "",
+            "scope": describe(review?.scope),
+            "target": describe(target),
+            "subjectTitle": subjectControl?.subject.title ?? "",
+            "baseShown": subjectControl.map { !$0.base.isHidden } ?? false,
+            "baseTitle": subjectControl?.base.titleOfSelectedItem ?? "",
+            "subtitle": window?.subtitle ?? "",
+            "title": window?.title ?? "",
+            "error": lastError ?? "",
+            "split": reader.split,
+            "columns": reader.primary.side == 1 ? 2 : 1,
+            "focus": focusString,
+            "top": loc.map { "\($0.top.number)\($0.top.old ? " (old)" : "")" } ?? "",
+            "caret": caretText,
+            "selection": NSStringFromRange(reader.activeCode.selectedRange()) + " row \(reader.caretRow ?? -1) of \(reader.activeCode.rows.count) len \(reader.activeCode.textStorage?.length ?? 0)",
+            "currentChange": currentChange.map { changes[$0].path } ?? "",
+            "isWhole": focusedFile?.isWhole ?? false,
+            "rows": reader.primary.rows.count,
+            "firstResponder": focusName,
+            "windowFrame": NSStringFromRect(window?.frame ?? .zero),
+            "isKey": window?.isKeyWindow ?? false,
+            "navigatorCollapsed": split.splitViewItems[0].isCollapsed,
+            "inspectorCollapsed": split.splitViewItems[2].isCollapsed,
+            "files": changes.map { ["path": $0.path, "status": String($0.diff.change.status), "reviewed": $0.reviewed, "add": $0.diff.additions, "del": $0.diff.deletions] },
+            "scopes": scopes,
+            "tree": tree,
+            "inspector": inspectorRows,
+            "picker": pickerRows,
+            "navigatorTab": "\(navigator.tab)",
+            "searchStatus": navigator.search.status.stringValue,
+            "notes": notes.notes.map(\.reference),
+            "back": backStack.count,
+            "forward": forwardStack.count,
+            "blame": reader.blame != nil,
+            "selectedText": reader.selectedText ?? "",
+            "jumpBar": reader.jumpBar.components,
+            "symbol": reader.jumpBar.symbols.isHidden ? "" : reader.jumpBar.symbols.titleOfSelectedItem ?? "",
+            "visibleRows": visibleRowsInWindow(),
+            "fontSize": Appearance.shared.font.pointSize,
+        ]
+    }
+
+    /// Returns the visible reader rows with window coordinates (top-left origin), for scripted clicks.
+    func visibleRowsInWindow() -> [[String: Any]] {
+        guard let cv = window?.contentView else { return [] }
+        let code = reader.primary
+        var out: [[String: Any]] = []
+        code.visibleRows(in: code.visibleRect) { r, frag in
+            guard out.count < 80 else { return }
+            let row = code.rows[r]
+            let kind: String = switch row.kind {
+            case .line: {
+                let l = code.files[row.file].lines[row.line]
+                let sign = l.kind == .added ? "+" : l.kind == .deleted ? "-" : " "
+                return "\(sign)\(l.kind == .deleted ? l.oldNo : l.newNo) \(l.text.prefix(40))"
+            }()
+            case .filler: "filler"
+            case .fold(let range): "fold \(range.count)"
+            case .gap: "gap"
+            case .header: "header \(code.files[row.file].path)"
+            case .notice(let s): "notice \(s)"
+            case .note: "note"
+            }
+            let rect = code.convert(frag, to: nil)
+            out.append(["kind": kind, "y": cv.bounds.height - rect.midY, "x": rect.minX + 40])
+        }
+        return out
     }
 }

@@ -125,7 +125,7 @@ public struct Git: Sendable {
     }
 
     public func stashes() async -> [Stash] {
-        guard let data = try? await run(["stash", "list", "--format=%x1e%H%x1f%P%x1f%gd%x1f%at%x1f%s"]) else { return [] }
+        guard let data = try? await run(["log", "--walk-reflogs", "--format=%x1e%H%x1f%P%x1f%gd%x1f%at%x1f%s", "refs/stash", "--"]) else { return [] }
         return String(decoding: data, as: UTF8.self).split(separator: "\u{1e}").compactMap { r in
             let f = r.trimmingCharacters(in: .newlines).split(separator: "\u{1f}", omittingEmptySubsequences: false)
             guard f.count >= 5 else { return nil }
@@ -149,15 +149,15 @@ public struct Git: Sendable {
 
     /// Resolves the two sides of a target to arguments for `git diff`.
     public func diffArgs(_ target: Target) async throws -> [String] {
-        let head = await head()
         switch target {
-        case .uncommitted: return [head ?? emptyTreeOid]
-        case .staged: return ["--cached", head ?? emptyTreeOid]
+        case .worktree(let since?): return [since]
+        case .worktree(nil): return [await head() ?? emptyTreeOid]
+        case .staged: return ["--cached", await head() ?? emptyTreeOid]
         case .unstaged: return []
         case .commit(let c):
             let parent = await resolve(c + "^1")
             return [parent ?? emptyTreeOid, c]
-        case .range(let base, let head, _): return [base, head]
+        case .range(let base, let head): return [base, head]
         case .stash(let s): return [s + "^1", s]
         }
     }

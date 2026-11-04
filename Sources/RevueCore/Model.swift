@@ -61,6 +61,9 @@ public struct CommitDetail: Sendable, Hashable {
     public var committer: String
     public var committerDate: Date
     public var message: String
+
+    /// The message's first line.
+    public var summary: String { message.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? "" }
 }
 
 public struct Stash: Sendable, Hashable, Identifiable {
@@ -143,28 +146,29 @@ public struct FileDiff: Sendable, Hashable, Identifiable {
     public var lineCount: Int { hunks.reduce(0) { $0 + $1.lines.count } }
 }
 
-/// What is being reviewed.
+/// The two sides of a diff to load.
 public enum Target: Sendable, Hashable {
-    case uncommitted
+    /// The working files, including untracked ones, against a commit, or against HEAD when
+    /// `since` is nil.
+    case worktree(since: String?)
     case staged
     case unstaged
+    /// A commit against its first parent.
     case commit(String)
-    /// A tree diff `base..head`.
-    ///
-    /// `label` is what the user asked for, such as `main...HEAD`.
-    case range(base: String, head: String, label: String)
+    /// The tree diff `base..head`.
+    case range(base: String, head: String)
     case stash(String)
 
     public var includesWorktree: Bool {
         switch self {
-        case .uncommitted, .unstaged: true
+        case .worktree, .unstaged: true
         default: false
         }
     }
 
     public var includesIndex: Bool {
         switch self {
-        case .uncommitted, .unstaged, .staged: true
+        case .worktree, .unstaged, .staged: true
         default: false
         }
     }
@@ -172,10 +176,10 @@ public enum Target: Sendable, Hashable {
     /// The tree the target's changes lead to, which is what gets reviewed and explored.
     public var snapshot: Snapshot {
         switch self {
-        case .uncommitted, .unstaged: .worktree
+        case .worktree, .unstaged: .worktree
         case .staged: .index
         case .commit(let c): .commit(c)
-        case .range(_, let head, _): .commit(head)
+        case .range(_, let head): .commit(head)
         case .stash(let s): .commit(s)
         }
     }
