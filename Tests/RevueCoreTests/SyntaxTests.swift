@@ -65,6 +65,15 @@ import Testing
         #expect(syms.contains { $0.name == "helper" && !$0.isDefinition && $0.lines.lowerBound == 4 })
     }
 
+    @Test func analyzingParsesOnceForTokensAndSymbols() throws {
+        let rust = try #require(runtime?.language(forPath: "lib.rs"))
+        let text = "struct Cache { n: u64 }\n\nfn helper(x: u64) -> u64 { x } // done\n"
+        let both = rust.analyze(text, symbols: true)
+        #expect(both.tokens == rust.tokens(text))
+        #expect(both.symbols == rust.symbols(text))
+        #expect(rust.analyze(text, symbols: false).symbols.isEmpty)
+    }
+
     @Test func membersSpanTheirOwnLinesNotTheTypeAroundThem() throws {
         let swift = try #require(runtime?.language(forPath: "a.swift"))
         let text = """
@@ -80,6 +89,28 @@ import Testing
         #expect(defs.first { $0.name == "Parser" }?.lines == 0...6)
         #expect(defs.first { $0.name == "tokens" }?.lines == 1...1)
         #expect(defs.first { $0.name == "next" }?.lines == 3...5)
+        #expect(defs.filter { $0.name == "next" }.map(\.kind) == ["method"])
+        #expect(defs.filter { $0.name == "tokens" }.count == 1)
+    }
+
+    @Test func outlinesLeaveOutWhatFunctionsDefineInside() throws {
+        let swift = try #require(runtime?.language(forPath: "a.swift"))
+        let text = """
+        struct Parser {
+            var tokens: [String]
+
+            func next() -> String? {
+                let first = tokens.first
+                func peek() -> String? { first }
+                return peek()
+            }
+        }
+
+        func helper() -> Int { let x = 1; return x }
+        let limit = 3
+        """
+        let names = outlineDefinitions(swift.symbols(text).filter(\.isDefinition)).map(\.name)
+        #expect(names == ["Parser", "tokens", "next", "helper", "limit"])
     }
 }
 

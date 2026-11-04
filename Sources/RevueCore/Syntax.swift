@@ -75,45 +75,60 @@ public final class SyntaxLanguage: Sendable {
 
     /// Returns the syntax tokens for the whole text.
     ///
-    /// Later tokens are more specific and win where they overlap. Runs in its own autorelease
-    /// pool, since the text it bridges is as big as the file and background tasks never drain one.
-    public func tokens(_ text: String) -> [Token] {
-        autoreleasepool {
-            guard let q = highlightsQuery, let tree = parse(text) else { return [] }
-            return q.execute(in: tree).resolve(with: .init(string: text)).highlights().compactMap { r in
-                TokenKind(capture: r.name).map { Token(range: r.range, kind: $0) }
-            }
-        }
-    }
+    /// Later tokens are more specific and win where they overlap.
+    public func tokens(_ text: String) -> [Token] { analyze(text, symbols: false).tokens }
 
     /// Returns the definitions and references in the text, in document order.
     ///
-    /// Runs in its own autorelease pool, like `tokens(_:)`.
+    /// A name that several query patterns match, like a Swift method that is also a function, is
+    /// kept once, as the first pattern that matched it.
     public func symbols(_ text: String) -> [Symbol] {
+        autoreleasepool { parse(text).map { symbols(in: $0, text) } ?? [] }
+    }
+
+    /// Returns the tokens and, if asked, the symbols of a text, parsing it once.
+    ///
+    /// Runs in its own autorelease pool, since the text it bridges is as big as the file and
+    /// background tasks never drain one.
+    public func analyze(_ text: String, symbols wanted: Bool) -> (tokens: [Token], symbols: [Symbol]) {
         autoreleasepool {
-            guard let q = tagsQuery, let tree = parse(text) else { return [] }
-            let ns = text as NSString
-            let lines = LineIndex(text)
-            var out: [Symbol] = []
-            for match in q.execute(in: tree).resolve(with: .init(string: text)) {
-                guard let nameCapture = match.captures(named: "name").first else { continue }
-                for c in match.captures {
-                    guard let capture = c.name, capture.hasPrefix("definition.") || capture.hasPrefix("reference.") else { continue }
-                    let isDef = capture.hasPrefix("definition.")
-                    let range = isDef ? SyntaxLanguage.declaration(around: nameCapture.node, within: c.node).range : c.node.range
-                    out.append(Symbol(
-                        name: ns.substring(with: nameCapture.node.range),
-                        kind: String(capture.drop { $0 != "." }.dropFirst()),
-                        isDefinition: isDef,
-                        range: range,
-                        nameRange: nameCapture.node.range,
-                        nameLine: lines.line(at: nameCapture.node.range.location),
-                        lines: lines.line(at: range.location)...lines.line(at: max(range.location, NSMaxRange(range) - 1))
-                    ))
-                }
-            }
-            return out.sorted { $0.range.location < $1.range.location }
+            guard let tree = parse(text) else { return ([], []) }
+            return (tokens(in: tree, text), wanted ? symbols(in: tree, text) : [])
         }
+    }
+
+    private func tokens(in tree: MutableTree, _ text: String) -> [Token] {
+        guard let q = highlightsQuery else { return [] }
+        return q.execute(in: tree).resolve(with: .init(string: text)).highlights().compactMap { r in
+            TokenKind(capture: r.name).map { Token(range: r.range, kind: $0) }
+        }
+    }
+
+    private func symbols(in tree: MutableTree, _ text: String) -> [Symbol] {
+        guard let q = tagsQuery else { return [] }
+        let ns = text as NSString
+        let lines = LineIndex(text)
+        var out: [Symbol] = []
+        for match in q.execute(in: tree).resolve(with: .init(string: text)) {
+            guard let nameCapture = match.captures(named: "name").first else { continue }
+            for c in match.captures {
+                guard let capture = c.name, capture.hasPrefix("definition.") || capture.hasPrefix("reference.") else { continue }
+                let isDef = capture.hasPrefix("definition.")
+                let range = isDef ? SyntaxLanguage.declaration(around: nameCapture.node, within: c.node).range : c.node.range
+                out.append(Symbol(
+                    name: ns.substring(with: nameCapture.node.range),
+                    kind: String(capture.drop { $0 != "." }.dropFirst()),
+                    isDefinition: isDef,
+                    range: range,
+                    nameRange: nameCapture.node.range,
+                    nameLine: lines.line(at: nameCapture.node.range.location),
+                    lines: lines.line(at: range.location)...lines.line(at: max(range.location, NSMaxRange(range) - 1))
+                ))
+            }
+        }
+        var seen = Set<String>()
+        let unique = out.filter { seen.insert("\($0.isDefinition) \($0.nameRange.location) \($0.nameRange.length)").inserted }
+        return unique.sorted { $0.range.location < $1.range.location }
     }
 
     /// Returns the declaration a definition's name belongs to.
@@ -161,7 +176,22 @@ public final class SyntaxRuntime: @unchecked Sendable {
     public let directory: URL
     private let byFileType: [String: Entry]
     private let lock = NSLock()
-    private var loaded: [String: SyntaxLanguage?] = [:]
+    private var slots: [String: Slot] = [:]
+
+    /// One grammar, loaded once, with its own lock so different grammars load in parallel.
+    private final class Slot: @unchecked Sendable {
+        private let lock = NSLock()
+        private var language: SyntaxLanguage??
+
+        func get(_ load: () -> SyntaxLanguage?) -> SyntaxLanguage? {
+            lock.lock()
+            defer { lock.unlock() }
+            if let l = language { return l }
+            let l = load()
+            language = .some(l)
+            return l
+        }
+    }
 
     public init?(directory: URL) {
         guard let data = try? Data(contentsOf: directory.appendingPathComponent("languages.json")),
@@ -183,15 +213,36 @@ public final class SyntaxRuntime: @unchecked Sendable {
 
     /// Returns the grammar for a path, by whole file name ("Makefile", "go.mod"), else by extension.
     public func language(forPath path: String) -> SyntaxLanguage? {
+        guard let e = entry(forPath: path) else { return nil }
+        return slot(e.name).get { load(e) }
+    }
+
+    /// Whether there's a grammar for a path, without loading it.
+    public func hasLanguage(forPath path: String) -> Bool { entry(forPath: path) != nil }
+
+    /// Loads the grammars some paths need, in parallel, so the first files to show don't wait
+    /// for them one by one.
+    public func preload(paths: [String]) async {
+        var seen = Set<String>()
+        let needed = paths.compactMap { p in entry(forPath: p).flatMap { seen.insert($0.name).inserted ? p : nil } }
+        await withTaskGroup(of: Void.self) { group in
+            for p in needed { group.addTask { _ = self.language(forPath: p) } }
+        }
+    }
+
+    private func entry(forPath path: String) -> Entry? {
         let file = (path as NSString).lastPathComponent
         let ext = (file as NSString).pathExtension
-        guard let e = byFileType[file] ?? byFileType[ext] ?? byFileType[ext.lowercased()] else { return nil }
+        return byFileType[file] ?? byFileType[ext] ?? byFileType[ext.lowercased()]
+    }
+
+    private func slot(_ name: String) -> Slot {
         lock.lock()
         defer { lock.unlock() }
-        if let l = loaded[e.name] { return l }
-        let l = load(e)
-        loaded[e.name] = l
-        return l
+        if let s = slots[name] { return s }
+        let s = Slot()
+        slots[name] = s
+        return s
     }
 
     private func load(_ e: Entry) -> SyntaxLanguage? {

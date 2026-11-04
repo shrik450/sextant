@@ -172,6 +172,7 @@ public func listPullRequests(in root: URL, gh: String, path: String) async throw
             let p = Process()
             p.executableURL = URL(fileURLWithPath: gh)
             p.arguments = ["pr", "list", "--state", "open", "--limit", "200", "--json", PullRequest.fields]
+            p.qualityOfService = .utility
             p.currentDirectoryURL = root
             var env = ProcessInfo.processInfo.environment
             env["PATH"] = path

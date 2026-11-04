@@ -34,6 +34,19 @@ public struct OutlineItem: Sendable, Equatable {
     }
 }
 
+/// Returns the definitions that belong in a file's outline, leaving out those inside functions
+/// and methods, such as their local variables.
+///
+/// - Parameter definitions: Definitions sorted by where they start.
+public func outlineDefinitions(_ definitions: [Symbol]) -> [Symbol] {
+    var functionEnd = -1
+    return definitions.filter { d in
+        guard d.range.location >= functionEnd else { return false }
+        if d.kind == "function" || d.kind == "method" { functionEnd = NSMaxRange(d.range) }
+        return true
+    }
+}
+
 /// Builds a file's outline from the definitions on each side of its diff.
 ///
 /// Definitions nest by the lines they span. A definition only the old side has is placed where

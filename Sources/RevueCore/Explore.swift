@@ -70,7 +70,8 @@ extension Git {
         switch snapshot {
         case .worktree: readWorktreeFile(path)
         case .index: try? await run(["cat-file", "blob", ":" + path])
-        case .commit(let c): try? await run(["cat-file", "blob", c + ":" + path])
+        case .commit(let c):
+            ObjectReader.canRead(c + ":" + path) ? await objects.blob(c + ":" + path) : try? await run(["cat-file", "blob", c + ":" + path])
         }
     }
 

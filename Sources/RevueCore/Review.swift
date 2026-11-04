@@ -146,8 +146,10 @@ public struct Resolver: Sendable {
             review.subject = .commit(oid)
             head = oid
         case .comparison(let from, let to, let since):
-            guard let f = await git.resolve(from) else { throw GitError(message: "Unknown revision ‘\(from)’") }
-            guard let t = await git.resolve(to) else { throw GitError(message: "Unknown revision ‘\(to)’") }
+            async let fromR = git.resolve(from)
+            async let toR = git.resolve(to)
+            guard let f = await fromR else { throw GitError(message: "Unknown revision ‘\(from)’") }
+            guard let t = await toR else { throw GitError(message: "Unknown revision ‘\(to)’") }
             let base: String
             if since {
                 guard let mb = await git.mergeBase(f, t) else { throw GitError(message: "‘\(from)’ and ‘\(to)’ have no common ancestor") }

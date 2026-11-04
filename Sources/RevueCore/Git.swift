@@ -19,12 +19,17 @@ public struct Git: Sendable {
         self.executable = executable
     }
 
-    public static func run(_ executable: String, in dir: URL, _ args: [String], stdin: Data? = nil, allowedStatuses: Set<Int32> = [0]) async throws -> Data {
+    /// Runs git in a directory and returns what it prints.
+    ///
+    /// - Parameter priority: The quality of service git runs at. Work nobody is waiting on runs
+    ///   at `.utility`, so it doesn't slow down what someone is.
+    public static func run(_ executable: String, in dir: URL, _ args: [String], stdin: Data? = nil, allowedStatuses: Set<Int32> = [0], priority: QualityOfService = .userInitiated) async throws -> Data {
         try await withCheckedThrowingContinuation { cont in
             DispatchQueue.global(qos: .userInitiated).async {
                 let p = Process()
                 p.executableURL = URL(fileURLWithPath: executable)
                 p.arguments = ["-c", "core.quotePath=false", "-c", "color.ui=false", "-c", "log.showSignature=false"] + args
+                p.qualityOfService = priority
                 p.currentDirectoryURL = dir
                 var env = ProcessInfo.processInfo.environment
                 env["GIT_OPTIONAL_LOCKS"] = "0"
@@ -71,8 +76,8 @@ public struct Git: Sendable {
     }
 
     @discardableResult
-    public func run(_ args: [String], stdin: Data? = nil) async throws -> Data {
-        try await Git.run(executable, in: root, args, stdin: stdin)
+    public func run(_ args: [String], stdin: Data? = nil, priority: QualityOfService = .userInitiated) async throws -> Data {
+        try await Git.run(executable, in: root, args, stdin: stdin, priority: priority)
     }
 
     public func string(_ args: [String]) async throws -> String {
@@ -143,7 +148,6 @@ public struct Git: Sendable {
                             message: f[7].trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
-    public func blob(_ oid: String) async throws -> Data { try await run(["cat-file", "blob", oid]) }
 
     static let diffFlags = ["--raw", "-p", "-z", "--no-abbrev", "--no-color", "--no-ext-diff", "--no-textconv", "--no-relative", "-M", "--submodule=short"]
 
