@@ -17,6 +17,7 @@ final class JumpBar: NSView, NSMenuDelegate {
     private(set) var definitions: [Symbol] = []
     private var shownPath: String?
     private var shownKey = ""
+    private var symbolMenuIsCurrent = false
     var onOpenPath: ((String) -> Void)?
     var onShowOverview: (() -> Void)?
     var onSelectSymbol: ((Symbol) -> Void)?
@@ -32,7 +33,9 @@ final class JumpBar: NSView, NSMenuDelegate {
         (symbols.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
         symbols.setContentCompressionResistancePriority(.defaultLow - 1, for: .horizontal)
         symbols.isHidden = true
-        symbolChevron.isHidden = true
+        symbols.menu = NSMenu()
+        symbols.menu?.addItem(withTitle: "", action: nil, keyEquivalent: "")
+        symbols.menu?.delegate = self
         stats.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
         stats.setContentCompressionResistancePriority(.required, for: .horizontal)
         stats.setContentHuggingPriority(.required, for: .horizontal)
@@ -67,23 +70,21 @@ final class JumpBar: NSView, NSMenuDelegate {
     var components: [String] { crumbs.arrangedSubviews.compactMap { ($0 as? NSButton)?.title } }
 
     func update(path p: String?, files: [FileState], current: Int?, style: Style) {
-        let key = "\(p ?? "\u{0}")|\(current ?? -1)|\(files.map { "\(ObjectIdentifier($0).hashValue):\($0.lines.count)" })|\(style.theme.name)|\(style.theme.color("success"))|\(style.theme.color("danger"))"
+        let key = "\(p ?? "\u{0}")|\(current ?? -1)|\(p == nil ? -1 : files.first?.definitions?.count ?? -1)|\(files.count):\(files.first.map { ObjectIdentifier($0).hashValue } ?? 0):\(files.last.map { ObjectIdentifier($0).hashValue } ?? 0):\(p == nil ? 0 : files.first?.lines.count ?? 0)|\(style.theme.name)|\(style.theme.color("success"))|\(style.theme.color("danger"))"
         guard key != shownKey else { return }
         shownKey = key
         currentFile = current
         let shown = p ?? current.map { files[$0].path }
         shownPath = shown
-        crumbs.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        if p == nil { addCrumb("All Changes", image: NSImage(systemSymbolName: "square.stack", accessibilityDescription: nil), action: #selector(overviewClicked)) }
+        var items: [Crumb] = []
+        if p == nil { items.append(Crumb(title: "All Changes", image: NSImage(systemSymbolName: "square.stack", accessibilityDescription: nil), action: #selector(overviewClicked), tag: 0)) }
         if let shown {
             let comps = shown.split(separator: "/").map(String.init)
             for (i, c) in comps.enumerated() {
-                if !crumbs.arrangedSubviews.isEmpty { addSeparator() }
-                let isFile = i == comps.count - 1
-                let b = addCrumb(c, image: isFile ? fileIcon(shown) : nil, action: #selector(crumbClicked(_:)))
-                b.tag = i
+                items.append(Crumb(title: c, image: i == comps.count - 1 ? fileIcon(shown) : nil, action: #selector(crumbClicked(_:)), tag: i))
             }
         }
+        showCrumbs(items)
         toolTip = shown
         let addDel: (Int, Int)
         if p == nil {
@@ -95,54 +96,96 @@ final class JumpBar: NSView, NSMenuDelegate {
         s.append(NSAttributedString(string: "  −\(addDel.1)", attributes: [.foregroundColor: style.theme.color("danger")]))
         stats.attributedStringValue = s
         stats.isHidden = !files.contains(where: \.isChange)
-        if p != nil, let f = files.first, let lang = f.language, lang.hasTags {
-            definitions = lang.symbols(f.sideText(old: false).joined(separator: "\n")).filter(\.isDefinition)
-            rebuildSymbolMenu()
-        } else {
-            definitions = []
-        }
+        definitions = p == nil ? [] : files.first?.definitions ?? []
+        symbolMenuIsCurrent = false
         symbols.isHidden = true
         symbolChevron.isHidden = true
     }
 
-    @discardableResult
-    private func addCrumb(_ title: String, image: NSImage?, action: Selector) -> NSButton {
-        let b = NSButton(title: title, target: self, action: action)
+    private struct Crumb {
+        var title: String
+        var image: NSImage?
+        var action: Selector
+        var tag: Int
+    }
+
+    private var buttons: [NSButton] = []
+    private var separators: [NSImageView] = []
+
+    /// Shows crumbs separated by chevrons, reusing the views already made, since making controls
+    /// costs more than changing them.
+    private func showCrumbs(_ items: [Crumb]) {
+        while buttons.count < items.count { buttons.append(makeCrumb()) }
+        while separators.count < items.count - 1 { separators.append(makeSeparator()) }
+        var views: [NSView] = []
+        for (i, item) in items.enumerated() {
+            if i > 0 { views.append(separators[i - 1]) }
+            let b = buttons[i]
+            if b.title != item.title { b.title = item.title }
+            if b.image !== item.image {
+                b.image = item.image
+                b.imagePosition = item.image == nil ? .noImage : .imageLeading
+            }
+            b.action = item.action
+            b.tag = item.tag
+            views.append(b)
+        }
+        guard crumbs.arrangedSubviews != views else { return }
+        for v in crumbs.arrangedSubviews where !views.contains(v) { v.removeFromSuperview() }
+        for (i, v) in views.enumerated() where i >= crumbs.arrangedSubviews.count || crumbs.arrangedSubviews[i] !== v {
+            crumbs.insertArrangedSubview(v, at: i)
+        }
+        for v in views { crumbs.setCustomSpacing(3, after: v) }
+    }
+
+    private func makeCrumb() -> NSButton {
+        let b = NSButton(title: "", target: self, action: nil)
         b.isBordered = false
         b.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         b.controlSize = .small
-        b.image = image
-        b.imagePosition = image == nil ? .noImage : .imageLeading
+        b.imagePosition = .noImage
         b.imageHugsTitle = true
         b.contentTintColor = .labelColor
         b.lineBreakMode = .byTruncatingMiddle
         b.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        crumbs.addArrangedSubview(b)
         return b
     }
 
-    private func addSeparator() {
+    private func makeSeparator() -> NSImageView {
         let chevron = NSImageView(image: NSImage(systemSymbolName: "chevron.compact.right", accessibilityDescription: nil)!)
         chevron.symbolConfiguration = .init(pointSize: 10, weight: .regular)
         chevron.contentTintColor = .tertiaryLabelColor
         chevron.setContentHuggingPriority(.required, for: .horizontal)
-        crumbs.addArrangedSubview(chevron)
-        crumbs.setCustomSpacing(3, after: crumbs.arrangedSubviews[crumbs.arrangedSubviews.count - 2])
-        crumbs.setCustomSpacing(3, after: chevron)
+        return chevron
     }
 
-    private func rebuildSymbolMenu() {
-        let menu = NSMenu()
-        menu.addItem(withTitle: "", action: nil, keyEquivalent: "")
+    /// Lists the file's definitions under the menu's title item, indented by nesting, when the
+    /// menu opens rather than on every file change, since a long file has hundreds.
+    private func fillSymbolMenu(_ menu: NSMenu) {
+        guard !symbolMenuIsCurrent, let title = menu.items.first else { return }
+        symbolMenuIsCurrent = true
+        var items = [title]
+        var enclosing: [Symbol] = []
         for (i, d) in definitions.enumerated() {
-            let depth = definitions[..<i].filter { $0.range.location <= d.range.location && NSMaxRange($0.range) >= NSMaxRange(d.range) }.count
-            let item = menu.addItem(withTitle: d.name, action: #selector(symbolChosen(_:)), keyEquivalent: "")
+            while let outer = enclosing.last, NSMaxRange(outer.range) < NSMaxRange(d.range) { enclosing.removeLast() }
+            let item = NSMenuItem(title: d.name, action: #selector(symbolChosen(_:)), keyEquivalent: "")
             item.target = self
             item.tag = i
-            item.indentationLevel = min(depth, 6)
-            item.image = NSImage(systemSymbolName: symbolImage(d.kind), accessibilityDescription: d.kind)
+            item.indentationLevel = min(enclosing.count, 6)
+            item.image = Self.image(forKind: d.kind)
+            items.append(item)
+            enclosing.append(d)
         }
-        symbols.menu = menu
+        menu.items = items
+    }
+
+    private static var images: [String: NSImage] = [:]
+
+    private static func image(forKind kind: String) -> NSImage? {
+        if let cached = images[kind] { return cached }
+        let made = NSImage(systemSymbolName: symbolImage(kind), accessibilityDescription: kind)
+        images[kind] = made
+        return made
     }
 
     /// Returns the innermost definition around a zero-based, new-side line.
@@ -159,7 +202,7 @@ final class JumpBar: NSView, NSMenuDelegate {
         }
         symbols.isHidden = false
         symbols.menu?.item(at: 0)?.title = enclosing.name
-        symbols.menu?.item(at: 0)?.image = NSImage(systemSymbolName: symbolImage(enclosing.kind), accessibilityDescription: nil)
+        symbols.menu?.item(at: 0)?.image = Self.image(forKind: enclosing.kind)
         symbols.synchronizeTitleAndSelectedItem()
         symbols.setTitle(enclosing.name)
         symbolChevron.isHidden = false
@@ -196,8 +239,16 @@ final class JumpBar: NSView, NSMenuDelegate {
         menu.popUp(positioning: selected, at: NSPoint(x: 0, y: sender.bounds.maxY + 2), in: sender)
     }
 
-    /// Fills a folder's menu with the folders and files directly inside it.
     func menuNeedsUpdate(_ menu: NSMenu) {
+        if menu === symbols.menu {
+            fillSymbolMenu(menu)
+        } else {
+            fillFolderMenu(menu)
+        }
+    }
+
+    /// Fills a folder's menu with the folders and files directly inside it.
+    private func fillFolderMenu(_ menu: NSMenu) {
         menu.removeAllItems()
         let dir = menu.title
         let prefix = dir.isEmpty ? "" : dir + "/"

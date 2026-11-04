@@ -113,7 +113,7 @@ enum ReaderFocus: Equatable {
 /// finds any file in the snapshot.
 @MainActor
 final class ChangesController: NSViewController {
-    final class Item {
+    final class Item: NSObject {
         enum Kind { case allChanges, folder, file, folded }
         let kind: Kind
         let name: String
@@ -421,12 +421,35 @@ final class ChangesController: NSViewController {
         }
     }
 
+    /// Opens the folders that should be open.
+    ///
+    /// When only changed files show, nearly every folder opens, so it expands them all in one
+    /// pass and folds the rest, since expanding folders one at a time recounts the rows each
+    /// time. With unchanged files showing, most folders stay closed, so it opens just those.
     private func expand(_ items: [Item]) {
-        for i in items where i.kind == .folder && expansion[i.path] ?? (i.changed > 0) {
-            outline.expandItem(i)
-            expand(i.children)
+        if showsUnchanged {
+            expandEach(items)
+        } else {
+            outline.expandItem(nil, expandChildren: true)
+            foldClosed(items)
         }
     }
+
+    private func expandEach(_ items: [Item]) {
+        for i in items where i.kind == .folder && shouldOpen(i) {
+            outline.expandItem(i)
+            expandEach(i.children)
+        }
+    }
+
+    private func foldClosed(_ items: [Item]) {
+        for i in items where i.kind == .folder {
+            foldClosed(i.children)
+            if !shouldOpen(i) { outline.collapseItem(i) }
+        }
+    }
+
+    private func shouldOpen(_ i: Item) -> Bool { expansion[i.path] ?? (i.changed > 0) }
 
     @objc private func itemExpanded(_ n: Notification) {
         guard !suppress, let i = n.userInfo?["NSObject"] as? Item else { return }
@@ -646,13 +669,13 @@ func rankFuzzy(_ q: String, _ paths: [String]) -> [String] {
 /// Also lists definitions and usages.
 @MainActor
 final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSSearchFieldDelegate {
-    final class Group {
+    final class Group: NSObject {
         let path: String
         var matches: [GrepMatch]
         var definitionLines: Set<Int>
         init(path: String, matches: [GrepMatch], definitionLines: Set<Int>) { self.path = path; self.matches = matches; self.definitionLines = definitionLines }
     }
-    final class Item {
+    final class Item: NSObject {
         let group: Group
         let match: GrepMatch
         init(group: Group, match: GrepMatch) { self.group = group; self.match = match }

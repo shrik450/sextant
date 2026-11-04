@@ -72,7 +72,6 @@ func render(_ rows: [Row], side: Int, files: [FileState], notes: [UUID: Note], s
     let muted = base.merging([.foregroundColor: t.fgMuted]) { $1 }
 
     var plain = ""
-    var lineRanges: [(row: Int, range: NSRange)] = []
     var extras: [(NSRange, [NSAttributedString.Key: Any])] = []
     var offset = 0
     for (ri, row) in rows.enumerated() {
@@ -106,31 +105,12 @@ func render(_ rows: [Row], side: Int, files: [FileState], notes: [UUID: Note], s
         }
         plain += s
         let len = s.utf16.count
-        if row.kind == .line { lineRanges.append((ri, NSRange(location: offset, length: len))) }
         if let attrs { extras.append((NSRange(location: offset, length: len + 1), attrs)) }
         plain += "\n"
         offset += len + 1
     }
     text.append(NSAttributedString(string: plain, attributes: base))
     for (r, a) in extras where NSMaxRange(r) <= text.length { text.setAttributes(a, range: r) }
-
-    for (ri, range) in lineRanges {
-        let row = rows[ri]
-        let f = files[row.file]
-        if let toks = f.tokens?[row.line] {
-            for tok in toks where tok.range.location < range.length {
-                let r = NSRange(location: range.location + tok.range.location, length: min(tok.range.length, range.length - tok.range.location))
-                text.addAttribute(.foregroundColor, value: t.syntax(tok.kind), range: r)
-            }
-        }
-        let kind = f.lines[row.line].kind
-        if kind != .context {
-            let color = kind == .added ? t.color("addWord") : t.color("delWord")
-            for w in f.wordRanges(row.line) where NSMaxRange(w) <= range.length {
-                text.addAttribute(.backgroundColor, value: color, range: NSRange(location: range.location + w.location, length: w.length))
-            }
-        }
-    }
     return RenderedText(string: text, rowStarts: starts)
 }
 
@@ -191,6 +171,13 @@ final class CodeView: NSTextView {
         v.textContainerInset = NSSize(width: 10, height: 6)
         v.allowsUndo = false
         v.displaysLinkToolTips = false
+        v.isContinuousSpellCheckingEnabled = false
+        v.isGrammarCheckingEnabled = false
+        v.isAutomaticSpellingCorrectionEnabled = false
+        v.isAutomaticLinkDetectionEnabled = false
+        v.isAutomaticDataDetectionEnabled = false
+        v.isAutomaticTextCompletionEnabled = false
+        v.enabledTextCheckingTypes = 0
         return v
     }
 
@@ -228,10 +215,94 @@ final class CodeView: NSTextView {
         self.files = files
         rowStarts = r.rowStarts
         textStorage?.setAttributedString(r.string)
+        colored = []
         backgroundColor = style.theme.canvas
         selectedTextAttributes = [.backgroundColor: style.theme.color("selection")]
         linkTextAttributes = [:]
         needsDisplay = true
+        colorVisibleRows()
+    }
+
+    /// The rows whose syntax and changed-word colors are drawn.
+    private var colored = IndexSet()
+
+    /// Colors the rows in and near the view.
+    ///
+    /// Colors are temporary attributes, which change how text draws without laying it out
+    /// again, so coloring costs what's on screen rather than the whole text.
+    func colorVisibleRows() {
+        guard let lm = layoutManager, let near = rowsNearView else { return }
+        for r in near where !colored.contains(r) {
+            if color(row: r, lm) { colored.insert(r) }
+        }
+    }
+
+    /// Colors a file's rows again, once its analysis has arrived.
+    func recolor(file: Int) {
+        let range = rowRange(ofFile: file)
+        guard !range.isEmpty else { return }
+        colored.remove(integersIn: range)
+        colorVisibleRows()
+    }
+
+    /// The rows showing a file, found by bisecting, since rows are in file order.
+    private func rowRange(ofFile file: Int) -> Range<Int> {
+        func firstRow(_ isAtOrPast: (Int) -> Bool) -> Int {
+            var lo = 0, hi = rows.count
+            while lo < hi {
+                let mid = (lo + hi) / 2
+                if isAtOrPast(rows[mid].file) { hi = mid } else { lo = mid + 1 }
+            }
+            return lo
+        }
+        return firstRow { $0 >= file }..<firstRow { $0 > file }
+    }
+
+    /// Whether a row in view still waits for its colors.
+    var awaitsColors: Bool {
+        guard let near = rowsInView else { return false }
+        return near.contains { !colored.contains($0) }
+    }
+
+    private var rowsInView: ClosedRange<Int>? { rows(in: visibleRect) }
+
+    private var rowsNearView: ClosedRange<Int>? {
+        let v = visibleRect
+        return rows(in: v.insetBy(dx: 0, dy: -v.height))
+    }
+
+    private func rows(in rect: NSRect) -> ClosedRange<Int>? {
+        guard let lm = layoutManager, let tc = textContainer, !rows.isEmpty, let length = textStorage?.length, length > 0 else { return nil }
+        let origin = textContainerOrigin
+        let glyphs = lm.glyphRange(forBoundingRect: rect.offsetBy(dx: -origin.x, dy: -origin.y), in: tc)
+        let chars = lm.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+        guard let first = row(at: chars.location), let last = row(at: max(chars.location, NSMaxRange(chars) - 1)) else { return nil }
+        return first...last
+    }
+
+    /// Applies a row's syntax and changed-word colors.
+    ///
+    /// - Returns: False if the row's file is still being analyzed.
+    private func color(row r: Int, _ lm: NSLayoutManager) -> Bool {
+        let row = rows[r]
+        guard row.kind == .line else { return true }
+        let f = files[row.file]
+        let range = charRange(ofRow: r)
+        let t = style.theme
+        lm.removeTemporaryAttribute(.foregroundColor, forCharacterRange: range)
+        lm.removeTemporaryAttribute(.backgroundColor, forCharacterRange: range)
+        for tok in f.tokens?[row.line] ?? [] where tok.range.location < range.length {
+            let at = NSRange(location: range.location + tok.range.location, length: min(tok.range.length, range.length - tok.range.location))
+            lm.addTemporaryAttribute(.foregroundColor, value: t.syntax(tok.kind), forCharacterRange: at)
+        }
+        let kind = f.lines[row.line].kind
+        if kind != .context {
+            let wordColor = kind == .added ? t.color("addWord") : t.color("delWord")
+            for w in f.wordRanges(row.line) where NSMaxRange(w) <= range.length {
+                lm.addTemporaryAttribute(.backgroundColor, value: wordColor, forCharacterRange: NSRange(location: range.location + w.location, length: w.length))
+            }
+        }
+        return f.tokens != nil || !f.hasLanguage
     }
 
     func row(at charIndex: Int) -> Int? {
@@ -261,6 +332,16 @@ final class CodeView: NSTextView {
         if glyphs.location >= lm.numberOfGlyphs { rect = lm.extraLineFragmentRect }
         rect.origin.y += textContainerOrigin.y
         return rect
+    }
+
+    /// The rect of a row's first line if it's laid out, without laying out any more text.
+    ///
+    /// A row that isn't laid out isn't drawn either, so there's nothing of it to redraw.
+    private func laidOutRect(ofRow r: Int) -> NSRect? {
+        guard let lm = layoutManager, r < rowStarts.count, rowStarts[r] < (textStorage?.length ?? 0) else { return nil }
+        let glyph = lm.glyphIndexForCharacter(at: rowStarts[r])
+        let rect = lm.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil, withoutAdditionalLayout: true)
+        return rect.isEmpty ? nil : rect.offsetBy(dx: 0, dy: textContainerOrigin.y)
     }
 
     /// Calls `body` with each row that intersects `rect` and the rect it takes up, covering all of
@@ -320,7 +401,8 @@ final class CodeView: NSTextView {
         super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
         let after = caretRow
         for r in [before, after].compactMap({ $0 }) where r < rows.count {
-            setNeedsDisplay(NSRect(x: visibleRect.minX, y: rect(ofRow: r).minY, width: visibleRect.width, height: rect(ofRow: r).height + style.lineHeight))
+            guard let line = laidOutRect(ofRow: r) else { continue }
+            setNeedsDisplay(NSRect(x: visibleRect.minX, y: line.minY, width: visibleRect.width, height: line.height + style.lineHeight))
         }
         enclosingScrollView?.verticalRulerView?.needsDisplay = true
         if !stillSelecting { codeDelegate?.codeViewCaretMoved(self) }

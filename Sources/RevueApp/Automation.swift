@@ -38,7 +38,11 @@ final class Automation {
         lines = ((try? String(contentsOfFile: scriptPath, encoding: .utf8)) ?? "").split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
     }
 
+    /// Keeps timers precise while the app runs behind others, so timings mean the same either way.
+    private var activity: NSObjectProtocol?
+
     func start() {
+        activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical], reason: "Automation")
         Task {
             for line in lines where !line.isEmpty && !line.hasPrefix("#") {
                 let t0 = Date()
@@ -80,7 +84,7 @@ final class Automation {
     ///
     /// Screen captures can steal activation, and inputs need the app to be active.
     private func ensureActive() async {
-        guard let w = window?.window else { return }
+        guard !app.inBackground, let w = window?.window else { return }
         for _ in 0..<20 where !(NSApp.isActive && NSApp.keyWindow != nil) {
             NSApp.activate(ignoringOtherApps: true)
             (w.attachedSheet ?? w).makeKeyAndOrderFront(nil)
@@ -99,6 +103,22 @@ final class Automation {
                 app.openRepo(path: args[0], spec: args.count > 1 ? args[1...].joined(separator: " ") : nil) { _ in c.resume() }
             }
             await waitIdle()
+        case "timeopen":
+            let t0 = CACurrentMediaTime()
+            await withCheckedContinuation { c in
+                app.openRepo(path: args[0], spec: args.count > 1 ? args[1...].joined(separator: " ") : nil) { _ in c.resume() }
+            }
+            let windowed = CACurrentMediaTime() - t0
+            var content: Double?
+            while !(window.map { $0.busy == 0 && $0.reader.isSettled && !$0.reader.files.isEmpty } ?? false), CACurrentMediaTime() - t0 < 30 {
+                if content == nil, window?.reader.files.isEmpty == false {
+                    window?.window?.displayIfNeeded()
+                    content = CACurrentMediaTime() - t0
+                }
+                try? await Task.sleep(for: .microseconds(250))
+            }
+            window?.window?.displayIfNeeded()
+            log(String(format: "OPEN %@: window %.0f, content %.0f, settled %.0f ms, %d MB", arg, windowed * 1000, (content ?? .nan) * 1000, (CACurrentMediaTime() - t0) * 1000, physicalFootprint() / 1_048_576))
         case "wait": await waitIdle()
         case "sleep": try? await Task.sleep(for: .milliseconds(Int(arg) ?? 100))
         case "key":
@@ -165,24 +185,45 @@ final class Automation {
                 NSApp.sendAction(action, to: item.target, from: item)
             }
             await waitIdle()
-        case "bench":
-            guard args.count >= 2, let n = Int(args[0]), let item = findMenuItem(args[1...].joined(separator: " "), in: NSApp.mainMenu), let m = item.menu else { return }
-            var times: [Double] = []
+        case "measure":
+            guard args.count >= 3, let n = Int(args[0]) else { return }
+            let kind = args[1], what = args[2...].joined(separator: " ")
+            await ensureActive()
+            var frame: [Double] = [], settled: [Double] = []
             for _ in 0..<n {
-                let t0 = Date()
-                m.update()
-                m.performActionForItem(at: m.index(of: item))
-                for _ in 0..<5 {
-                    await Task.yield()
-                    if let w = window, w.busy > 0 {
-                        await withCheckedContinuation { c in RepoWindowController.idleWaiters.append { c.resume() } }
+                let t0 = CACurrentMediaTime()
+                if kind == "key" {
+                    sendKey(what)
+                } else if kind == "scroll", let d = Double(what) {
+                    window?.reader.scrollBy(lines: CGFloat(d))
+                } else if let item = findMenuItem(what, in: NSApp.mainMenu), let action = item.action {
+                    if !(window?.window?.firstResponder?.tryToPerform(action, with: item) ?? false) {
+                        NSApp.sendAction(action, to: item.target, from: item)
                     }
                 }
                 window?.window?.displayIfNeeded()
-                times.append(Date().timeIntervalSince(t0) * 1000)
+                frame.append((CACurrentMediaTime() - t0) * 1000)
+                while !(window.map { $0.busy == 0 && $0.reader.isSettled } ?? true), CACurrentMediaTime() - t0 < 10 {
+                    try? await Task.sleep(for: .microseconds(250))
+                }
+                window?.window?.displayIfNeeded()
+                settled.append((CACurrentMediaTime() - t0) * 1000)
+                try? await Task.sleep(for: .milliseconds(20))
             }
-            let sorted = times.sorted()
-            log(String(format: "BENCH %@: median %.1f ms, max %.1f ms over %d", args[1...].joined(separator: " "), sorted[sorted.count / 2], sorted.last!, n))
+            func stats(_ v: [Double]) -> String {
+                let s = v.sorted()
+                return String(format: "median %.1f, p90 %.1f, max %.1f", s[s.count / 2], s[min(s.count - 1, s.count * 9 / 10)], s.last!)
+            }
+            log("MEASURE \(kind) \(what) ×\(n): frame \(stats(frame)) | settled \(stats(settled)) ms")
+        case "mark":
+            log(String(format: "MARK %@: %.0f ms since launch, %d MB", arg, (Date().timeIntervalSince1970 - processStart()) * 1000, physicalFootprint() / 1_048_576))
+        case "settle":
+            let t0 = CACurrentMediaTime()
+            while !(window.map { $0.busy == 0 && $0.reader.isSettled } ?? true), CACurrentMediaTime() - t0 < 10 {
+                try? await Task.sleep(for: .microseconds(250))
+            }
+            window?.window?.displayIfNeeded()
+            log(String(format: "SETTLE %@: %.0f ms", arg, (CACurrentMediaTime() - t0) * 1000))
         case "log": log(arg)
         case "sh":
             let p = Process()
@@ -409,6 +450,9 @@ extension RepoWindowController {
             case .message(let m): return "(\(m))"
             }
         }
+        let inspectorCells: [String] = (0..<min(inspector.outline.numberOfRows, 120)).map { r in
+            (inspector.outline.view(atColumn: 0, row: r, makeIfNecessary: false) as? NSTableCellView)?.textField?.stringValue ?? "-"
+        }
         let scopes: [String] = navigator.changes.scopeRows.enumerated().map { i, r in
             let mark = navigator.changes.commits.selectedRowIndexes.contains(i) ? "> " : ""
             switch r {
@@ -471,6 +515,7 @@ extension RepoWindowController {
             "scopes": scopes,
             "tree": tree,
             "inspector": inspectorRows,
+            "inspectorCells": inspectorCells,
             "picker": pickerRows,
             "navigatorTab": "\(navigator.tab)",
             "searchStatus": navigator.search.status.stringValue,
@@ -529,4 +574,14 @@ func physicalFootprint() -> Int {
         $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) }
     }
     return result == KERN_SUCCESS ? Int(info.phys_footprint) : -1
+}
+
+/// Returns when this process started, in seconds since 1970.
+func processStart() -> Double {
+    var info = kinfo_proc()
+    var size = MemoryLayout<kinfo_proc>.size
+    var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
+    sysctl(&mib, 4, &info, &size, nil, 0)
+    let t = info.kp_proc.p_un.__p_starttime
+    return Double(t.tv_sec) + Double(t.tv_usec) / 1_000_000
 }

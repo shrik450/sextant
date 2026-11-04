@@ -181,19 +181,51 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
 
     /// Loads the repository's refs, then a review: the one a revision expression names, or all
     /// the work in the checkout it was opened from.
-    func start(spec: String?) {
+    ///
+    /// - Parameter opening: The repository's refs and the review to show, which the app starts
+    ///   reading before it makes the window.
+    func start(spec: String?, opening: Task<Repository.Opening, Never>) {
         busy += 1
         Task {
             defer { busy -= 1 }
-            await repository.refresh()
+            let o = await opening.value
+            await repository.refreshRefs(o.refs)
+            preloaded = o.loaded
             updateTitle()
-            Task { await repository.loadPullRequests() }
             if let spec, !spec.isEmpty {
                 await open(spec: spec, in: home)
             } else {
                 openWork(in: home)
             }
         }
+    }
+
+    /// The review read before the window existed, until it's shown.
+    private var preloaded: Repository.Loaded?
+
+    private var loadedExtras = false
+
+    /// Loads the worktrees' status and the pull requests once the first review has loaded, since
+    /// they only fill in counts and lists and would otherwise compete with it.
+    private func loadExtrasOnce() {
+        guard !loadedExtras else { return }
+        loadedExtras = true
+        busy += 1
+        Task {
+            defer { busy -= 1 }
+            if await repository.refreshStatus() { statusChanged() }
+        }
+        Task { await repository.loadPullRequests() }
+    }
+
+    /// Shows the worktrees' status once it arrives after the review it opened with.
+    private func statusChanged() {
+        updateTitle()
+        guard let res = resolved else { return }
+        navigator.changes.setScopes(scopeRows(), selected: res.review.scope)
+        let conflicts = res.target.includesWorktree ? repository.conflicts[res.git.root.path] ?? [] : []
+        for f in changes { f.conflicted = conflicts.contains(f.path) }
+        navigator.changes.refreshReviewState()
     }
 
     /// Reviews all the work in a checkout, or offers the picker if there's none to review.
@@ -243,25 +275,36 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         let gen = loadGeneration
         busy += 1
         Task {
-            defer { busy -= 1 }
+            defer {
+                busy -= 1
+                loadExtrasOnce()
+            }
             do {
-                if case .pullRequest = r.subject, repository.pullRequests == nil { await repository.loadPullRequests() }
-                let res = try await repository.resolver.resolve(r, worktrees: repository.worktrees, pullRequests: repository.pullRequests ?? [])
-                guard gen == loadGeneration else { return }
-                async let diffsR = res.git.diff(res.target)
-                async let detailR: CommitDetail? = {
-                    switch res.target {
-                    case .commit(let c), .stash(let c): return try? await res.git.commitDetail(c)
-                    default: return nil
-                    }
-                }()
-                let diffs = try await diffsR
-                let detail = await detailR
+                let res: ResolvedReview
+                let diffs: [FileDiff]
+                var firstWhole: [DiffLine]?
+                if let pre = preloaded, pre.review == r {
+                    res = pre.resolved
+                    diffs = pre.diffs
+                    firstWhole = pre.firstWhole
+                } else {
+                    if case .pullRequest = r.subject, repository.pullRequests == nil { await repository.loadPullRequests() }
+                    res = try await repository.resolver.resolve(r, worktrees: repository.worktrees, pullRequests: repository.pullRequests ?? [])
+                    guard gen == loadGeneration else { return }
+                    diffs = try await res.git.diff(res.target)
+                }
+                preloaded = nil
+                let paths = diffs.prefix(500).map(\.path)
+                Task.detached(priority: .userInitiated) { await SyntaxRuntime.shared?.preload(paths: paths) }
+                let detail: CommitDetail? = switch res.target {
+                case .commit(let c), .stash(let c): try? await res.git.commitDetail(c)
+                default: nil
+                }
                 guard gen == loadGeneration else { return }
                 resolved = res
                 review = res.review
                 commitDetail = detail
-                apply(diffs, keepPosition: keepPosition)
+                apply(diffs, keepPosition: keepPosition, firstWhole: firstWhole)
             } catch {
                 guard gen == loadGeneration else { return }
                 resolved = nil
@@ -277,7 +320,10 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    private func apply(_ diffs: [FileDiff], keepPosition: Bool) {
+    /// Shows a review's changes.
+    ///
+    /// - Parameter firstWhole: The first change as a whole file, when it was read already.
+    private func apply(_ diffs: [FileDiff], keepPosition: Bool, firstWhole: [DiffLine]? = nil) {
         guard let res = resolved else { return }
         let key = "\(res.target)|\(res.commits.map(\.oid))|\(commitDetail?.oid ?? "")"
         navigator.changes.setScopes(scopeRows(), selected: res.review.scope)
@@ -294,6 +340,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
             f.conflicted = conflicts.contains(d.path)
             return f
         }
+        if let firstWhole { changes.first?.offerWhole(firstWhole) }
         if keepPosition, res.target.snapshot == .worktree { explored = [:] }
         lastDiffs = diffs
         lastKey = key
@@ -322,7 +369,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     private func loadSnapshotFiles(force: Bool) {
         guard let snapshot = target?.snapshot else { return }
         if snapshot != snapshotLoaded { snapshotFiles = changes.filter { !$0.diff.change.isDeleted }.map(\.path) }
-        navigator.changes.setFiles(changes, paths: snapshotFiles)
+        showFilesSoon()
         guard force || snapshot != snapshotLoaded else { return }
         let git = self.git
         busy += 1
@@ -333,7 +380,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
             snapshotLoaded = snapshot
             if files != snapshotFiles {
                 snapshotFiles = files
-                navigator.changes.setFiles(changes, paths: files)
+                showFilesSoon()
             }
             reader.jumpBar.tree = files
         }
@@ -381,6 +428,8 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Shows one file, which is a change or any file in the review's snapshot.
+    ///
+    /// A file that's ready shows in the same event; otherwise it shows once it's loaded.
     func open(_ path: String, at anchor: Anchor = .firstChange, record: Bool = true) {
         guard let t = target else { return }
         if record { pushHistory() }
@@ -390,9 +439,19 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         let gen = showGeneration
         navigator.changes.showFocus(.file(path))
         updateTitle()
+        if let f = readyFile(path) {
+            loadingGeneration = nil
+            present(f, at: anchor)
+            prepareNeighbors(of: path)
+            return
+        }
         busy += 1
+        loadingGeneration = gen
         Task {
-            defer { busy -= 1 }
+            defer {
+                busy -= 1
+                if loadingGeneration == gen { loadingGeneration = nil }
+            }
             let f = await fileState(path, in: t)
             guard gen == showGeneration else { return }
             guard let f else {
@@ -401,15 +460,23 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
                 return
             }
             present(f, at: anchor)
+            prepareNeighbors(of: path)
         }
+    }
+
+    /// The file at a path if it can be shown without waiting.
+    private func readyFile(_ path: String) -> FileState? {
+        guard let f = changes.first(where: { $0.path == path }) else { return explored[path] }
+        guard f.hasWhole || f.diff.isBinary else { return nil }
+        f.adoptWhole()
+        return f
     }
 
     private func fileState(_ path: String, in t: Target) async -> FileState? {
         let git = self.git
         if let f = changes.first(where: { $0.path == path }) {
-            if !f.isWhole, !f.diff.isBinary, let old = try? await git.oldLines(of: f.diff) {
-                f.setWhole(wholeFile(f.diff.hunks, oldLines: old))
-            }
+            await f.prepareWhole(git: git, analyzing: false)
+            f.adoptWhole()
             return f
         }
         if let f = explored[path] { return f }
@@ -418,6 +485,67 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         let f = FileState(path: path, contents: binary ? nil : splitLines(data))
         if target == t { explored[path] = f }
         return f
+    }
+
+    /// Loads and analyzes the changes around a file, so stepping to them shows them at once.
+    private func prepareNeighbors(of path: String) {
+        guard let i = changes.firstIndex(where: { $0.path == path }) else { return }
+        let git = self.git
+        for j in [i + 1, i - 1, i + 2] where changes.indices.contains(j) {
+            let f = changes[j]
+            Task {
+                await f.prepareWhole(git: git, analyzing: true)
+                if f.isWhole { await f.analyze(symbols: true) }
+            }
+        }
+    }
+
+    private var afterFrame: [String: Timer] = [:]
+    /// Whether a file is loading to show, which the side panes wait for.
+    private var loadingFile: Bool { loadingGeneration == showGeneration }
+    private var loadingGeneration: Int?
+
+    /// Runs work once the run loop has committed what the current event drew, and once however
+    /// often it's asked for before then.
+    ///
+    /// A timer fires after the commit, so the code shows first and the side panes follow. Work
+    /// that waits for a loading file waits until the file shows, so it doesn't delay it.
+    private func afterFrame(_ key: String, waitingForFile: Bool = false, _ work: @escaping @MainActor () -> Void) {
+        if afterFrame[key] == nil { busy += 1 }
+        afterFrame[key]?.invalidate()
+        let t = Timer(timeInterval: 0, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if waitingForFile && self.loadingFile {
+                    self.afterFrame[key] = nil
+                    self.busy -= 1
+                    self.afterFrame(key, waitingForFile: true, work)
+                    return
+                }
+                self.afterFrame[key] = nil
+                self.busy -= 1
+                work()
+            }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        afterFrame[key] = t
+    }
+
+    /// Shows a file in the inspector once the reader's frame is on screen.
+    private func showInInspector(_ f: FileState) {
+        afterFrame("inspector") { [weak self] in
+            guard let self, self.focusedFile === f else { return }
+            self.inspector.showFile(f, card: self.card())
+            self.inspector.follow(lineIndex: self.reader.caret?.line)
+        }
+    }
+
+    /// Shows the review's files in the navigator, after the code.
+    private func showFilesSoon() {
+        afterFrame("navigator", waitingForFile: true) { [weak self] in
+            guard let self else { return }
+            self.navigator.changes.setFiles(self.changes, paths: self.snapshotFiles)
+        }
     }
 
     private func present(_ f: FileState, at anchor: Anchor) {
@@ -436,8 +564,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         case .start:
             reader.placeCaret(at: ReaderPosition(file: 0, line: 0))
         }
-        inspector.showFile(f, card: card())
-        inspector.follow(lineIndex: reader.caret?.line)
+        showInInspector(f)
         if blameOn { loadBlame(f) }
         updateNavButtons()
         updateTitle()

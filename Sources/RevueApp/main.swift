@@ -6,6 +6,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private(set) var controllers: [RepoWindowController] = []
     private var settingsWindow: NSWindow?
     var automation: Automation?
+    /// Whether automation runs without taking focus, behind the windows of the app in use.
+    var inBackground = false
 
     lazy var gitPath: String = {
         if let p = ProcessInfo.processInfo.environment["REVUE_GIT"], FileManager.default.isExecutableFile(atPath: p) { return p }
@@ -25,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let args = CommandLine.arguments
         if let i = args.firstIndex(of: "--automation"), i + 1 < args.count {
+            inBackground = args.contains("--background")
             automation = Automation(scriptPath: args[i + 1], app: self)
             automation?.start()
             return
@@ -82,17 +85,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     existing.showWindow(nil)
                     existing.window?.makeKeyAndOrderFront(nil)
                     if let spec { await existing.open(spec: spec, in: loc.root) } else { existing.openWork(in: loc.root) }
-                    NSApp.activate()
+                    if !inBackground { NSApp.activate() }
                     completion?(existing)
                     return
                 }
-                let wc = RepoWindowController(repository: Repository(commonDir: loc.commonDir, gitPath: gitPath), home: loc.root)
+                let repository = Repository(commonDir: loc.commonDir, gitPath: gitPath)
+                let git = repository.git
+                let opening = Task.detached { await Repository.open(spec, in: loc.root, git: git, commonDir: loc.commonDir) }
+                let wc = RepoWindowController(repository: repository, home: loc.root)
                 controllers.append(wc)
                 wc.showWindow(nil)
                 wc.window?.makeKeyAndOrderFront(nil)
                 wc.reader.focus()
-                NSApp.activate()
-                wc.start(spec: spec)
+                if inBackground { wc.window?.orderBack(nil) } else { NSApp.activate() }
+                wc.start(spec: spec, opening: opening)
                 NSDocumentController.shared.noteNewRecentDocumentURL(loc.root)
                 saveOpenRepos()
                 completion?(wc)

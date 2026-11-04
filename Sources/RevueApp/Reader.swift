@@ -144,24 +144,50 @@ final class Reader: NSViewController, CodeViewDelegate {
         cancelJump()
         reload(keepPosition: false)
         if let position { scroll(to: position, animated: false) } else { scrollToTop() }
-        for f in files where f.tokens == nil && f.language != nil {
-            Task {
-                await f.highlight()
-                guard self.files.contains(where: { $0 === f }) else { return }
-                self.scheduleRerender()
+        analyzeShownFiles()
+    }
+
+    private var analysis: Task<Void, Never>?
+
+    /// Analyzes the files shown, nearest the view first, coloring each as it arrives.
+    ///
+    /// The overview only needs colors; one file needs its definitions and outline too.
+    private func analyzeShownFiles() {
+        analysis?.cancel()
+        let shown = files, symbols = !overview
+        analysis = Task {
+            var tried = Set<ObjectIdentifier>()
+            while !Task.isCancelled, let f = nextToAnalyze(shown, symbols: symbols, skipping: tried) {
+                tried.insert(ObjectIdentifier(f))
+                await f.analyze(symbols: symbols)
+                guard !Task.isCancelled, let fi = files.firstIndex(where: { $0 === f }) else { return }
+                analyzed(file: fi)
             }
         }
     }
 
-    private var rerenderPending = false
-    private func scheduleRerender() {
-        guard !rerenderPending else { return }
-        rerenderPending = true
-        DispatchQueue.main.async {
-            self.rerenderPending = false
-            self.reload(keepPosition: true)
-        }
+    private func nextToAnalyze(_ shown: [FileState], symbols: Bool, skipping tried: Set<ObjectIdentifier>) -> FileState? {
+        let here = currentFile ?? 0
+        return shown.indices
+            .filter { i in
+                let f = shown[i]
+                return f.hasLanguage && !tried.contains(ObjectIdentifier(f)) && (f.tokens == nil || symbols && f.outline == nil)
+            }
+            .min { abs($0 - here) * 2 + ($0 < here ? 1 : 0) < abs($1 - here) * 2 + ($1 < here ? 1 : 0) }
+            .map { shown[$0] }
     }
+
+    /// Shows a file's colors once its analysis arrives, and lands the caret again if it landed
+    /// by itself, since the names it lands on depend on the analysis.
+    private func analyzed(file fi: Int) {
+        let reland = landedSelection != nil && landedSelection == keptSelection
+        for c in columns { c.code.recolor(file: fi) }
+        if reland, let r = caretRow { placeCaret(atRow: r) }
+        updateJumpBar()
+    }
+
+    /// Whether everything in view is drawn with its colors.
+    var isSettled: Bool { !columns.contains { $0.code.awaitsColors } }
 
     func showEmpty(_ message: String) {
         files = []
@@ -613,6 +639,7 @@ final class Reader: NSViewController, CodeViewDelegate {
             }
             syncing = false
         }
+        for c in columns { c.code.colorVisibleRows() }
         let before = jumpBar.currentFile
         updateJumpBar()
         if jumpBar.currentFile != before { delegate?.readerCurrentFileChanged() }
