@@ -338,23 +338,16 @@ final class Reader: NSViewController, CodeViewDelegate {
     }
 
     private var jump: Jump? { didSet { showJumpPrompt() } }
-    private lazy var jumpPrompt: NSTextField = {
-        let f = NSTextField(labelWithString: "")
-        f.font = .systemFont(ofSize: 12, weight: .medium)
-        f.textColor = .white
-        f.wantsLayer = true
-        f.layer?.backgroundColor = NSColor.systemPink.cgColor
-        f.layer?.cornerRadius = 6
-        f.alignment = .center
-        f.translatesAutoresizingMaskIntoConstraints = false
-        f.isHidden = true
-        view.addSubview(f)
+    private lazy var jumpPrompt: JumpPrompt = {
+        let p = JumpPrompt()
+        p.translatesAutoresizingMaskIntoConstraints = false
+        p.isHidden = true
+        view.addSubview(p)
         NSLayoutConstraint.activate([
-            f.centerXAnchor.constraint(equalTo: stack.centerXAnchor),
-            f.bottomAnchor.constraint(equalTo: stack.bottomAnchor, constant: -16),
-            f.heightAnchor.constraint(equalToConstant: 24),
+            p.centerXAnchor.constraint(equalTo: stack.centerXAnchor),
+            p.bottomAnchor.constraint(equalTo: stack.bottomAnchor, constant: -20),
         ])
-        return f
+        return p
     }()
 
     /// Starts a jump: two typed characters, then a label if they appear in more than one place
@@ -375,10 +368,14 @@ final class Reader: NSViewController, CodeViewDelegate {
         case nil: jumpPrompt.isHidden = true
         case .typing(let q)?:
             jumpPrompt.isHidden = false
-            jumpPrompt.stringValue = q.count < 2 ? "   Jump to: \(q)▏   " : "   No “\(q)” in view   "
+            if q.count < 2 {
+                jumpPrompt.show(q.isEmpty ? "Type two characters to jump to" : "Jump to", typed: q)
+            } else {
+                jumpPrompt.show("Nothing on screen matches", typed: q)
+            }
         case .picking(_, _, let typed)?:
             jumpPrompt.isHidden = false
-            jumpPrompt.stringValue = "   Type a label\(typed.isEmpty ? "" : ": " + typed)   "
+            jumpPrompt.show("Type a label", typed: typed)
         }
     }
 
@@ -842,5 +839,37 @@ final class Reader: NSViewController, CodeViewDelegate {
     func codeViewMenu(_ v: CodeView, row: Int?) -> NSMenu? {
         let r = row.map { v.rows[$0] }
         return delegate?.readerMenu(self, file: r?.file, line: r?.kind == .line ? r?.line : nil)
+    }
+}
+
+/// The glass capsule a jump shows over the code: what to type, then what's been typed.
+@MainActor
+final class JumpPrompt: NSGlassEffectView {
+    private let text = NSTextField(labelWithString: "")
+
+    init() {
+        super.init(frame: .zero)
+        cornerRadius = 16
+        let content = NSView()
+        text.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(text)
+        NSLayoutConstraint.activate([
+            text.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
+            text.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
+            text.topAnchor.constraint(equalTo: content.topAnchor, constant: 8),
+            text.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -8),
+        ])
+        contentView = content
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// Shows a prompt, followed by the keys typed so far in the code's typeface.
+    func show(_ prompt: String, typed: String) {
+        let s = NSMutableAttributedString(string: prompt, attributes: [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.secondaryLabelColor])
+        if !typed.isEmpty {
+            s.append(NSAttributedString(string: "  " + typed, attributes: [.font: NSFont.monospacedSystemFont(ofSize: 13, weight: .semibold), .foregroundColor: NSColor.labelColor]))
+        }
+        text.attributedStringValue = s
     }
 }

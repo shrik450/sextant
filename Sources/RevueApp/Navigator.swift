@@ -683,8 +683,9 @@ final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutli
 
     weak var delegate: NavigatorDelegate?
     let field = NSSearchField()
-    let outline = NSOutlineView()
+    let outline = KeyOutlineView()
     let status = NSTextField(labelWithString: "")
+    private var suppressOpen = false
     private var groups: [Group] = []
     private var items: [ObjectIdentifier: [Item]] = [:]
     private var query = ""
@@ -716,6 +717,8 @@ final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutli
         outline.delegate = self
         outline.target = self
         outline.action = #selector(clicked)
+        outline.onReturn = { [weak self] in self?.enterSelected() }
+        outline.onEscape = { [weak self] in self?.delegate?.navigatorFocusReader() }
         let scroll = NSScrollView()
         scroll.documentView = outline
         scroll.hasVerticalScroller = true
@@ -842,11 +845,40 @@ final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutli
         return cell
     }
 
-    func outlineViewSelectionDidChange(_ notification: Notification) { clicked() }
+    func outlineView(_ o: NSOutlineView, shouldSelectItem item: Any) -> Bool { item is Item }
+
+    func outlineViewSelectionDidChange(_ notification: Notification) {
+        if !suppressOpen { clicked() }
+    }
 
     @objc private func clicked() {
         guard let it = outline.item(atRow: outline.selectedRow) as? Item else { return }
         delegate?.navigatorOpenResult(path: it.group.path, line: it.match.line)
+    }
+
+    /// Puts the keyboard on the results, selecting the first if none is, without opening it.
+    func focusResults() {
+        view.window?.makeFirstResponder(outline)
+        guard outline.selectedRow < 0, let first = (0..<outline.numberOfRows).first(where: { outline.item(atRow: $0) is Item }) else { return }
+        suppressOpen = true
+        outline.selectRowIndexes([first], byExtendingSelection: false)
+        suppressOpen = false
+        outline.scrollRowToVisible(first)
+    }
+
+    /// Opens the selected result and moves into the pane showing it.
+    private func enterSelected() {
+        guard outline.item(atRow: outline.selectedRow) is Item else { return }
+        clicked()
+        delegate?.navigatorFocusReader()
+    }
+}
+
+extension SearchController {
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
+        guard sel == #selector(NSResponder.moveDown(_:)), outline.numberOfRows > 0 else { return false }
+        focusResults()
+        return true
     }
 }
 

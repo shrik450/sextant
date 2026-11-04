@@ -305,6 +305,7 @@ extension RepoWindowController: NSMenuItemValidation {
                 navigator.search.begin(word, word: true)
                 navigator.search.show(Array(matches.prefix(5000)), title: word, capped: matches.count > 5000)
                 navigator.search.status.stringValue = "No definition found. " + navigator.search.status.stringValue
+                takeKeyboardToResults()
             } else {
                 showDefinitionsMenu(defs, word: word)
             }
@@ -351,7 +352,15 @@ extension RepoWindowController: NSMenuItemValidation {
             guard let (matches, definitions) = try? await lookUp(word, in: t), gen == searchGeneration else { return }
             let defLines = Dictionary(grouping: definitions, by: \.path).mapValues { Set($0.map(\.line)) }
             navigator.search.show(Array(matches.prefix(5000)), title: word, definitions: defLines, capped: matches.count > 5000)
+            takeKeyboardToResults()
         }
+    }
+
+    /// Moves the keyboard from the code to search results it asked for, unless it has since
+    /// gone somewhere else.
+    private func takeKeyboardToResults() {
+        guard window?.firstResponder is CodeView else { return }
+        navigator.search.focusResults()
     }
 
     /// Goes to a definition in the file being read.

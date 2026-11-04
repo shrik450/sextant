@@ -246,7 +246,7 @@ final class Automation {
     }
 
     private func sendKey(_ combo: String) {
-        guard let w = (window?.jumpPanel?.isVisible == true ? window?.jumpPanel : nil) ?? NSApp.keyWindow ?? window?.window else { return }
+        guard let w = (window?.jumpPanel?.isVisible == true ? window?.jumpPanel : nil) ?? NSApp.keyWindow.flatMap({ $0.isVisible ? $0 : nil }) ?? window?.window else { return }
         var flags: NSEvent.ModifierFlags = []
         var key = combo
         let parts = combo.split(separator: "+").map(String.init)

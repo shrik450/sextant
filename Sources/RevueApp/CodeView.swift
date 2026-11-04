@@ -458,16 +458,23 @@ final class CodeView: NSTextView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         guard !jumpLabels.isEmpty, let lm = layoutManager, let tc = textContainer else { return }
-        let font = NSFont.monospacedSystemFont(ofSize: style.font.pointSize - 1, weight: .bold)
-        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.white]
+        let font = NSFont.monospacedSystemFont(ofSize: style.font.pointSize - 1, weight: .semibold)
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.35)
+        shadow.shadowOffset = NSSize(width: 0, height: -1)
+        shadow.shadowBlurRadius = 2
         for (index, label) in jumpLabels {
             let glyph = lm.glyphIndexForCharacter(at: index)
             let at = lm.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: tc).offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
             let size = (label as NSString).size(withAttributes: attrs)
-            let box = NSRect(x: at.minX - 1, y: at.midY - size.height / 2 - 1, width: size.width + 6, height: size.height + 2)
-            guard box.intersects(dirtyRect) else { continue }
-            NSColor.systemPink.setFill()
-            NSBezierPath(roundedRect: box, xRadius: 3, yRadius: 3).fill()
+            let box = NSRect(x: at.minX - 2, y: at.midY - size.height / 2 - 1, width: size.width + 6, height: size.height + 2)
+            guard box.insetBy(dx: -3, dy: -3).intersects(dirtyRect) else { continue }
+            NSGraphicsContext.saveGraphicsState()
+            shadow.set()
+            NSColor.findHighlightColor.setFill()
+            NSBezierPath(roundedRect: box, xRadius: 4, yRadius: 4).fill()
+            NSGraphicsContext.restoreGraphicsState()
             (label as NSString).draw(at: NSPoint(x: box.minX + 3, y: box.minY + 1), withAttributes: attrs)
         }
     }

@@ -28,15 +28,17 @@ final class KeyTableView: NSTableView {
     }
 }
 
-/// An outline view that reports space and Return presses, steps with `j` and `k`, and lets
-/// bare-key menu shortcuts through.
+/// An outline view that reports space, Return and Escape presses, steps with `j` and `k`, and
+/// lets bare-key menu shortcuts through.
 final class KeyOutlineView: NSOutlineView {
     var onSpace: (() -> Void)?
     var onReturn: (() -> Void)?
+    var onEscape: (() -> Void)?
     override func keyDown(with event: NSEvent) {
         let plain = event.modifierFlags.intersection([.command, .option, .control]).isEmpty
         if plain, event.charactersIgnoringModifiers == " ", let onSpace { onSpace(); return }
         if plain, let onReturn, event.keyCode == 36 || event.keyCode == 76 { onReturn(); return }
+        if plain, let onEscape, event.keyCode == 53 { onEscape(); return }
         super.keyDown(with: listArrow(for: event))
     }
 }
