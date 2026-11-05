@@ -56,7 +56,9 @@ struct RenderedText {
     var rowStarts: [Int]
 }
 
-/// Renders rows as the text for one column of the reader.
+/// Renders rows as the text for one column of the reader, one row to a line.
+///
+/// The last row has no newline after it, which would lay out an empty line below it.
 ///
 /// - Parameter side: 0 or 1 for the columns of side-by-side, or -1 for a single column.
 @MainActor
@@ -106,11 +108,12 @@ func render(_ rows: [Row], side: Int, files: [FileState], notes: [UUID: Note], s
         plain += s
         let len = s.utf16.count
         if let attrs { extras.append((NSRange(location: offset, length: len + 1), attrs)) }
-        plain += "\n"
+        if ri < rows.count - 1 { plain += "\n" }
         offset += len + 1
     }
     text.append(NSAttributedString(string: plain, attributes: base))
-    for (r, a) in extras where NSMaxRange(r) <= text.length { text.setAttributes(a, range: r) }
+    let whole = NSRange(location: 0, length: text.length)
+    for (r, a) in extras { text.setAttributes(a, range: NSIntersectionRange(r, whole)) }
     return RenderedText(string: text, rowStarts: starts)
 }
 
