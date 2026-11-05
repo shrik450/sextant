@@ -204,25 +204,24 @@ final class PaneStrip: NSView {
     }
 }
 
-/// A pane as a card: its reader, clipped to rounded corners inside a hairline border.
+/// A pane as a card: its reader, clipped to rounded corners, raised off the frost by a shadow and
+/// edged with a one-pixel rim, as the system's glass panels are.
 ///
-/// The focused card in the main window stands out with a shadow and a firmer border, and the
-/// others recede by dimming what's drawn on them: to 70% in the main window and to 50% in an
-/// inactive one. The card's fill, which the content view paints as its own background, keeps the
-/// theme's card opacity, so a dimmed card lets no more of the backdrop through than a focused
-/// one; only its text, line tints and controls fade. The shadow falls only outside the card, so it
-/// doesn't darken the focused card's fill through its translucency.
+/// The focused card in the main window stands out with a full shadow and a brighter rim, and the
+/// others recede: their shadow halves, and what's drawn on them dims to 70% in the main window and
+/// to 50% in an inactive one. The card's fill, which the content view paints as its own
+/// background, keeps the theme's card opacity, so a dimmed card lets no more of the backdrop
+/// through than a focused one; only its text, line tints and controls fade. The shadow falls only
+/// outside the card, so it doesn't darken the card's fill through its translucency.
 ///
 /// The window stays main while a panel or popover of its own, such as Go to Anything or a note,
 /// takes the keyboard, so the cards don't change then. A card cut off at the strip's edge shows as
-/// a narrower card, with its own rounded corners and border on the cut side.
+/// a narrower card, with its own rounded corners and rim on the cut side.
 @MainActor
 final class PaneCard: NSView {
     private let clip = NSView()
     private let cardShadow = CALayer()
     private let shadowCutout = CAShapeLayer()
-    private let highlight = CAShapeLayer()
-    private let highlightFade = CAGradientLayer()
     private let content: NSView
     private let header: PaneHeader
     /// The part of the card in view, in its own coordinates.
@@ -269,13 +268,6 @@ final class PaneCard: NSView {
         content.translatesAutoresizingMaskIntoConstraints = true
         content.autoresizingMask = []
         clip.addSubview(content)
-        highlight.fillColor = nil
-        highlight.lineWidth = 0.5
-        highlightFade.colors = [NSColor.black.cgColor, NSColor.clear.cgColor]
-        highlightFade.startPoint = CGPoint(x: 0.5, y: 1)
-        highlightFade.endPoint = CGPoint(x: 0.5, y: 0)
-        highlight.mask = highlightFade
-        layer?.addSublayer(highlight)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -293,14 +285,18 @@ final class PaneCard: NSView {
             placeParts()
         }
         cardShadow.shadowOffset = Self.shadowOffset
-        clipLayer.borderWidth = 0.75
-        clipLayer.borderColor = theme.color(isEmphasized ? "cardStrokeFocused" : "cardStroke").cgColor
-        highlight.strokeColor = theme.color("cardHighlight").cgColor
+        clipLayer.borderWidth = 1 / (window?.backingScaleFactor ?? 2)
+        clipLayer.borderColor = theme.color(isEmphasized ? "cardRimFocused" : "cardRim").cgColor
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        needsDisplay = true
     }
 
     private func applyEmphasis(animated: Bool) {
         let alpha: CGFloat = isFocused ? 1 : window?.isMainWindow ?? true ? 0.7 : 0.5
-        let opacity: Float = isEmphasized ? 1 : 0
+        let opacity: Float = isEmphasized ? 1 : 0.5
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = animated ? PaneStrip.slideDuration : 0
             for v in content.subviews { v.animator().alphaValue = alpha }
@@ -362,10 +358,6 @@ final class PaneCard: NSView {
         cutout.addRoundedRect(in: card, cornerWidth: r, cornerHeight: r)
         shadowCutout.frame = card
         shadowCutout.path = cutout
-        highlight.frame = part
-        let edge = NSRect(origin: .zero, size: part.size).insetBy(dx: 1, dy: 1)
-        highlight.path = edge.width > 0 && edge.height > 0 ? CGPath(roundedRect: edge, cornerWidth: r - 1, cornerHeight: r - 1, transform: nil) : nil
-        highlightFade.frame = NSRect(x: 0, y: part.height - r * 1.5, width: part.width, height: r * 1.5)
         CATransaction.commit()
     }
 }

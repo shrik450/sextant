@@ -33,9 +33,9 @@ struct Theme {
     /// Idle controls, which come up to `fgSubtle` on hover.
     var fgFaint: NSColor { color("fgFaint") }
 
-    /// The focused card's shadow: its colour comes from `cardShadow`, and its blur and offset
-    /// from the appearance, softer in light.
-    var cardShadowRadius: CGFloat { isDark ? 8 : 6 }
+    /// The blur of the cards' shadow, whose colour comes from `cardShadow`. It's tighter in
+    /// light, and fades out within the gap between cards, so no card shades its neighbour.
+    var cardShadowRadius: CGFloat { isDark ? 10 : 8 }
 
     func syntax(_ k: TokenKind) -> NSColor {
         switch k {
@@ -115,11 +115,11 @@ struct Theme {
         "syntax.number": "#0550ae", "syntax.type": "#953800", "syntax.function": "#6639ba",
         "syntax.constant": "#0550ae", "syntax.attribute": "#0550ae", "syntax.variable": "#953800",
         "syntax.tag": "#116329", "syntax.property": "#0550ae",
-        "cardStroke": "#1f232817", "cardStrokeFocused": "#1f232824", "cardShadow": "#1f23281f", "cardHighlight": "#ffffff99",
+        "pillStroke": "#1f232817", "pillStrokeFocused": "#1f232824", "cardRim": "#ffffffb3", "cardRimFocused": "#ffffff", "cardShadow": "#1f232833",
         "fgSubtle": "#818991", "fgFaint": "#1f232866", "selectionPill": "#fdfdfe", "selectionPillStroke": "#1f23281a", "hover": "#1f23280a",
     ])
 
-    static let revueDark = Theme(name: "Revue Dark", isDark: true, cardOpacity: 0.78, hex: [
+    static let revueDark = Theme(name: "Revue Dark", isDark: true, cardOpacity: 0.9, hex: [
         "canvas": "#13171d", "fg": "#e6edf3", "fgMuted": "#8b939d", "border": "#ffffff14",
         "header": "#e6edf308", "lineNumber": "#6e7681",
         "addLine": "#3fb9501a", "addNum": "#3fb9501a", "addWord": "#3fb95047",
@@ -131,7 +131,7 @@ struct Theme {
         "syntax.number": "#79c0ff", "syntax.type": "#ffa657", "syntax.function": "#d2a8ff",
         "syntax.constant": "#79c0ff", "syntax.attribute": "#79c0ff", "syntax.variable": "#ffa657",
         "syntax.tag": "#7ee787", "syntax.property": "#79c0ff",
-        "cardStroke": "#ffffff12", "cardStrokeFocused": "#ffffff1a", "cardShadow": "#00000059", "cardHighlight": "#ffffff0f",
+        "pillStroke": "#ffffff12", "pillStrokeFocused": "#ffffff1a", "cardRim": "#ffffff14", "cardRimFocused": "#ffffff24", "cardShadow": "#00000073",
         "fgSubtle": "#6e7681", "fgFaint": "#e6edf34d", "selectionPill": "#1c2026", "selectionPillStroke": "#ffffff1a", "hover": "#e6edf30b",
     ])
 
@@ -147,7 +147,7 @@ struct Theme {
         "syntax.number": "#6cb6ff", "syntax.type": "#f69d50", "syntax.function": "#dcbdfb",
         "syntax.constant": "#6cb6ff", "syntax.attribute": "#6cb6ff", "syntax.variable": "#f69d50",
         "syntax.tag": "#8ddb8c", "syntax.property": "#6cb6ff",
-        "cardStroke": "#ffffff12", "cardStrokeFocused": "#ffffff1a", "cardShadow": "#00000059", "cardHighlight": "#ffffff0f",
+        "pillStroke": "#ffffff12", "pillStrokeFocused": "#ffffff1a", "cardRim": "#ffffff14", "cardRimFocused": "#ffffff24", "cardShadow": "#00000073",
         "fgSubtle": "#768390", "fgFaint": "#d1d7e04d", "selectionPill": "#262c34", "selectionPillStroke": "#ffffff1a", "hover": "#cdd9e50b",
     ])
 
@@ -203,7 +203,7 @@ struct Theme {
         "syntax.number": "#023b95", "syntax.type": "#702c00", "syntax.function": "#622cbc",
         "syntax.constant": "#023b95", "syntax.attribute": "#023b95", "syntax.variable": "#702c00",
         "syntax.tag": "#024c1a", "syntax.property": "#023b95",
-        "cardStroke": "#20252c3d", "cardStrokeFocused": "#20252c66", "cardShadow": "#01040926", "cardHighlight": "#ffffffcc",
+        "pillStroke": "#20252c3d", "pillStrokeFocused": "#20252c66", "cardRim": "#20252c3d", "cardRimFocused": "#20252c66", "cardShadow": "#01040926",
         "fgSubtle": "#454c54", "fgFaint": "#01040999", "selectionPill": "#ffffff", "selectionPillStroke": "#20252c40", "hover": "#01040912",
     ])
 

@@ -625,7 +625,7 @@ final class CodeView: NSTextView {
         s.cardFill.setFill(); capsule.fill()
         if hoveredPill == r { t.color("hover").setFill(); capsule.fill() }
         capsule.lineWidth = 0.75
-        (hoveredPill == r ? t.color("cardStrokeFocused") : t.color("cardStroke")).setStroke(); capsule.stroke()
+        (hoveredPill == r ? t.color("pillStrokeFocused") : t.color("pillStroke")).setStroke(); capsule.stroke()
         let config = NSImage.SymbolConfiguration(pointSize: s.pillIcon.width * 0.8, weight: .semibold)
             .applying(.init(paletteColors: [hoveredPill == r ? t.fg : t.fgMuted]))
         guard let icon = NSImage(systemSymbolName: "chevron.up.chevron.down", accessibilityDescription: nil)?.withSymbolConfiguration(config) else { return }
