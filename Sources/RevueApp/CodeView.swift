@@ -876,10 +876,16 @@ final class Gutter: NSRulerView {
 
     override var isFlipped: Bool { true }
 
-    /// The width of one column of line numbers, fitting the largest line number.
+    /// Whether changed lines' numbers carry a sign, + for added and − for deleted, so a change
+    /// reads without its colour. Only the unified view of a change has the old and new columns
+    /// these signs tell apart.
+    private var signsNumbers: Bool { columns == 2 }
+
+    /// The width of one column of line numbers, fitting the largest line number and its sign.
     private var numberColumnWidth: CGFloat {
         let maxNo = code.files.reduce(1) { max($0, $1.lines.last.map { max($0.oldNo, $0.newNo) } ?? 1) }
-        return CGFloat(max(3, String(maxNo).count)) * code.style.digitWidth + 12
+        let characters = max(3, String(maxNo).count) + (signsNumbers ? 1 : 0)
+        return CGFloat(characters) * code.style.digitWidth + 12
     }
 
     /// The width of the blame column, which narrows so the code keeps at least half the reader.
@@ -956,15 +962,15 @@ final class Gutter: NSRulerView {
                 band.fill()
             }
             let textY = y + (s.lineHeight - (s.font.ascender - s.font.descender)) / 2
-            func number(_ n: Int, column: Int) {
+            func number(_ n: Int, column: Int, sign: String = "") {
                 guard n > 0 else { return }
-                let str = String(n) as NSString
+                let str = (sign + String(n)) as NSString
                 let w = CGFloat(str.length) * s.digitWidth
                 str.draw(at: NSPoint(x: blameWidth + col * CGFloat(column + 1) - 8 - w, y: textY), withAttributes: numAttrs)
             }
             if columns == 2 {
-                number(line.oldNo, column: 0)
-                number(line.newNo, column: 1)
+                number(line.oldNo, column: 0, sign: line.kind == .deleted ? "\u{2212}" : "")
+                number(line.newNo, column: 1, sign: line.kind == .added ? "+" : "")
             } else {
                 number(line.kind == .deleted ? line.oldNo : line.newNo, column: 0)
             }
