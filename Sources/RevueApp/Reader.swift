@@ -46,6 +46,7 @@ final class Reader: NSViewController, CodeViewDelegate {
     private let stack = NSStackView()
     let header = PaneHeader()
     private let emptyLabel = NSTextField(labelWithString: "")
+    private let changeCounter = ChangeCounter()
     private var layout = Layout(left: [], right: nil)
     private var syncing = false
 
@@ -64,9 +65,12 @@ final class Reader: NSViewController, CodeViewDelegate {
         emptyLabel.maximumNumberOfLines = 0
         emptyLabel.translatesAutoresizingMaskIntoConstraints = false
         emptyLabel.isHidden = true
+        changeCounter.translatesAutoresizingMaskIntoConstraints = false
+        changeCounter.isHidden = true
         v.addSubview(stack)
         v.addSubview(header)
         v.addSubview(emptyLabel)
+        v.addSubview(changeCounter)
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: v.topAnchor),
             header.leadingAnchor.constraint(equalTo: v.leadingAnchor),
@@ -84,6 +88,8 @@ final class Reader: NSViewController, CodeViewDelegate {
             emptyLabel.centerXAnchor.constraint(equalTo: stack.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: stack.centerYAnchor),
             emptyLabel.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor, multiplier: 0.8),
+            changeCounter.centerXAnchor.constraint(equalTo: stack.centerXAnchor),
+            changeCounter.bottomAnchor.constraint(equalTo: stack.bottomAnchor, constant: -ChangeCounter.margin),
         ])
         view = v
         setColumnCount(1)
@@ -117,6 +123,9 @@ final class Reader: NSViewController, CodeViewDelegate {
             scroll.hasHorizontalScroller = true
             scroll.autohidesScrollers = true
             scroll.findBarPosition = .aboveContent
+            scroll.automaticallyAdjustsContentInsets = false
+            scroll.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: ChangeCounter.clearance, right: 0)
+            scroll.scrollerInsets = NSEdgeInsets(top: 0, left: 0, bottom: -ChangeCounter.clearance, right: 0)
             let code = CodeView.make()
             code.side = n == 2 ? i : 0
             code.codeDelegate = self
@@ -216,6 +225,8 @@ final class Reader: NSViewController, CodeViewDelegate {
         emptyLabel.stringValue = message
         emptyLabel.isHidden = false
         stack.isHidden = true
+        changeStops = []
+        updateChangeCounter()
         let style = Style.current(for: view.effectiveAppearance)
         paintCanvas(style)
         header.update(path: nil, files: [], current: nil, style: style)
@@ -245,6 +256,7 @@ final class Reader: NSViewController, CodeViewDelegate {
             c.gutter.columns = sides.count == 2 || !files.contains(where: \.isChange) ? 1 : 2
             c.gutter.updateThickness()
         }
+        changeStops = changeStarts(changedRows(layout))
         if let pos { scroll(to: pos, animated: false, offset: topOffset) }
         if let kept {
             restore(kept)
@@ -680,32 +692,58 @@ final class Reader: NSViewController, CodeViewDelegate {
         if header.currentFile != before { delegate?.readerCurrentFileChanged(self) }
     }
 
-    /// The rows where each run of changed lines starts.
-    private var changeStops: [Int] {
-        let rows = primary.rows
-        var stops: [Int] = []
-        var prev = false
-        for (i, r) in rows.enumerated() {
-            var changed = false
-            if r.kind == .line { changed = files[r.file].lines[r.line].kind != .context }
-            if case .filler = r.kind { changed = true }
-            if changed && !prev { stops.append(i) }
-            prev = changed
+    /// Whether each row of a layout is part of a change, on either side of side by side.
+    private func changedRows(_ layout: Layout) -> [Bool] {
+        let files = self.files
+        func changed(_ r: Row) -> Bool {
+            r.kind == .line && files[r.file].lines[r.line].kind != .context
         }
-        return stops
+        guard let right = layout.right else { return layout.left.map(changed) }
+        return zip(layout.left, right).map { changed($0) || changed($1) }
     }
 
-    /// Moves to the next or previous change from the caret, or from the top of the view when the
-    /// caret is out of sight.
+    /// The rows where each run of changed lines starts, kept from the last reload.
+    private var changeStops: [Int] = []
+
+    /// The row moves between changes start from: the caret's, or a quarter of the way down the
+    /// view when the caret is out of sight.
+    private var navigationRow: Int? {
+        let code = primary
+        return caretInView ? caretRow : row(atY: code.visibleRect.minY + code.visibleRect.height * 0.25 + 1, in: code)
+    }
+
+    /// Whether this is the pane the window's commands act on, which shows its change counter.
+    var isFocusedPane = true {
+        didSet {
+            header.isFocusedPane = isFocusedPane
+            updateChangeCounter()
+        }
+    }
+
+    private func updateChangeCounter() {
+        changeCounter.isHidden = !isFocusedPane || stack.isHidden || changeStops.isEmpty
+        guard !changeCounter.isHidden else { return }
+        let from = navigationRow
+        changeCounter.show(from.map { changeOrdinal(atRow: $0, starts: changeStops) } ?? 0, of: changeStops.count,
+                           canGoBack: changeStop(-1, from: from) != nil, canGoForward: changeStop(1, from: from) != nil)
+    }
+
+    /// The row where the next or previous change starts, past a row.
+    ///
+    /// - Parameters:
+    ///   - dir: 1 for the next change, -1 for the previous one.
+    ///   - from: The row to move from, usually the navigation row.
+    private func changeStop(_ dir: Int, from: Int?) -> Int? {
+        guard let from else { return nil }
+        return dir > 0 ? changeStops.first { $0 > from } : changeStops.last { $0 < from }
+    }
+
+    /// Moves to the next or previous change from the navigation row.
     ///
     /// - Returns: False if there is no change in that direction.
     @discardableResult
     func nextChange(_ dir: Int) -> Bool {
-        let code = primary
-        let from = caretInView ? caretRow : row(atY: code.visibleRect.minY + code.visibleRect.height * 0.25 + 1, in: code)
-        guard let from else { return false }
-        let stops = changeStops
-        guard let r = dir > 0 ? stops.first(where: { $0 > from }) : stops.last(where: { $0 < from }) else { return false }
+        guard let r = changeStop(dir, from: navigationRow) else { return false }
         land(onRow: r, animated: true)
         return true
     }
@@ -827,6 +865,7 @@ final class Reader: NSViewController, CodeViewDelegate {
     }
 
     func updateHeader() {
+        updateChangeCounter()
         let style = primary.style
         if overview {
             header.update(path: nil, files: files, current: currentFile, style: style)

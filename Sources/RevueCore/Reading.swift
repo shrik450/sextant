@@ -176,3 +176,30 @@ public struct ReadingState: Equatable, Sendable {
         read = read.filter { k in !prefixes.contains { k.hasPrefix($0) } }
     }
 }
+
+/// Returns the indices where each run of changed rows starts.
+///
+/// - Parameter changed: Whether each row is part of a change.
+public func changeStarts(_ changed: some Sequence<Bool>) -> [Int] {
+    var starts: [Int] = []
+    var previous = false
+    for (i, c) in changed.enumerated() {
+        if c && !previous { starts.append(i) }
+        previous = c
+    }
+    return starts
+}
+
+/// Returns which change a row is in or below, counting from 1, or 0 above the first change.
+///
+/// - Parameters:
+///   - row: The row, such as the caret's.
+///   - starts: The sorted rows where each change starts.
+public func changeOrdinal(atRow row: Int, starts: [Int]) -> Int {
+    var low = 0, high = starts.count
+    while low < high {
+        let mid = (low + high) / 2
+        if starts[mid] <= row { low = mid + 1 } else { high = mid }
+    }
+    return low
+}

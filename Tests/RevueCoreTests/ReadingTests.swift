@@ -91,3 +91,20 @@ private func token(_ location: Int, _ length: Int, _ kind: TokenKind) -> Token {
     #expect(Subject.worktree(URL(fileURLWithPath: "/a/b/../c")).key == "worktree:/a/c")
     #expect(Subject.comparison(from: "a", to: "b", sinceAncestor: true).key == "compare:a...b")
 }
+
+@Test func changesStartWhereChangedRowsFollowUnchangedOnes() {
+    let changed = ".++..+...+++.".map { $0 == "+" }
+    #expect(changeStarts(changed) == [1, 5, 9])
+    #expect(changeStarts([true, true]) == [0])
+    #expect(changeStarts([Bool]()).isEmpty)
+}
+
+@Test func countsWhichChangeARowIsIn() {
+    let starts = [1, 5, 9]
+    #expect(changeOrdinal(atRow: 0, starts: starts) == 0)
+    #expect(changeOrdinal(atRow: 1, starts: starts) == 1)
+    #expect(changeOrdinal(atRow: 4, starts: starts) == 1)
+    #expect(changeOrdinal(atRow: 5, starts: starts) == 2)
+    #expect(changeOrdinal(atRow: 100, starts: starts) == 3)
+    #expect(changeOrdinal(atRow: 3, starts: []) == 0)
+}

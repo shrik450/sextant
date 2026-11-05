@@ -816,7 +816,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     func showPanes(animated: Bool) {
         strip.show(panes.map(\.card), focused: focusedPane, animated: animated)
         for (i, p) in panes.enumerated() {
-            p.reader.header.isFocusedPane = i == focusedPane || panes.count == 1
+            p.reader.isFocusedPane = i == focusedPane || panes.count == 1
             p.reader.header.setPane(split: p.reader.split, canClose: panes.count > 1)
         }
     }
