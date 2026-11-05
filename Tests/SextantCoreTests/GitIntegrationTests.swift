@@ -204,7 +204,7 @@ import Testing
         #expect(parsed.value > 3)
         parsed.set(0)
         let inWorktree = try await index.definitions(in: .worktree, git: repo) { done, _ in parsed.set(done) }
-        #expect(parsed.value == 3)
+        #expect(parsed.value == 4)
         #expect(inWorktree.contains { $0.name == "get" && $0.path == "src/lib.rs" })
         parsed.set(0)
         await index.analysis.flush()

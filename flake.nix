@@ -66,6 +66,7 @@
       syntaxRuntime = pkgs.runCommand "sextant-syntax-runtime"
         {
           nativeBuildInputs = [ pkgs.jq pkgs.bash ];
+          queries = ./queries;
           grammarsFile = pkgs.writeText "grammars" (lib.concatStrings (lib.mapAttrsToList (attr: types:
             let g = pkgs.tree-sitter-grammars."tree-sitter-${attr}";
             in "${attr} ${g} ${g.src} ${types}\n") grammars));
