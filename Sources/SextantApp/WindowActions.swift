@@ -659,7 +659,7 @@ extension RepoWindowController: NSMenuItemValidation {
         reader.split = on
         reader.reload(keepPosition: true)
         UserDefaults.standard.set(on ? "split" : "unified", forKey: "diffMode")
-        reader.header.setPane(split: on, canClose: panes.count > 1)
+        reader.header.setPane(split: on, beside: panes.count > 1, zoomed: strip.isZoomed)
     }
 
     @objc func showUnified(_ sender: Any?) { setSplit(false) }

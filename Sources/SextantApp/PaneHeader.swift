@@ -5,9 +5,8 @@ import SextantCore
 /// the definition at the caret, the size of the change, and what can be done to the pane.
 ///
 /// The title and each folder open a menu of what sits beside them in the snapshot, like Xcode's
-/// jump bar. The pane's buttons show its diff layout, whether its file is reviewed, and close it.
-/// They stay out of sight until the pointer comes over the header, except a reviewed file's
-/// filled check, which always shows.
+/// jump bar. The pane's buttons show its diff layout and whether its file is reviewed, and zoom
+/// and close it.
 @MainActor
 final class PaneHeader: NSView, NSMenuDelegate {
     private let title = NSButton(title: "", target: nil, action: nil)
@@ -17,6 +16,7 @@ final class PaneHeader: NSView, NSMenuDelegate {
     let stats = NSTextField(labelWithString: "")
     let splitButton = QuietButton.make("rectangle.split.2x1", "Side by Side")
     let reviewedButton = QuietButton.make("checkmark.circle", "Mark as Reviewed")
+    let zoomButton = QuietButton.make("arrow.up.left.and.arrow.down.right", "Zoom Pane")
     let closeButton = QuietButton.make("xmark", "Close Pane")
     /// Every file in the snapshot, sorted, for the folder menus.
     var tree: [String] = []
@@ -28,14 +28,13 @@ final class PaneHeader: NSView, NSMenuDelegate {
     private var isReviewed = false {
         didSet { if isReviewed != oldValue { applyEmphasis() } }
     }
-    private var isHovered = false
-    private var hoverArea: NSTrackingArea?
     private var symbolMenuIsCurrent = false
     var onOpenPath: ((String) -> Void)?
     var onShowOverview: (() -> Void)?
     var onSelectSymbol: ((Symbol) -> Void)?
     var onToggleSplit: (() -> Void)?
     var onToggleReviewed: (() -> Void)?
+    var onToggleZoom: (() -> Void)?
     var onClose: (() -> Void)?
 
     /// The header's height, which centres its row on the window's traffic lights when the card
@@ -71,13 +70,23 @@ final class PaneHeader: NSView, NSMenuDelegate {
         return chevron
     }
 
-    /// Shows the pane's diff layout and whether it can close, which depend on the window rather
-    /// than the files shown.
-    func setPane(split: Bool, canClose: Bool) {
+    /// Shows the pane's diff layout and the zoom and close buttons, which depend on the window
+    /// rather than the files shown.
+    ///
+    /// - Parameters:
+    ///   - split: Whether the pane shows changes side by side.
+    ///   - beside: Whether other panes share the strip, without which zoom and close have nothing
+    ///     to do.
+    ///   - zoomed: Whether the strip is zoomed to one pane at a time.
+    func setPane(split: Bool, beside: Bool, zoomed: Bool) {
         splitButton.image = NSImage(systemSymbolName: split ? "text.justify.leading" : "rectangle.split.2x1", accessibilityDescription: nil)
         splitButton.toolTip = split ? "Show Unified (⌃⌘1)" : "Show Side by Side (⌃⌘2)"
         splitButton.setAccessibilityLabel(splitButton.toolTip)
-        closeButton.isHidden = !canClose
+        zoomButton.image = NSImage(systemSymbolName: zoomed ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", accessibilityDescription: nil)
+        zoomButton.toolTip = zoomed ? "Show Panes Side by Side (⇧⌘↩)" : "Zoom Pane (⇧⌘↩)"
+        zoomButton.setAccessibilityLabel(zoomButton.toolTip)
+        zoomButton.isHidden = !beside
+        closeButton.isHidden = !beside
     }
 
     override init(frame: NSRect) {
@@ -86,12 +95,11 @@ final class PaneHeader: NSView, NSMenuDelegate {
         splitButton.action = #selector(splitClicked)
         reviewedButton.target = self
         reviewedButton.action = #selector(reviewedClicked)
+        zoomButton.target = self
+        zoomButton.action = #selector(zoomClicked)
         closeButton.target = self
         closeButton.action = #selector(closeClicked)
         closeButton.toolTip = "Close Pane (⌘W)"
-        for b in [splitButton, closeButton, reviewedButton] {
-            b.onFocusChange = { [weak self] in self?.showControls(animated: true) }
-        }
         reviewedButton.isHidden = true
         title.isBordered = false
         title.target = self
@@ -116,7 +124,7 @@ final class PaneHeader: NSView, NSMenuDelegate {
         stats.setContentCompressionResistancePriority(.required, for: .horizontal)
         stats.setContentHuggingPriority(.required, for: .horizontal)
         symbolChevron.isHidden = true
-        row = NSStackView(views: [title, folders, symbolChevron, symbols, NSView(), stats, reviewedButton, splitButton, closeButton])
+        row = NSStackView(views: [title, folders, symbolChevron, symbols, NSView(), stats, reviewedButton, splitButton, zoomButton, closeButton])
         row.orientation = .horizontal
         row.spacing = 0
         row.setCustomSpacing(10, after: title)
@@ -125,6 +133,7 @@ final class PaneHeader: NSView, NSMenuDelegate {
         row.setCustomSpacing(14, after: stats)
         row.setCustomSpacing(12, after: reviewedButton)
         row.setCustomSpacing(12, after: splitButton)
+        row.setCustomSpacing(12, after: zoomButton)
         row.edgeInsets = rowInsets
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
@@ -162,42 +171,6 @@ final class PaneHeader: NSView, NSMenuDelegate {
         reviewedButton.idleTint = .themed(isReviewed ? "fgMuted" : "fgFaint")
         reviewedButton.brightensOnHover = !isReviewed
         stats.alphaValue = isFocusedPane ? 0.85 : 0.5
-        showControls(animated: false)
-    }
-
-    /// Shows the pane's buttons while the pointer is over the header or one of them has keyboard
-    /// focus, fading them in and out.
-    private func showControls(animated: Bool) {
-        let focused = [splitButton, closeButton, reviewedButton].contains { $0.hasKeyboardFocus }
-        let shown: CGFloat = isHovered || focused ? 1 : 0
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = animated ? 0.15 : 0
-            for b in [splitButton, closeButton] { b.animator().alphaValue = shown }
-            reviewedButton.animator().alphaValue = isReviewed ? 1 : shown
-        }
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let hoverArea { removeTrackingArea(hoverArea) }
-        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect], owner: self)
-        addTrackingArea(area)
-        hoverArea = area
-        let inside = window.map { bounds.contains(convert($0.mouseLocationOutsideOfEventStream, from: nil)) } ?? false
-        if inside != isHovered {
-            isHovered = inside
-            showControls(animated: false)
-        }
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        isHovered = true
-        showControls(animated: true)
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        isHovered = false
-        showControls(animated: true)
     }
 
     /// The path shown, as folders then the file, after All Changes in the overview.
@@ -356,6 +329,7 @@ final class PaneHeader: NSView, NSMenuDelegate {
     @objc private func overviewClicked() { onShowOverview?() }
     @objc private func splitClicked() { onToggleSplit?() }
     @objc private func reviewedClicked() { onToggleReviewed?() }
+    @objc private func zoomClicked() { onToggleZoom?() }
     @objc private func closeClicked() { onClose?() }
 
     @objc private func crumbClicked(_ sender: NSButton) {
@@ -432,24 +406,6 @@ final class QuietButton: NSButton {
     var brightensOnHover = true { didSet { applyTint() } }
     private var isHovered = false { didSet { applyTint() } }
     private var hoverArea: NSTrackingArea?
-    /// Whether the button has keyboard focus, as when Full Keyboard Access tabs to it.
-    private(set) var hasKeyboardFocus = false
-    /// Called when the button gains or loses keyboard focus.
-    var onFocusChange: (() -> Void)?
-
-    override func becomeFirstResponder() -> Bool {
-        guard super.becomeFirstResponder() else { return false }
-        hasKeyboardFocus = true
-        onFocusChange?()
-        return true
-    }
-
-    override func resignFirstResponder() -> Bool {
-        guard super.resignFirstResponder() else { return false }
-        hasKeyboardFocus = false
-        onFocusChange?()
-        return true
-    }
 
     /// Makes a button showing a symbol, sized to the body text.
     ///

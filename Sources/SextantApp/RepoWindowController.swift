@@ -203,6 +203,10 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
             guard let self, let p, self.focus(p) else { return }
             self.toggleReviewedAction(nil)
         }
+        r.header.onToggleZoom = { [weak self, weak p] in
+            guard let self, let p, self.focus(p) else { return }
+            self.toggleZoomPane(nil)
+        }
         r.header.onClose = { [weak self, weak p] in
             guard let self, let p, self.focus(p) else { return }
             self.closePane(nil)
@@ -820,6 +824,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     @objc func toggleZoomPane(_ sender: Any?) {
         guard panes.count > 1 else { NSSound.beep(); return }
         strip.isZoomed.toggle()
+        showPanes(animated: false)
     }
 
     /// Lays out the strip, sliding the focused pane into view.
@@ -828,7 +833,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         strip.show(panes.map(\.card), focused: focusedPane, animated: animated)
         for (i, p) in panes.enumerated() {
             p.reader.isFocusedPane = i == focusedPane || panes.count == 1
-            p.reader.header.setPane(split: p.reader.split, canClose: panes.count > 1)
+            p.reader.header.setPane(split: p.reader.split, beside: panes.count > 1, zoomed: strip.isZoomed)
         }
     }
 
