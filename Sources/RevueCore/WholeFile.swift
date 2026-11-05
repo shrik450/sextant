@@ -28,6 +28,19 @@ public func wholeFile(_ hunks: [Hunk], oldLines old: [String]) -> [DiffLine] {
     return out
 }
 
+/// Returns how many unchanged lines a diff leaves out before each hunk, after the hunk before it.
+///
+/// These are the lines `wholeFile(_:oldLines:)` fills in there. Lines after the last hunk aren't
+/// counted, since the hunks don't say where the file ends.
+public func unchangedLinesBefore(_ hunks: [Hunk]) -> [Int] {
+    var nextOld = 1
+    return hunks.map { h in
+        let last = h.oldCount == 0 ? h.oldStart : h.oldStart - 1
+        defer { nextOld = h.oldCount == 0 ? max(nextOld, h.oldStart + 1) : h.oldEnd }
+        return max(0, last - nextOld + 1)
+    }
+}
+
 /// Returns the runs of unchanged lines to hide when showing only the changes.
 ///
 /// Runs shorter than `minimum` stay visible, since folding them would save nothing. A file

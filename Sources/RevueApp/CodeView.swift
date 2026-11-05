@@ -51,6 +51,23 @@ struct Style {
 
     var baselineOffset: CGFloat { max(0, (lineHeight - (font.ascender - font.descender)) / 2) }
     var headerHeight: CGFloat { round(lineHeight * 1.7) }
+
+    /// The text of an "N unchanged lines" pill: the interface font, a step smaller than the code.
+    var pillFont: NSFont { .systemFont(ofSize: font.pointSize - 1, weight: .medium) }
+    /// The pill's padding at each end, around its icon and text.
+    var pillPadding: CGFloat { 9 }
+    /// The width of the pill's expand icon and the gap after it.
+    var pillIcon: (width: CGFloat, gap: CGFloat) { (round(font.pointSize * 0.85), 5) }
+
+    /// The paragraph of a pill's row, which leaves room before the text for the pill's padding
+    /// and icon.
+    var pillParagraph: NSParagraphStyle {
+        let p = paragraph().mutableCopy() as! NSMutableParagraphStyle
+        p.firstLineHeadIndent = pillPadding + pillIcon.width + pillIcon.gap
+        return p
+    }
+
+    var pillBaselineOffset: CGFloat { max(0, (lineHeight - (pillFont.ascender - pillFont.descender)) / 2) }
 }
 
 /// The text for one column of the reader, with each row's starting offset.
@@ -76,6 +93,8 @@ func render(_ rows: [Row], side: Int, files: [FileState], notes: [UUID: Note], s
         .baselineOffset: style.baselineOffset, .ligature: 0,
     ]
     let muted = base.merging([.foregroundColor: t.fgMuted]) { $1 }
+    let pill = muted.merging([.font: style.pillFont, .paragraphStyle: style.pillParagraph,
+                              .baselineOffset: style.pillBaselineOffset, .cursor: NSCursor.pointingHand]) { $1 }
 
     var plain = ""
     var extras: [(NSRange, [NSAttributedString.Key: Any])] = []
@@ -90,11 +109,11 @@ func render(_ rows: [Row], side: Int, files: [FileState], notes: [UUID: Note], s
         case .filler:
             s = ""
         case .fold(let r):
-            s = "⋯  \(r.count) unchanged lines"
-            attrs = muted.merging([.revueAction: ReaderAction.unfold(file: row.file, at: r.lowerBound), .cursor: NSCursor.pointingHand]) { $1 }
-        case .gap:
-            s = "⋯"
-            attrs = muted.merging([.revueAction: ReaderAction.openFile(file: row.file, line: row.line), .cursor: NSCursor.pointingHand]) { $1 }
+            s = unchangedLabel(r.count)
+            attrs = pill.merging([.revueAction: ReaderAction.unfold(file: row.file, at: r.lowerBound)]) { $1 }
+        case .gap(let hidden):
+            s = unchangedLabel(hidden)
+            attrs = pill.merging([.revueAction: ReaderAction.openFile(file: row.file, line: row.line)]) { $1 }
         case .header:
             let f = files[row.file]
             s = f.diff.change.oldPath != f.path && f.diff.change.isRename ? "\(f.diff.change.oldPath) → \(f.path)" : f.path
@@ -119,6 +138,10 @@ func render(_ rows: [Row], side: Int, files: [FileState], notes: [UUID: Note], s
     let whole = NSRange(location: 0, length: text.length)
     for (r, a) in extras { text.setAttributes(a, range: NSIntersectionRange(r, whole)) }
     return RenderedText(string: text, rowStarts: starts)
+}
+
+private func unchangedLabel(_ count: Int) -> String {
+    count == 1 ? "1 unchanged line" : "\(count) unchanged lines"
 }
 
 /// Replaces control characters other than tab with their Unicode pictures, so they're visible.
@@ -220,6 +243,7 @@ final class CodeView: NSTextView {
     }
 
     func setContent(_ r: RenderedText, rows: [Row], files: [FileState]) {
+        hoveredPill = nil
         self.rows = rows
         self.files = files
         rowStarts = r.rowStarts
@@ -531,6 +555,7 @@ final class CodeView: NSTextView {
                 t.color("hatch").setStroke(); full.hatch(origin: .zero)
             case .fold, .gap:
                 t.color("hunkLine").setFill(); full.fill()
+                drawPill(ofRow: r, in: frag)
             case .header:
                 let band = NSRect(x: full.minX, y: full.maxY - style.headerHeight, width: full.width, height: style.headerHeight)
                 t.color("header").setFill(); band.fill()
@@ -547,6 +572,66 @@ final class CodeView: NSTextView {
         }
         drawUses(in: rect)
         drawCaret()
+    }
+
+    /// The row of the "N unchanged lines" pill under the mouse, which the pill shows.
+    private var pillArea: NSTrackingArea?
+    private var hoveredPill: Int? {
+        didSet {
+            guard hoveredPill != oldValue else { return }
+            for r in [oldValue, hoveredPill].compactMap({ $0 }) where r < rows.count { setNeedsDisplay(rect(ofRow: r)) }
+        }
+    }
+
+    private func pillRow(at event: NSEvent) -> Int? {
+        let p = convert(event.locationInWindow, from: nil)
+        guard let r = row(at: characterIndexForInsertion(at: p)), r < rows.count else { return nil }
+        switch rows[r].kind {
+        case .fold, .gap: return r
+        default: return nil
+        }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let pillArea { removeTrackingArea(pillArea) }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+        addTrackingArea(area)
+        pillArea = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        hoveredPill = pillRow(at: event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        hoveredPill = nil
+    }
+
+    /// Draws a fold or gap row's text as a capsule with an expand icon, marking where unchanged
+    /// lines are hidden and that a click shows them.
+    private func drawPill(ofRow r: Int, in frag: NSRect) {
+        guard let lm = layoutManager, let tc = textContainer, let length = textStorage?.length else { return }
+        let s = style, t = s.theme
+        let end = r + 1 < rowStarts.count ? rowStarts[r + 1] - 1 : length
+        let glyphs = lm.glyphRange(forCharacterRange: NSRange(location: rowStarts[r], length: max(0, end - rowStarts[r])), actualCharacterRange: nil)
+        let text = lm.boundingRect(forGlyphRange: glyphs, in: tc).offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+        let lead = s.pillPadding + s.pillIcon.width + s.pillIcon.gap
+        let height = min(frag.height - 4, ceil(s.pillFont.pointSize * 1.6))
+        let shape = NSRect(x: text.minX - lead, y: frag.midY - height / 2, width: lead + text.width + s.pillPadding, height: height)
+        let capsule = NSBezierPath(roundedRect: shape, xRadius: height / 2, yRadius: height / 2)
+        s.cardFill.setFill(); capsule.fill()
+        if hoveredPill == r { t.color("hover").setFill(); capsule.fill() }
+        capsule.lineWidth = 0.75
+        (hoveredPill == r ? t.color("cardStrokeFocused") : t.color("cardStroke")).setStroke(); capsule.stroke()
+        let config = NSImage.SymbolConfiguration(pointSize: s.pillIcon.width * 0.8, weight: .semibold)
+            .applying(.init(paletteColors: [hoveredPill == r ? t.fg : t.fgMuted]))
+        guard let icon = NSImage(systemSymbolName: "chevron.up.chevron.down", accessibilityDescription: nil)?.withSymbolConfiguration(config) else { return }
+        let size = icon.size
+        icon.draw(in: NSRect(x: shape.minX + s.pillPadding + (s.pillIcon.width - size.width) / 2, y: shape.midY - size.height / 2, width: size.width, height: size.height),
+                  from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -953,6 +1038,8 @@ final class Gutter: NSRulerView {
                 case .filler:
                     t.color("emptyLine").setFill(); band.fill()
                     t.color("hatch").setStroke(); band.hatch(origin: convert(NSPoint.zero, from: code))
+                case .fold, .gap:
+                    t.color("hunkNum").setFill(); band.fill()
                 default:
                     break
                 }

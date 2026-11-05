@@ -16,10 +16,10 @@ final class FileState {
     /// Holds just the hunks until the whole file is loaded.
     private(set) var lines: [DiffLine]
     private(set) var isWhole: Bool
-    /// The indices into `lines` where a hunk starts after skipped lines.
+    /// The number of unchanged lines left out before the hunk starting at each index into `lines`.
     ///
     /// Only used before the whole file is loaded.
-    private(set) var gapsBefore: Set<Int> = []
+    private(set) var gapsBefore: [Int: Int] = [:]
     /// The folded runs the reader has opened, by their first line index.
     var unfolded: Set<Int> = []
     /// Whether a grammar covers the file, which analysis loads off the main thread.
@@ -44,10 +44,9 @@ final class FileState {
         self.isChange = isChange
         hasLanguage = SyntaxRuntime.shared?.hasLanguage(forPath: diff.path) ?? false
         var all: [DiffLine] = []
-        var gaps: Set<Int> = []
-        for (i, h) in diff.hunks.enumerated() {
-            let skipped = i == 0 ? h.oldStart > 1 || h.newStart > 1 : h.oldStart > diff.hunks[i - 1].oldEnd
-            if skipped && !(h.oldStart == 0 && h.newStart <= 1) { gaps.insert(all.count) }
+        var gaps: [Int: Int] = [:]
+        for (h, skipped) in zip(diff.hunks, unchangedLinesBefore(diff.hunks)) {
+            if skipped > 0 { gaps[all.count] = skipped }
             all += h.lines
         }
         lines = all
@@ -109,7 +108,7 @@ final class FileState {
     func setWhole(_ all: [DiffLine]) {
         lines = all
         isWhole = true
-        gapsBefore = []
+        gapsBefore = [:]
         unfolded = []
         tokens = nil
         definitions = nil
@@ -298,8 +297,8 @@ struct Row: Equatable {
         case filler
         /// Hidden unchanged lines of a whole file.
         case fold(Range<Int>)
-        /// Unchanged lines between hunks of a file that isn't loaded whole.
-        case gap
+        /// Unchanged lines between hunks of a file that isn't loaded whole, and how many.
+        case gap(Int)
         /// A file's title in the overview.
         case header
         case notice(String)
@@ -346,7 +345,7 @@ func layoutRows(files: [FileState], overview: Bool, split: Bool, showAll: Bool, 
                 i = fold.upperBound
                 continue
             }
-            if f.gapsBefore.contains(i) { both(Row(kind: .gap, file: fi, line: i)) }
+            if let hidden = f.gapsBefore[i] { both(Row(kind: .gap(hidden), file: fi, line: i)) }
             if !twoColumns {
                 left.append(Row(kind: .line, file: fi, line: i))
                 emitNotes(after: i)
@@ -362,7 +361,7 @@ func layoutRows(files: [FileState], overview: Bool, split: Bool, showAll: Bool, 
             }
             var dels: [Int] = [], adds: [Int] = []
             let runStart = i
-            func continues(_ k: LineKind) -> Bool { i < lines.count && lines[i].kind == k && foldAt[i] == nil && !(i != runStart && f.gapsBefore.contains(i)) }
+            func continues(_ k: LineKind) -> Bool { i < lines.count && lines[i].kind == k && foldAt[i] == nil && !(i != runStart && f.gapsBefore[i] != nil) }
             while continues(.deleted) { dels.append(i); i += 1 }
             while continues(.added) { adds.append(i); i += 1 }
             for k in 0..<max(dels.count, adds.count) {

@@ -129,6 +129,40 @@ private func hunk(_ oldStart: Int, _ newStart: Int, _ lines: [(LineKind, String)
     #expect(wholeFile([added], oldLines: []).map(\.text) == ["one", "two"])
 }
 
+@Test func countsTheUnchangedLinesBetweenHunksAsWholeFileFillsThem() {
+    func deleted(_ start: Int, _ count: Int) -> Hunk {
+        Hunk(oldStart: start, oldCount: count, newStart: 1, newCount: 0, section: "",
+             lines: (start..<start + count).map { DiffLine(kind: .deleted, oldNo: $0, newNo: 0, text: "") })
+    }
+    let inserted = Hunk(oldStart: 30, oldCount: 0, newStart: 1, newCount: 1, section: "",
+                        lines: [DiffLine(kind: .added, oldNo: 0, newNo: 1, text: "")])
+    let hunks = [deleted(5, 3), deleted(20, 2), inserted, deleted(31, 1)]
+    #expect(unchangedLinesBefore(hunks) == [4, 12, 9, 0])
+    let kinds = wholeFile(hunks, oldLines: Array(repeating: "", count: 40)).map { l in
+        switch l.kind { case .context: "."; case .added: "+"; case .deleted: "-" }
+    }.joined()
+    #expect(kinds == "....---............--.........+-.........")
+    #expect(unchangedLinesBefore([Hunk(oldStart: 0, oldCount: 0, newStart: 1, newCount: 1, section: "", lines: [])]) == [0])
+}
+
+@Test func countsTheUnchangedLinesBeforeAnInsertionRightAfterAHunk() {
+    let removed = Hunk(oldStart: 5, oldCount: 3, newStart: 5, newCount: 0, section: "",
+                       lines: (5..<8).map { DiffLine(kind: .deleted, oldNo: $0, newNo: 0, text: "") })
+    func inserted(after old: Int) -> Hunk {
+        Hunk(oldStart: old, oldCount: 0, newStart: old - 2, newCount: 1, section: "",
+             lines: [DiffLine(kind: .added, oldNo: 0, newNo: old - 2, text: "")])
+    }
+    func kinds(_ hunks: [Hunk]) -> String {
+        wholeFile(hunks, oldLines: Array(repeating: "", count: 12)).map { l in
+            switch l.kind { case .context: "."; case .added: "+"; case .deleted: "-" }
+        }.joined()
+    }
+    #expect(unchangedLinesBefore([removed, inserted(after: 8)]) == [4, 1])
+    #expect(kinds([removed, inserted(after: 8)]) == "....---.+....")
+    #expect(unchangedLinesBefore([removed, inserted(after: 7)]) == [4, 0])
+    #expect(kinds([removed, inserted(after: 7)]) == "....---+.....")
+}
+
 @Test func foldsLongUnchangedRunsButKeepsContext() {
     func lines(_ kinds: String) -> [DiffLine] {
         kinds.map { DiffLine(kind: $0 == "+" ? .added : .context, oldNo: 0, newNo: 0, text: "") }
