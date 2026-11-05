@@ -1220,15 +1220,17 @@ extension NSRect {
 /// the ruler see-through.
 ///
 /// AppKit floats the ruler over the clip view and insets the content instead, so code scrolled
-/// sideways passes under the gutter, and it backs the ruler with a hard scroll-edge pocket in
-/// the system's material. With the code kept clear of the ruler, the pocket has nothing to hide,
-/// so its material is hidden and the gutter shows the card behind it, as the code does.
+/// sideways passes under the gutter, and it backs the ruler with a hard scroll-edge pocket: the
+/// system's material over a live blur of what's behind it. With the code kept clear of the ruler,
+/// the pocket has nothing to hide, so the whole pocket is hidden and the gutter shows the card
+/// behind it, as the code does. Hiding only its material leaves the blur, which shows as a grey
+/// veil over the gutter once the card dims.
 @MainActor
 final class GutterScrollView: NSScrollView {
     override func tile() {
         super.tile()
         guard rulersVisible, let ruler = verticalRulerView else { return }
-        hideMaterials(in: ruler)
+        for pocket in ruler.subviews where pocket.containsMaterial { pocket.isHidden = true }
         guard contentView.frame.minX < ruler.frame.maxX else { return }
         var frame = contentView.frame
         frame.size.width = max(0, frame.maxX - ruler.frame.maxX)
@@ -1236,10 +1238,9 @@ final class GutterScrollView: NSScrollView {
         contentView.frame = frame
         contentView.contentInsets.left = 0
     }
+}
 
-    private func hideMaterials(in view: NSView) {
-        for v in view.subviews {
-            if v is NSVisualEffectView { v.isHidden = true } else { hideMaterials(in: v) }
-        }
-    }
+private extension NSView {
+    /// Whether the view is or holds one of the system's materials.
+    var containsMaterial: Bool { self is NSVisualEffectView || subviews.contains { $0.containsMaterial } }
 }
