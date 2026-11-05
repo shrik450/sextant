@@ -208,7 +208,7 @@ final class Reader: NSViewController, CodeViewDelegate {
     func reload(keepPosition: Bool) {
         let pos = keepPosition ? topPosition : nil
         let kept = keepPosition ? keptSelection : nil
-        let topOffset = keepPosition ? offsetWithinTopRow : 0
+        let topOffset = keepPosition ? offsetFromTopPosition : 0
         emptyLabel.isHidden = true
         stack.isHidden = false
         layout = layoutRows(files: files, overview: overview, split: split, showAll: showAll, notes: notes)
@@ -517,21 +517,26 @@ final class Reader: NSViewController, CodeViewDelegate {
 
     private func topRow(_ code: CodeView) -> Int? { row(atY: code.visibleRect.minY + 2, in: code) }
 
-    /// The row at the top of the viewport, as a file and line.
-    var topPosition: ReaderPosition? {
+    /// The first line at or below the top of the viewport, with its row.
+    ///
+    /// Headers, gaps and folds have no line to return to, so the line below them stands in.
+    private var topAnchor: (row: Int, position: ReaderPosition)? {
         let code = primary
         guard let r = topRow(code) else { return nil }
         let rows = code.rows
-        for i in r..<min(rows.count, r + 50) where rows[i].kind == .line {
-            return ReaderPosition(file: rows[i].file, line: rows[i].line)
+        if let i = (r..<min(rows.count, r + 50)).first(where: { rows[$0].kind == .line }) {
+            return (i, ReaderPosition(file: rows[i].file, line: rows[i].line))
         }
-        return rows.indices.contains(r) ? ReaderPosition(file: rows[r].file, line: max(0, rows[r].line)) : nil
+        return rows.indices.contains(r) ? (r, ReaderPosition(file: rows[r].file, line: max(0, rows[r].line))) : nil
     }
 
-    private var offsetWithinTopRow: CGFloat {
-        let code = primary
-        guard let r = topRow(code) else { return 0 }
-        return code.visibleRect.minY - code.rect(ofRow: r).minY
+    /// The row at the top of the viewport, as a file and line.
+    var topPosition: ReaderPosition? { topAnchor?.position }
+
+    /// How far the top of the viewport sits below the top position's row; negative when above it.
+    private var offsetFromTopPosition: CGFloat {
+        guard let a = topAnchor else { return 0 }
+        return primary.visibleRect.minY - primary.rect(ofRow: a.row).minY
     }
 
     /// The file under the top of the viewport (overview) or the file shown.
