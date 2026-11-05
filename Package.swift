@@ -2,21 +2,21 @@
 import PackageDescription
 
 let package = Package(
-    name: "Revue",
+    name: "Sextant",
     platforms: [.macOS(.v26)],
     products: [
-        .executable(name: "RevueApp", targets: ["RevueApp"]),
-        .executable(name: "revue", targets: ["revue"]),
+        .executable(name: "SextantApp", targets: ["SextantApp"]),
+        .executable(name: "sextant", targets: ["sextant"]),
     ],
     dependencies: [
         .package(url: "https://github.com/ChimeHQ/SwiftTreeSitter", from: "0.25.0"),
     ],
     targets: [
-        .target(name: "RevueCore", dependencies: [
+        .target(name: "SextantCore", dependencies: [
             .product(name: "SwiftTreeSitter", package: "SwiftTreeSitter"),
         ]),
-        .executableTarget(name: "RevueApp", dependencies: ["RevueCore"]),
-        .executableTarget(name: "revue"),
-        .testTarget(name: "RevueCoreTests", dependencies: ["RevueCore"]),
+        .executableTarget(name: "SextantApp", dependencies: ["SextantCore"]),
+        .executableTarget(name: "sextant"),
+        .testTarget(name: "SextantCoreTests", dependencies: ["SextantCore"]),
     ]
 )

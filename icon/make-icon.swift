@@ -369,7 +369,7 @@ func drawPaper(_ ctx: CGContext, _ g: Geometry) {
 
     if full {
         let f = monoFont(12.5, .semibold)
-        let name = NSAttributedString(string: "Sources/Revue/Session.swift", attributes: [
+        let name = NSAttributedString(string: "Sources/Sextant/Session.swift", attributes: [
             NSAttributedString.Key(kCTFontAttributeName as String): f,
             NSAttributedString.Key(kCTForegroundColorAttributeName as String): Palette.text,
         ])

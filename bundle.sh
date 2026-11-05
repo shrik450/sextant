@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Assembles Revue.app from SwiftPM build products.
+# Assembles Sextant.app from SwiftPM build products.
 #
 # Usage: bundle.sh <bin-dir> <out-dir> <git-path> <syntax-dir> [codesign-command]
 #
@@ -21,16 +21,16 @@ here=$(cd "$(dirname "$0")" && pwd)
 version=$(< "$here/VERSION")
 git_key=""
 if [ -n "$git" ]; then
-  git_key="<key>RevueGitPath</key><string>$git</string>"
+  git_key="<key>SextantGitPath</key><string>$git</string>"
 fi
 
-app="$out/Revue.app"
+app="$out/Sextant.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/Helpers"
 cp -RL "$syntax" "$app/Contents/Resources/syntax"
 chmod -R u+w "$app/Contents/Resources/syntax"
-cp "$bin/RevueApp" "$app/Contents/MacOS/Revue"
-cp "$bin/revue" "$app/Contents/Helpers/revue"
+cp "$bin/SextantApp" "$app/Contents/MacOS/Sextant"
+cp "$bin/sextant" "$app/Contents/Helpers/sextant"
 if [ -f "$here/icon/AppIcon.icns" ]; then
   cp "$here/icon/AppIcon.icns" "$app/Contents/Resources/AppIcon.icns"
 fi
@@ -40,10 +40,10 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleIdentifier</key><string>com.shrikanthup.Revue</string>
-  <key>CFBundleName</key><string>Revue</string>
-  <key>CFBundleDisplayName</key><string>Revue</string>
-  <key>CFBundleExecutable</key><string>Revue</string>
+  <key>CFBundleIdentifier</key><string>com.shrikanthup.Sextant</string>
+  <key>CFBundleName</key><string>Sextant</string>
+  <key>CFBundleDisplayName</key><string>Sextant</string>
+  <key>CFBundleExecutable</key><string>Sextant</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$version</string>
   <key>CFBundleVersion</key><string>$version</string>
@@ -57,8 +57,8 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleURLTypes</key>
   <array>
     <dict>
-      <key>CFBundleURLName</key><string>com.shrikanthup.Revue</string>
-      <key>CFBundleURLSchemes</key><array><string>revue</string></array>
+      <key>CFBundleURLName</key><string>com.shrikanthup.Sextant</string>
+      <key>CFBundleURLSchemes</key><array><string>sextant</string></array>
     </dict>
   </array>
   <key>CFBundleDocumentTypes</key>
@@ -75,7 +75,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 PLIST
 
 if [ -n "$sign" ]; then
-  "$sign" --force --sign - "$app/Contents/Helpers/revue"
+  "$sign" --force --sign - "$app/Contents/Helpers/sextant"
   "$sign" --force --sign - "$app"
 fi
 echo "$app"

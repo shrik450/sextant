@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Measures how fast Revue opens and moves through a large review, and fails when a measurement
+# Measures how fast Sextant opens and moves through a large review, and fails when a measurement
 # goes over its budget.
 #
 # Builds a release app and a repository with a 400-file change, including a 30,000-line file,
@@ -14,7 +14,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 work="$here/.build/perf"
 repo="$work/repo"
-app="$work/Revue.app"
+app="$work/Sextant.app"
 log="$work/run.log"
 
 #######################################
@@ -60,10 +60,10 @@ make_repo() {
 # Builds the release app with its own bundle ID, so it keeps its own settings.
 #######################################
 build_app() {
-  swift build -c release --product RevueApp >/dev/null
-  swift build -c release --product revue >/dev/null
-  bash "$here/bundle.sh" "$(swift build -c release --show-bin-path)" "$work" "$(command -v git)" "$REVUE_SYNTAX" >/dev/null
-  plutil -replace CFBundleIdentifier -string com.shrikanthup.Revue.perf "$app/Contents/Info.plist"
+  swift build -c release --product SextantApp >/dev/null
+  swift build -c release --product sextant >/dev/null
+  bash "$here/bundle.sh" "$(swift build -c release --show-bin-path)" "$work" "$(command -v git)" "$SEXTANT_SYNTAX" >/dev/null
+  plutil -replace CFBundleIdentifier -string com.shrikanthup.Sextant.perf "$app/Contents/Info.plist"
   plutil -remove CFBundleURLTypes "$app/Contents/Info.plist"
   codesign --force --sign - "$app" 2>/dev/null
 }
@@ -82,8 +82,8 @@ measure 30 scroll 40
 quit
 EOF
   rm -f "$log"
-  defaults delete com.shrikanthup.Revue.perf >/dev/null 2>&1 || true
-  (sleep 180 && pkill -f "$app/Contents/MacOS/Revue") &
+  defaults delete com.shrikanthup.Sextant.perf >/dev/null 2>&1 || true
+  (sleep 180 && pkill -f "$app/Contents/MacOS/Sextant") &
   local watchdog=$!
   open -n -g -W -a "$app" --args --automation "$work/script.txt" --log "$log" --background
   kill "$watchdog" 2>/dev/null || true

@@ -33,7 +33,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >
           gh release create "$GITHUB_REF_NAME" "${{ steps.build.outputs.zip }}"
-          --title "Revue ${{ steps.build.outputs.version }}" --generate-notes
+          --title "Sextant ${{ steps.build.outputs.version }}" --generate-notes
 
       - name: Point the cask at the release
         env:
@@ -42,6 +42,6 @@ jobs:
           SHA: ${{ steps.build.outputs.sha }}
         run: |
           git clone "https://x-access-token:$TAP_TOKEN@github.com/${{ github.repository_owner }}/homebrew-tap.git" tap
-          sed -i '' -e "s/^  version \".*\"$/  version \"$VERSION\"/" -e "s/^  sha256 \".*\"$/  sha256 \"$SHA\"/" tap/Casks/revue.rb
-          git -C tap -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -am "Revue $VERSION"
+          sed -i '' -e "s/^  version \".*\"$/  version \"$VERSION\"/" -e "s/^  sha256 \".*\"$/  sha256 \"$SHA\"/" tap/Casks/sextant.rb
+          git -C tap -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -am "Sextant $VERSION"
           git -C tap push

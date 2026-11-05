@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Builds a repository exercising everything Revue has to render.
+# Builds a repository exercising everything Sextant has to render.
 #
 # Usage: make-fixture.sh <dir>
 #
@@ -128,7 +128,7 @@ printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR' > docs/logo.png
 cat > README.md <<'EOF'
 # Fixture
 
-A repository for exercising **Revue**.
+A repository for exercising **Sextant**.
 
 - item one
 - item two

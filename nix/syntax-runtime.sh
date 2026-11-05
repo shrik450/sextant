@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Assembles tree-sitter grammars into the layout Revue loads at runtime.
+# Assembles tree-sitter grammars into the layout Sextant loads at runtime.
 #
 # Writes this layout to $out:
 #   $out/<language>/parser          grammar library (symlink)

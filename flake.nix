@@ -1,5 +1,5 @@
 {
-  description = "Revue: a native macOS app for reviewing code";
+  description = "Sextant: a native macOS app for reviewing code";
 
   inputs.nixpkgs.url = "nixpkgs";
 
@@ -63,7 +63,7 @@
         zig = "";
       };
 
-      syntaxRuntime = pkgs.runCommand "revue-syntax-runtime"
+      syntaxRuntime = pkgs.runCommand "sextant-syntax-runtime"
         {
           nativeBuildInputs = [ pkgs.jq pkgs.bash ];
           grammarsFile = pkgs.writeText "grammars" (lib.concatStrings (lib.mapAttrsToList (attr: types:
@@ -72,7 +72,7 @@
         }
         "bash ${./nix/syntax-runtime.sh}";
 
-      mkRevue = { pname, git }: swiftPkgs.stdenv.mkDerivation {
+      mkSextant = { pname, git }: swiftPkgs.stdenv.mkDerivation {
         inherit pname;
         version = lib.fileContents ./VERSION;
         src = lib.fileset.toSource {
@@ -98,8 +98,8 @@
         buildPhase = ''
           runHook preBuild
           export HOME=$TMPDIR
-          swift build -c release --disable-sandbox --product RevueApp
-          swift build -c release --disable-sandbox --product revue
+          swift build -c release --disable-sandbox --product SextantApp
+          swift build -c release --disable-sandbox --product sextant
           runHook postBuild
         '';
 
@@ -107,29 +107,29 @@
           runHook preInstall
           mkdir -p $out/Applications $out/bin
           bash ./bundle.sh "$(swift build -c release --show-bin-path)" $out/Applications "${git}" ${syntaxRuntime}
-          ln -s $out/Applications/Revue.app/Contents/Helpers/revue $out/bin/revue
+          ln -s $out/Applications/Sextant.app/Contents/Helpers/sextant $out/bin/sextant
           runHook postInstall
         '';
 
         meta = {
           description = "Native macOS code review app";
           platforms = [ system ];
-          mainProgram = "revue";
+          mainProgram = "sextant";
         };
       };
 
-      revue = mkRevue { pname = "revue"; git = "${pkgs.git}/bin/git"; };
-      release = mkRevue { pname = "revue-release"; git = ""; };
+      sextant = mkSextant { pname = "sextant"; git = "${pkgs.git}/bin/git"; };
+      release = mkSextant { pname = "sextant-release"; git = ""; };
     in
     {
       packages.${system} = {
-        default = revue;
-        inherit revue release syntaxRuntime;
+        default = sextant;
+        inherit sextant release syntaxRuntime;
       };
 
       apps.${system}.default = {
         type = "app";
-        program = "${revue}/bin/revue";
+        program = "${sextant}/bin/sextant";
       };
 
       devShells.${system}.default = pkgs.mkShell.override { stdenv = swiftPkgs.stdenv; } {
@@ -140,7 +140,7 @@
           pkgs.apple-sdk_26
           pkgs.git
         ];
-        REVUE_SYNTAX = syntaxRuntime;
+        SEXTANT_SYNTAX = syntaxRuntime;
       };
     };
 }
