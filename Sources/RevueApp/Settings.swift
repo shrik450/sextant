@@ -2,8 +2,8 @@ import AppKit
 import SwiftUI
 
 struct SettingsView: View {
-    @AppStorage("lightTheme") private var lightTheme = "GitHub Light"
-    @AppStorage("darkTheme") private var darkTheme = "GitHub Dark"
+    @AppStorage("lightTheme") private var lightTheme = "Revue Light"
+    @AppStorage("darkTheme") private var darkTheme = "Revue Dark"
     @AppStorage("fontName") private var fontName = ""
     @AppStorage("fontSize") private var fontSize = 12.0
     @AppStorage("tabWidth") private var tabWidth = 4

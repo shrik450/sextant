@@ -874,7 +874,7 @@ final class JumpPrompt: NSGlassEffectView {
 
     /// Shows a prompt, followed by the keys typed so far in the code's typeface.
     func show(_ prompt: String, typed: String) {
-        let s = NSMutableAttributedString(string: prompt, attributes: [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.secondaryLabelColor])
+        let s = NSMutableAttributedString(string: prompt, attributes: [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.themed("fgMuted")])
         if !typed.isEmpty {
             s.append(NSAttributedString(string: "  " + typed, attributes: [.font: NSFont.monospacedSystemFont(ofSize: 13, weight: .semibold), .foregroundColor: NSColor.labelColor]))
         }

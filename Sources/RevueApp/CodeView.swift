@@ -442,14 +442,14 @@ final class CodeView: NSTextView {
         guard showsCurrentLine, let rect = caretRect else { return }
         let focused = window?.firstResponder === self && window?.isKeyWindow == true
         let path = NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4)
-        let accent = NSColor.controlAccentColor
+        let accent = NSColor.themed("accent")
         if focused {
             accent.withAlphaComponent(0.22).setFill()
             path.fill()
             accent.setStroke()
             path.lineWidth = 1.5
         } else {
-            NSColor.secondaryLabelColor.withAlphaComponent(0.6).setStroke()
+            NSColor.themed("fgMuted").withAlphaComponent(0.6).setStroke()
             path.lineWidth = 1
         }
         path.stroke()
@@ -962,8 +962,8 @@ final class Gutter: NSRulerView {
                 number(line.kind == .deleted ? line.oldNo : line.newNo, column: 0)
             }
             if line.kind != .context {
-                (line.kind == .added ? t.color("success") : t.color("danger")).withAlphaComponent(read ? 0.3 : 1).setFill()
-                NSRect(x: bounds.maxX - 4, y: y, width: 3, height: frag.height).fill()
+                (line.kind == .added ? t.color("success") : t.color("danger")).withAlphaComponent(read ? 0.25 : 0.7).setFill()
+                NSRect(x: bounds.maxX - 4, y: y, width: 2, height: frag.height).fill()
             }
             if r == badgeRow { drawAddBadge(at: y) }
             if let blame, line.kind != .deleted, let c = blame.commit(forLine: line.newNo - 1) {
@@ -1019,7 +1019,7 @@ final class Gutter: NSRulerView {
 
     private func drawAddBadge(at y: CGFloat) {
         let box = badgeRect(at: y)
-        NSColor.controlAccentColor.setFill()
+        NSColor.themed("accent").setFill()
         NSBezierPath(roundedRect: box, xRadius: 4, yRadius: 4).fill()
         let plus = NSImage(systemSymbolName: "plus", accessibilityDescription: "Add Note")?
             .withSymbolConfiguration(.init(pointSize: 10, weight: .bold).applying(.init(paletteColors: [.white])))
