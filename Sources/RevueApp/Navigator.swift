@@ -38,15 +38,13 @@ final class Navigator: NSViewController {
 
     override func loadView() {
         let v = NSView()
-        let symbols = ["list.bullet.indent", "magnifyingglass"]
         let names = ["Changes", "Find"]
-        tabs.segmentCount = symbols.count
+        tabs.segmentCount = names.count
         tabs.trackingMode = .selectOne
-        tabs.segmentStyle = .automatic
-        for (i, s) in symbols.enumerated() {
-            tabs.setImage(NSImage(systemSymbolName: s, accessibilityDescription: names[i]), forSegment: i)
-            tabs.setToolTip("\(names[i]) (⌘\(i + 1))", forSegment: i)
-            tabs.setWidth(40, forSegment: i)
+        tabs.segmentDistribution = .fillEqually
+        for (i, name) in names.enumerated() {
+            tabs.setLabel(name, forSegment: i)
+            tabs.setToolTip("\(name) (⌘\(i + 1))", forSegment: i)
         }
         tabs.selectedSegment = 0
         tabs.target = self
@@ -57,7 +55,8 @@ final class Navigator: NSViewController {
         v.addSubview(container)
         NSLayoutConstraint.activate([
             tabs.topAnchor.constraint(equalTo: v.safeAreaLayoutGuide.topAnchor, constant: 4),
-            tabs.centerXAnchor.constraint(equalTo: v.centerXAnchor),
+            tabs.leadingAnchor.constraint(equalTo: v.leadingAnchor, constant: 12),
+            tabs.trailingAnchor.constraint(equalTo: v.trailingAnchor, constant: -12),
             container.topAnchor.constraint(equalTo: tabs.bottomAnchor, constant: 8),
             container.leadingAnchor.constraint(equalTo: v.leadingAnchor),
             container.trailingAnchor.constraint(equalTo: v.trailingAnchor),
@@ -217,9 +216,8 @@ final class ChangesController: NSViewController {
         filter.sendsSearchStringImmediately = true
         filter.translatesAutoresizingMaskIntoConstraints = false
         mode.selectedSegment = showsUnchanged ? 1 : 0
-        mode.controlSize = .small
-        mode.setWidth(26, forSegment: 0)
-        mode.setWidth(26, forSegment: 1)
+        mode.setWidth(30, forSegment: 0)
+        mode.setWidth(30, forSegment: 1)
         mode.target = self
         mode.action = #selector(modeChanged)
         mode.setToolTip("Changed Files, with the rest folded away (⌃⌘U)", forSegment: 0)
@@ -536,7 +534,7 @@ extension ChangesController: NSTableViewDataSource, NSTableViewDelegate {
     func numberOfRows(in tableView: NSTableView) -> Int { scopeRows.count }
 
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-        if case .commit = scopeRows[row] { 42 } else { 26 }
+        if case .commit = scopeRows[row] { 46 } else { 28 }
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -567,6 +565,8 @@ extension ChangesController: NSTableViewDataSource, NSTableViewDelegate {
 }
 
 extension ChangesController: NSOutlineViewDataSource, NSOutlineViewDelegate {
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { PillRowView() }
+
     func outlineView(_ o: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
         (item as? Item)?.children.count ?? items.count
     }
@@ -653,14 +653,14 @@ extension ChangesController: NSMenuDelegate {
 /// Returns the status letter and colour for a change, as shown in lists.
 func statusLetter(_ status: Character) -> (String, NSColor) {
     switch status {
-    case "A": ("A", .systemGreen)
-    case "?": ("U", .systemGreen)
-    case "D": ("D", .systemRed)
-    case "R": ("R", .systemBlue)
-    case "C": ("C", .systemBlue)
-    case "T": ("T", .systemOrange)
-    case "U": ("!", .systemRed)
-    default: ("M", .systemOrange)
+    case "A": ("A", .themed("success"))
+    case "?": ("U", .themed("success"))
+    case "D": ("D", .themed("danger"))
+    case "R": ("R", .themed("accent"))
+    case "C": ("C", .themed("accent"))
+    case "T": ("T", .themed("attention"))
+    case "U": ("!", .themed("danger"))
+    default: ("M", .themed("attention"))
     }
 }
 
@@ -669,6 +669,8 @@ func statusLetter(_ status: Character) -> (String, NSColor) {
 /// Also lists definitions and usages.
 @MainActor
 final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSSearchFieldDelegate {
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { PillRowView() }
+
     final class Group: NSObject {
         let path: String
         var matches: [GrepMatch]
@@ -711,8 +713,8 @@ final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutli
         outline.addTableColumn(col)
         outline.outlineTableColumn = col
         outline.headerView = nil
-        outline.style = .inset
-        outline.rowHeight = 22
+        outline.style = .sourceList
+        outline.rowHeight = 24
         outline.dataSource = self
         outline.delegate = self
         outline.target = self
@@ -817,16 +819,16 @@ final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutli
             return c
         }()
         if let g = item as? Group {
-            let s = NSMutableAttributedString(string: (g.path as NSString).lastPathComponent, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold)])
+            let s = NSMutableAttributedString(string: (g.path as NSString).lastPathComponent, attributes: [.font: NSFont.systemFont(ofSize: NSFont.row.pointSize, weight: .semibold)])
             let dir = (g.path as NSString).deletingLastPathComponent
-            if !dir.isEmpty { s.append(NSAttributedString(string: "  " + dir, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])) }
+            if !dir.isEmpty { s.append(NSAttributedString(string: "  " + dir, attributes: [.font: NSFont.detail, .foregroundColor: NSColor.themed("fgMuted")])) }
             cell.textField?.attributedStringValue = truncatingTail(s)
             cell.toolTip = g.path
         } else if let it = item as? Item {
             let m = it.match
             let isDef = it.group.definitionLines.contains(m.line)
-            let mono = NSFont.monospacedSystemFont(ofSize: 11, weight: isDef ? .semibold : .regular)
-            let s = NSMutableAttributedString(string: "\(m.line)  ", attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular), .foregroundColor: NSColor.secondaryLabelColor])
+            let mono = NSFont.monospacedSystemFont(ofSize: NSFont.detail.pointSize, weight: isDef ? .semibold : .regular)
+            let s = NSMutableAttributedString(string: "\(m.line)  ", attributes: [.font: NSFont.detailDigits, .foregroundColor: NSColor.themed("fgMuted")])
             var text = m.text.trimmingCharacters(in: .whitespaces) as NSString
             var r = text.range(of: query, options: caseSensitive ? [] : .caseInsensitive)
             if r.location != NSNotFound, r.location > 16 {
@@ -835,9 +837,9 @@ final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutli
                 r.location -= cut - 1
             }
             let start = s.length
-            s.append(NSAttributedString(string: text as String, attributes: [.font: mono, .foregroundColor: NSColor.labelColor]))
+            s.append(NSAttributedString(string: text as String, attributes: [.font: mono, .foregroundColor: NSColor.themed("fg")]))
             if r.location != NSNotFound {
-                s.addAttribute(.backgroundColor, value: NSColor.findHighlightColor.withAlphaComponent(0.5), range: NSRange(location: start + r.location, length: r.length))
+                s.addAttribute(.backgroundColor, value: NSColor.themed("findMatch"), range: NSRange(location: start + r.location, length: r.length))
             }
             cell.textField?.attributedStringValue = truncatingTail(s)
             cell.toolTip = isDef ? "Definition" : nil

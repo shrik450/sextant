@@ -72,10 +72,10 @@ final class TreeCell: NSTableCellView {
         glyph.action = #selector(toggle)
         glyph.setButtonType(.momentaryChange)
         name.lineBreakMode = .byTruncatingMiddle
-        name.font = .systemFont(ofSize: 13)
+        name.font = .row
         dir.lineBreakMode = .byTruncatingHead
-        dir.font = .systemFont(ofSize: 11)
-        dir.textColor = .secondaryLabelColor
+        dir.font = .detail
+        dir.textColor = .themed("fgMuted")
         badge.alignment = .right
         for v in [glyph, name, dir, badge] as [NSView] { addSubview(v) }
         textField = name
@@ -112,17 +112,17 @@ final class TreeCell: NSTableCellView {
     }
 
     private func count(_ reviewed: Int, _ changed: Int) {
-        badge.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        badge.font = .detailDigits
         badge.stringValue = changed > 0 ? "\(reviewed)/\(changed)" : ""
-        badge.textColor = changed > 0 && reviewed == changed ? .systemGreen : .secondaryLabelColor
+        badge.textColor = changed > 0 && reviewed == changed ? .themed("success") : .themed("fgMuted")
         badge.toolTip = changed > 0 ? "\(reviewed) of \(changed) changed files reviewed" : nil
     }
 
     func configure(_ content: Content) {
         glyph.isEnabled = false
         glyph.setAccessibilityLabel(nil)
-        name.textColor = .labelColor
-        name.font = .systemFont(ofSize: 13)
+        name.textColor = .themed("fg")
+        name.font = .row
         dir.stringValue = ""
         badge.stringValue = ""
         badge.toolTip = nil
@@ -136,12 +136,12 @@ final class TreeCell: NSTableCellView {
             glyph.isEnabled = true
             glyph.image = f.reviewed ? symbol("checkmark.circle.fill", [.white, .controlAccentColor]) : symbol("circle", [.tertiaryLabelColor])
             glyph.setAccessibilityLabel(f.reviewed ? "Mark as not reviewed" : "Mark as reviewed")
-            name.textColor = f.reviewed ? .secondaryLabelColor : .labelColor
+            name.textColor = f.reviewed ? .themed("fgMuted") : .themed("fg")
             var (letter, color) = statusLetter(f.diff.change.status)
-            if f.conflicted { (letter, color) = ("!", .systemRed) }
-            badge.font = .monospacedSystemFont(ofSize: 11, weight: .semibold)
+            if f.conflicted { (letter, color) = ("!", .themed("danger")) }
+            badge.font = .monospacedSystemFont(ofSize: NSFont.detail.pointSize, weight: .semibold)
             badge.stringValue = letter
-            badge.textColor = f.reviewed ? .tertiaryLabelColor : color
+            badge.textColor = f.reviewed ? .themed("fgSubtle") : color
             badge.toolTip = switch letter {
             case "A": "Added"; case "U": "Untracked"; case "D": "Deleted"; case "R": "Renamed"; case "C": "Copied"
             case "T": "Type changed"; case "!": "Conflicted"; default: "Modified"
@@ -158,7 +158,7 @@ final class TreeCell: NSTableCellView {
             count(reviewed, changed)
         case .folded(let n):
             name.stringValue = "\(n) unchanged"
-            name.textColor = .secondaryLabelColor
+            name.textColor = .themed("fgMuted")
             glyph.image = symbol("ellipsis", [.tertiaryLabelColor])
             toolTip = "Show unchanged items"
         case .allChanges(let reviewed, let changed):
@@ -211,10 +211,10 @@ final class TargetCell: NSTableCellView {
         icon.contentTintColor = .controlAccentColor
         title.translatesAutoresizingMaskIntoConstraints = false
         title.lineBreakMode = .byTruncatingTail
-        title.font = .systemFont(ofSize: 13)
+        title.font = .row
         count.translatesAutoresizingMaskIntoConstraints = false
-        count.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
-        count.textColor = .secondaryLabelColor
+        count.font = .detailDigits
+        count.textColor = .themed("fgMuted")
         count.setContentHuggingPriority(.required, for: .horizontal)
         count.setContentCompressionResistancePriority(.required, for: .horizontal)
         addSubview(icon); addSubview(title); addSubview(count)
@@ -238,7 +238,7 @@ final class TargetCell: NSTableCellView {
         title.stringValue = t
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         count.stringValue = n > 0 ? "\(n)" : ""
-        title.textColor = n > 0 || symbol == "arrow.triangle.branch" ? .labelColor : .secondaryLabelColor
+        title.textColor = n > 0 || symbol == "arrow.triangle.branch" ? .themed("fg") : .themed("fgMuted")
     }
 }
 
@@ -291,10 +291,10 @@ final class CommitCell: NSTableCellView {
             v.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             addSubview(v)
         }
-        subject.font = .systemFont(ofSize: 13)
-        meta.font = .systemFont(ofSize: 11)
-        date.font = .systemFont(ofSize: 11)
-        date.textColor = .secondaryLabelColor
+        subject.font = .row
+        meta.font = .detail
+        date.font = .detail
+        date.textColor = .themed("fgMuted")
         date.alignment = .right
         date.setContentCompressionResistancePriority(.required, for: .horizontal)
         date.setContentHuggingPriority(.required, for: .horizontal)
@@ -329,14 +329,14 @@ final class CommitCell: NSTableCellView {
     /// which truncates first.
     func configure(subject s: String, sha: String, author: String?, date d: Date, refs: [String], progress: (done: Int, total: Int)) {
         subject.stringValue = s
-        subject.textColor = progress.total > 0 && progress.done == progress.total ? .secondaryLabelColor : .labelColor
-        let secondary = NSColor.secondaryLabelColor
-        let m = NSMutableAttributedString(string: sha, attributes: [.font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .regular), .foregroundColor: secondary])
+        subject.textColor = progress.total > 0 && progress.done == progress.total ? .themed("fgMuted") : .themed("fg")
+        let secondary = NSColor.themed("fgMuted")
+        let m = NSMutableAttributedString(string: sha, attributes: [.font: NSFont.detailCode, .foregroundColor: secondary])
         for r in refs.prefix(3) {
-            m.append(NSAttributedString(string: "  " + r, attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .semibold), .foregroundColor: NSColor.controlAccentColor]))
+            m.append(NSAttributedString(string: "  " + r, attributes: [.font: NSFont.systemFont(ofSize: NSFont.detail.pointSize, weight: .semibold), .foregroundColor: NSColor.themed("accent")]))
         }
         if let author {
-            m.append(NSAttributedString(string: "  " + author, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: secondary]))
+            m.append(NSAttributedString(string: "  " + author, attributes: [.font: NSFont.detail, .foregroundColor: secondary]))
         }
         let para = NSMutableParagraphStyle()
         para.lineBreakMode = .byTruncatingTail

@@ -27,10 +27,10 @@ final class NotesPane: NSViewController, NSTableViewDataSource, NSTableViewDeleg
     override func loadView() {
         let v = NSView()
         let title = NSTextField(labelWithString: "Notes")
-        title.font = .systemFont(ofSize: 11, weight: .semibold)
-        title.textColor = .secondaryLabelColor
-        count.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        count.textColor = .tertiaryLabelColor
+        title.font = .sectionLabel
+        title.textColor = .themed("fgMuted")
+        count.font = .detailDigits
+        count.textColor = .themed("fgSubtle")
         for (b, symbol, tip, action) in [(add, "plus", "Add a Note", #selector(showAddMenu(_:))), (copyAll, "doc.on.doc", "Copy All Notes as Markdown", #selector(copyAllNotes))] {
             b.image = NSImage(systemSymbolName: symbol, accessibilityDescription: tip)
             b.isBordered = false
@@ -38,8 +38,8 @@ final class NotesPane: NSViewController, NSTableViewDataSource, NSTableViewDeleg
             b.toolTip = tip
             b.target = self
             b.action = action
-            b.symbolConfiguration = .init(pointSize: 11, weight: .medium)
-            b.contentTintColor = .secondaryLabelColor
+            b.symbolConfiguration = .init(textStyle: .body, scale: .small)
+            b.contentTintColor = .themed("fgMuted")
         }
         let header = NSStackView(views: [title, count, NSView(), add, copyAll])
         header.spacing = 6
@@ -72,14 +72,9 @@ final class NotesPane: NSViewController, NSTableViewDataSource, NSTableViewDeleg
         empty.font = .systemFont(ofSize: 12)
         empty.textColor = .secondaryLabelColor
         empty.alignment = .center
-        let separator = NSBox()
-        separator.boxType = .separator
-        for x in [separator, header, scroll, empty] as [NSView] { x.translatesAutoresizingMaskIntoConstraints = false; v.addSubview(x) }
+        for x in [header, scroll, empty] as [NSView] { x.translatesAutoresizingMaskIntoConstraints = false; v.addSubview(x) }
         NSLayoutConstraint.activate([
-            separator.topAnchor.constraint(equalTo: v.topAnchor),
-            separator.leadingAnchor.constraint(equalTo: v.leadingAnchor, constant: 10),
-            separator.trailingAnchor.constraint(equalTo: v.trailingAnchor, constant: -10),
-            header.topAnchor.constraint(equalTo: separator.bottomAnchor, constant: 4),
+            header.topAnchor.constraint(equalTo: v.topAnchor, constant: 16),
             header.leadingAnchor.constraint(equalTo: v.leadingAnchor),
             header.trailingAnchor.constraint(equalTo: v.trailingAnchor),
             header.heightAnchor.constraint(equalToConstant: 24),
@@ -111,7 +106,7 @@ final class NotesPane: NSViewController, NSTableViewDataSource, NSTableViewDeleg
         let cell = (tableView.makeView(withIdentifier: NoteCell.id, owner: nil) as? NoteCell) ?? NoteCell()
         let n = notes[row]
         cell.title.stringValue = n.lines.map { lineReference(path: ($0.path as NSString).lastPathComponent, lines: $0.range, old: $0.old) } ?? n.title
-        cell.title.font = n.lines == nil ? .systemFont(ofSize: 11, weight: .semibold) : .monospacedSystemFont(ofSize: 11, weight: .medium)
+        cell.title.font = n.lines == nil ? .systemFont(ofSize: NSFont.detail.pointSize, weight: .semibold) : .detailCode
         cell.body.stringValue = n.text
         cell.toolTip = n.title
         return cell
@@ -173,10 +168,10 @@ private final class NoteCell: NSTableCellView {
     init() {
         super.init(frame: .zero)
         identifier = NoteCell.id
-        title.textColor = .secondaryLabelColor
+        title.textColor = .themed("fgMuted")
         title.lineBreakMode = .byTruncatingHead
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        body.font = .systemFont(ofSize: 12)
+        body.font = .row
         body.maximumNumberOfLines = 4
         body.lineBreakMode = .byTruncatingTail
         body.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)

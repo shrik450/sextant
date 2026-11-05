@@ -75,7 +75,7 @@ final class JumpPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NSTa
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
-        status.font = .systemFont(ofSize: 11)
+        status.font = .detail
         status.textColor = .secondaryLabelColor
         for v in [field, scroll, status] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
@@ -226,9 +226,9 @@ final class JumpCell: NSTableCellView {
     init() {
         super.init(frame: .zero)
         identifier = Self.id
-        title.font = .systemFont(ofSize: 13)
+        title.font = .row
         title.lineBreakMode = .byTruncatingTail
-        detail.font = .systemFont(ofSize: 11)
+        detail.font = .detail
         detail.textColor = .secondaryLabelColor
         detail.lineBreakMode = .byTruncatingHead
         icon.symbolConfiguration = .init(pointSize: 12, weight: .regular)

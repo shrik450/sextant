@@ -65,10 +65,10 @@ extension RepoWindowController {
     func card() -> (title: String, text: NSAttributedString)? {
         guard let res = resolved else { return nil }
         let s = NSMutableAttributedString()
-        let bold: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: NSColor.labelColor]
-        let body: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.labelColor]
-        let meta: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor]
-        let mono: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular), .foregroundColor: NSColor.secondaryLabelColor]
+        let bold: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: NSFont.row.pointSize, weight: .semibold), .foregroundColor: NSColor.themed("fg")]
+        let body: [NSAttributedString.Key: Any] = [.font: NSFont.row, .foregroundColor: NSColor.themed("fg")]
+        let meta: [NSAttributedString.Key: Any] = [.font: NSFont.detail, .foregroundColor: NSColor.themed("fgMuted")]
+        let mono: [NSAttributedString.Key: Any] = [.font: NSFont.detailCode, .foregroundColor: NSColor.themed("fgMuted")]
         func add(_ text: String, _ attrs: [NSAttributedString.Key: Any]) {
             if s.length > 0 { s.append(NSAttributedString(string: "\n", attributes: attrs)) }
             s.append(NSAttributedString(string: text, attributes: attrs))

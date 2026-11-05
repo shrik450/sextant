@@ -75,6 +75,7 @@ final class Inspector: NSViewController, NSSplitViewDelegate {
         outline.outlineTableColumn = column
         outline.headerView = nil
         outline.style = .sourceList
+        outline.backgroundColor = .clear
         outline.usesAutomaticRowHeights = false
         outline.indentationPerLevel = 10
         outline.autoresizesOutlineColumn = false
@@ -331,6 +332,8 @@ final class Inspector: NSViewController, NSSplitViewDelegate {
 }
 
 extension Inspector: NSOutlineViewDataSource, NSOutlineViewDelegate {
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { PillRowView() }
+
     func outlineView(_ o: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
         ((item as? Entry) ?? root).children.count
     }
@@ -346,15 +349,15 @@ extension Inspector: NSOutlineViewDataSource, NSOutlineViewDelegate {
     /// Gives rows fixed heights, and the card the height of its text, so rebuilding the outline
     /// doesn't lay out every row to measure it.
     func outlineView(_ o: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
-        guard let e = item as? Entry else { return 22 }
+        guard let e = item as? Entry else { return 24 }
         switch e.kind {
-        case .section: return 26
+        case .section: return 28
         case .card(let text):
             let column = o.tableColumns.first?.width ?? o.bounds.width
             let width = max(80, column - o.indentationPerLevel * CGFloat(max(0, o.level(forItem: item))) - 14)
             let bounds = text.boundingRect(with: NSSize(width: width, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading])
             return ceil(bounds.height) + 14
-        default: return 22
+        default: return 24
         }
     }
 
@@ -392,6 +395,7 @@ extension Inspector: NSOutlineViewDataSource, NSOutlineViewDelegate {
             if title == "Outline" {
                 cell.toggle.isHidden = false
                 cell.toggle.state = changedOnly ? .on : .off
+                cell.toggle.contentTintColor = changedOnly ? .themed("accent") : .themed("fgMuted")
                 cell.toggle.target = self
                 cell.toggle.action = #selector(toggleChangedOnly(_:))
             }
@@ -408,28 +412,28 @@ extension Inspector: NSOutlineViewDataSource, NSOutlineViewDelegate {
         switch kind {
         case .symbol(let s):
             let attrs: [NSAttributedString.Key: Any] = s.change == .deleted
-                ? [.strikethroughStyle: NSUnderlineStyle.single.rawValue, .foregroundColor: NSColor.secondaryLabelColor]
-                : [.foregroundColor: NSColor.labelColor]
-            cell.set(symbol: symbolImage(s.kind), title: NSAttributedString(string: s.name, attributes: attrs.merging([.font: NSFont.systemFont(ofSize: 12)]) { $1 }),
+                ? [.strikethroughStyle: NSUnderlineStyle.single.rawValue, .foregroundColor: NSColor.themed("fgMuted")]
+                : [.foregroundColor: NSColor.themed("fg")]
+            cell.set(symbol: symbolImage(s.kind), title: NSAttributedString(string: s.name, attributes: attrs.merging([.font: NSFont.row]) { $1 }),
                      marker: s.change)
             cell.toolTip = "\(s.kind) \(s.name)" + (s.change == .none ? "" : " (\(s.change))")
         case .change(let keyed, let enclosing, let read):
             let r = keyed.run
-            let t = NSMutableAttributedString(string: changeTitle(r), attributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: read ? NSColor.secondaryLabelColor : NSColor.labelColor])
-            if r.additions > 0 { t.append(NSAttributedString(string: "  +\(r.additions)", attributes: [.foregroundColor: NSColor.systemGreen, .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)])) }
-            if r.deletions > 0 { t.append(NSAttributedString(string: "  −\(r.deletions)", attributes: [.foregroundColor: NSColor.systemRed, .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)])) }
-            if let enclosing { t.append(NSAttributedString(string: "  " + enclosing, attributes: [.foregroundColor: NSColor.secondaryLabelColor, .font: NSFont.systemFont(ofSize: 11)])) }
+            let t = NSMutableAttributedString(string: changeTitle(r), attributes: [.font: NSFont.row, .foregroundColor: read ? NSColor.themed("fgMuted") : NSColor.themed("fg")])
+            if r.additions > 0 { t.append(NSAttributedString(string: "  +\(r.additions)", attributes: [.foregroundColor: NSColor.themed("success"), .font: NSFont.detailDigits])) }
+            if r.deletions > 0 { t.append(NSAttributedString(string: "  −\(r.deletions)", attributes: [.foregroundColor: NSColor.themed("danger"), .font: NSFont.detailDigits])) }
+            if let enclosing { t.append(NSAttributedString(string: "  " + enclosing, attributes: [.foregroundColor: NSColor.themed("fgMuted"), .font: NSFont.detail])) }
             cell.set(symbol: read ? "checkmark.circle.fill" : "plusminus", title: t, marker: .none)
             cell.setAccessibilityValue(read ? "Read" : "Not read")
         case .file(let f, _):
-            let t = NSMutableAttributedString(string: (f.path as NSString).lastPathComponent, attributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: f.reviewed ? NSColor.secondaryLabelColor : NSColor.labelColor])
-            t.append(NSAttributedString(string: "  +\(f.diff.additions)", attributes: [.foregroundColor: NSColor.systemGreen, .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)]))
-            t.append(NSAttributedString(string: " −\(f.diff.deletions)", attributes: [.foregroundColor: NSColor.systemRed, .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)]))
+            let t = NSMutableAttributedString(string: (f.path as NSString).lastPathComponent, attributes: [.font: NSFont.row, .foregroundColor: f.reviewed ? NSColor.themed("fgMuted") : NSColor.themed("fg")])
+            t.append(NSAttributedString(string: "  +\(f.diff.additions)", attributes: [.foregroundColor: NSColor.themed("success"), .font: NSFont.detailDigits]))
+            t.append(NSAttributedString(string: " −\(f.diff.deletions)", attributes: [.foregroundColor: NSColor.themed("danger"), .font: NSFont.detailDigits]))
             cell.set(image: fileIcon(f.path), title: t)
             cell.toolTip = f.path
         case .section, .card: break
         case .message(let m):
-            cell.set(symbol: nil, title: NSAttributedString(string: m, attributes: [.foregroundColor: NSColor.secondaryLabelColor, .font: NSFont.systemFont(ofSize: 12)]), marker: .none)
+            cell.set(symbol: nil, title: NSAttributedString(string: m, attributes: [.foregroundColor: NSColor.themed("fgMuted"), .font: NSFont.row]), marker: .none)
         }
     }
 
@@ -476,21 +480,22 @@ final class InspectorSectionCell: NSTableCellView {
     init() {
         super.init(frame: .zero)
         identifier = InspectorSectionCell.id
-        title.font = .systemFont(ofSize: 11, weight: .semibold)
-        title.textColor = .secondaryLabelColor
+        title.font = .sectionLabel
+        title.textColor = .themed("fgMuted")
         addSubview(title)
         textField = title
     }
 
-    /// The Changed Only toggle, made when a section first shows it, since only one does.
+    /// The Changed Only toggle, a filter icon that fills while it's on, made when a section first
+    /// shows it, since only one does.
     var toggle: NSButton {
         if let t = madeToggle { return t }
-        let t = NSButton(title: "Changed Only", target: nil, action: nil)
-        t.setButtonType(.pushOnPushOff)
-        t.bezelStyle = .inline
-        t.controlSize = .mini
-        t.font = .systemFont(ofSize: 10)
-        t.toolTip = "Show only definitions the change touched"
+        let t = NSButton(image: NSImage(systemSymbolName: "line.3.horizontal.decrease.circle", accessibilityDescription: "Changed Only")!, target: nil, action: nil)
+        t.alternateImage = NSImage(systemSymbolName: "line.3.horizontal.decrease.circle.fill", accessibilityDescription: "Changed Only")
+        t.setButtonType(.toggle)
+        t.isBordered = false
+        t.symbolConfiguration = .init(textStyle: .body, scale: .medium)
+        t.toolTip = "Show Only Definitions the Change Touched"
         addSubview(t)
         madeToggle = t
         return t
@@ -521,7 +526,7 @@ final class InspectorRowCell: NSTableCellView {
     static let id = NSUserInterfaceItemIdentifier("InspectorRow")
     private let icon = NSImageView()
     private let title = NSTextField(labelWithString: "")
-    private let marker = NSView()
+    private let marker = ChangeMarker()
 
     static func make(_ o: NSOutlineView) -> InspectorRowCell {
         (o.makeView(withIdentifier: id, owner: nil) as? InspectorRowCell) ?? InspectorRowCell()
@@ -530,14 +535,12 @@ final class InspectorRowCell: NSTableCellView {
     init() {
         super.init(frame: .zero)
         identifier = InspectorRowCell.id
-        icon.symbolConfiguration = .init(pointSize: 11, weight: .regular)
-        icon.contentTintColor = .secondaryLabelColor
+        icon.symbolConfiguration = .init(textStyle: .body, scale: .small)
+        icon.contentTintColor = .themed("fgMuted")
         title.lineBreakMode = .byTruncatingTail
         title.maximumNumberOfLines = 1
         title.usesSingleLineMode = true
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        marker.wantsLayer = true
-        marker.layer?.cornerRadius = 3
         addSubview(icon)
         addSubview(title)
         addSubview(marker)
@@ -562,12 +565,12 @@ final class InspectorRowCell: NSTableCellView {
         title.attributedStringValue = truncating(t)
         let color: NSColor? = switch change {
         case .none: nil
-        case .modified: .systemOrange
-        case .added: .systemGreen
-        case .deleted: .systemRed
+        case .modified: .themed("attention")
+        case .added: .themed("success")
+        case .deleted: .themed("danger")
         }
         marker.isHidden = color == nil
-        marker.layer?.backgroundColor = color?.cgColor
+        marker.color = color
         marker.setAccessibilityLabel(color == nil ? nil : "\(change)")
     }
 
@@ -585,6 +588,27 @@ final class InspectorRowCell: NSTableCellView {
         icon.isHidden = false
         title.attributedStringValue = truncating(t)
         marker.isHidden = true
+    }
+}
+
+/// The dot at the end of an inspector row that says how a definition changed, in a colour
+/// resolved each time it's drawn, so it follows the appearance and theme.
+@MainActor
+private final class ChangeMarker: NSView {
+    var color: NSColor? { didSet { needsDisplay = true } }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.cornerRadius = 3
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        layer?.backgroundColor = color?.cgColor
     }
 }
 
