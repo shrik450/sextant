@@ -639,9 +639,11 @@ final class Reader: NSViewController, CodeViewDelegate {
     }
 
     /// Whether the caret is in view, so moves start from it rather than from the top of the view.
+    ///
+    /// A row that isn't laid out isn't on screen, so this never lays out more text.
     private var caretInView: Bool {
-        guard let r = caretRow else { return false }
-        return primary.visibleRect.intersects(primary.rect(ofRow: r))
+        guard let r = caretRow, let rect = primary.laidOutRect(ofRow: r) else { return false }
+        return primary.visibleRect.intersects(rect)
     }
 
     @objc private func scrolled(_ n: Notification) {

@@ -343,7 +343,7 @@ final class CodeView: NSTextView {
     /// The rect of a row's first line if it's laid out, without laying out any more text.
     ///
     /// A row that isn't laid out isn't drawn either, so there's nothing of it to redraw.
-    private func laidOutRect(ofRow r: Int) -> NSRect? {
+    func laidOutRect(ofRow r: Int) -> NSRect? {
         guard let lm = layoutManager, r < rowStarts.count, rowStarts[r] < (textStorage?.length ?? 0) else { return nil }
         let glyph = lm.glyphIndexForCharacter(at: rowStarts[r])
         let rect = lm.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil, withoutAdditionalLayout: true)
