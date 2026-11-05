@@ -111,10 +111,10 @@ struct Theme {
         "hunkLine": "#1f232809", "hunkNum": "#1f232809", "hunkFg": "#818991",
         "emptyLine": "#1f232806", "hatch": "#1f232812", "selection": "#0969da2e", "findMatch": "#d4a72c40",
         "accent": "#0969da", "success": "#1a7f37", "danger": "#d1242f", "attention": "#9a6700", "done": "#8250df",
-        "syntax.keyword": "#a40e26", "syntax.string": "#0a3069", "syntax.comment": "#59636e",
-        "syntax.number": "#0550ae", "syntax.type": "#953800", "syntax.function": "#6639ba",
-        "syntax.constant": "#0550ae", "syntax.attribute": "#0550ae", "syntax.variable": "#953800",
-        "syntax.tag": "#116329", "syntax.property": "#0550ae",
+        "syntax.keyword": "#ce212d", "syntax.string": "#0f757c", "syntax.comment": "#59636e",
+        "syntax.number": "#0466d7", "syntax.type": "#906002", "syntax.function": "#7d4bd9",
+        "syntax.constant": "#0466d7", "syntax.attribute": "#0466d7", "syntax.variable": "#b34801",
+        "syntax.tag": "#117a32", "syntax.property": "#0466d7",
         "pillStroke": "#1f232817", "pillStrokeFocused": "#1f232824", "cardRim": "#ffffffb3", "cardRimFocused": "#ffffff", "cardShadow": "#1f232833",
         "fgSubtle": "#818991", "fgFaint": "#1f232866", "selectionPill": "#fdfdfe", "selectionPillStroke": "#1f23281a", "hover": "#1f23280a",
     ])
@@ -127,10 +127,10 @@ struct Theme {
         "hunkLine": "#e6edf309", "hunkNum": "#e6edf309", "hunkFg": "#6e7681",
         "emptyLine": "#e6edf306", "hatch": "#e6edf30f", "selection": "#388bfd40", "findMatch": "#bb800947",
         "accent": "#4493f8", "success": "#3fb950", "danger": "#f85149", "attention": "#d29922", "done": "#ab7df8",
-        "syntax.keyword": "#ff7b72", "syntax.string": "#a5d6ff", "syntax.comment": "#9198a1",
-        "syntax.number": "#79c0ff", "syntax.type": "#ffa657", "syntax.function": "#d2a8ff",
-        "syntax.constant": "#79c0ff", "syntax.attribute": "#79c0ff", "syntax.variable": "#ffa657",
-        "syntax.tag": "#7ee787", "syntax.property": "#79c0ff",
+        "syntax.keyword": "#ff7b72", "syntax.string": "#39c5cf", "syntax.comment": "#9198a1",
+        "syntax.number": "#58a6ff", "syntax.type": "#d29922", "syntax.function": "#bc8cff",
+        "syntax.constant": "#58a6ff", "syntax.attribute": "#58a6ff", "syntax.variable": "#ffa657",
+        "syntax.tag": "#3fb950", "syntax.property": "#58a6ff",
         "pillStroke": "#ffffff12", "pillStrokeFocused": "#ffffff1a", "cardRim": "#ffffff14", "cardRimFocused": "#ffffff24", "cardShadow": "#00000073",
         "fgSubtle": "#6e7681", "fgFaint": "#e6edf34d", "selectionPill": "#1c2026", "selectionPillStroke": "#ffffff1a", "hover": "#e6edf30b",
     ])
@@ -143,10 +143,10 @@ struct Theme {
         "hunkLine": "#cdd9e509", "hunkNum": "#cdd9e509", "hunkFg": "#768390",
         "emptyLine": "#cdd9e506", "hatch": "#cdd9e50f", "selection": "#4184e440", "findMatch": "#ae7c1447",
         "accent": "#478be6", "success": "#57ab5a", "danger": "#e5534b", "attention": "#c69026", "done": "#986ee2",
-        "syntax.keyword": "#f47067", "syntax.string": "#96d0ff", "syntax.comment": "#768390",
-        "syntax.number": "#6cb6ff", "syntax.type": "#f69d50", "syntax.function": "#dcbdfb",
-        "syntax.constant": "#6cb6ff", "syntax.attribute": "#6cb6ff", "syntax.variable": "#f69d50",
-        "syntax.tag": "#8ddb8c", "syntax.property": "#6cb6ff",
+        "syntax.keyword": "#f8746b", "syntax.string": "#39c5cf", "syntax.comment": "#919eac",
+        "syntax.number": "#579ff9", "syntax.type": "#c9932a", "syntax.function": "#b487f4",
+        "syntax.constant": "#579ff9", "syntax.attribute": "#579ff9", "syntax.variable": "#f69d50",
+        "syntax.tag": "#5baf5e", "syntax.property": "#579ff9",
         "pillStroke": "#ffffff12", "pillStrokeFocused": "#ffffff1a", "cardRim": "#ffffff14", "cardRimFocused": "#ffffff24", "cardShadow": "#00000073",
         "fgSubtle": "#768390", "fgFaint": "#d1d7e04d", "selectionPill": "#262c34", "selectionPillStroke": "#ffffff1a", "hover": "#cdd9e50b",
     ])
@@ -167,7 +167,11 @@ struct Theme {
 
     /// Revue Light with GitHub's stock code and diff colours.
     static let githubLight = revueLight.with(name: "GitHub Light", cardOpacity: 1, hex: [
-        "canvas": "#ffffff", "syntax.keyword": "#cf222e", "fgMuted": "#59636e", "lineNumber": "#6e7781",
+        "canvas": "#ffffff", "fgMuted": "#59636e", "lineNumber": "#6e7781",
+        "syntax.keyword": "#cf222e", "syntax.string": "#0a3069", "syntax.comment": "#59636e",
+        "syntax.number": "#0550ae", "syntax.type": "#953800", "syntax.function": "#6639ba",
+        "syntax.constant": "#0550ae", "syntax.attribute": "#0550ae", "syntax.variable": "#953800",
+        "syntax.tag": "#116329", "syntax.property": "#0550ae",
         "addLine": "#dafbe1", "addNum": "#d1f8d9", "addWord": "#aceebb",
         "delLine": "#ffebe9", "delNum": "#ffcecb", "delWord": "#ff818266",
         "hunkLine": "#ddf4ff", "hunkNum": "#b6e3ff", "hunkFg": "#59636e",
@@ -177,6 +181,10 @@ struct Theme {
     /// Revue Dark with GitHub's stock code and diff colours.
     static let githubDark = revueDark.with(name: "GitHub Dark", cardOpacity: 1, hex: [
         "canvas": "#0d1117", "fgMuted": "#9198a1",
+        "syntax.keyword": "#ff7b72", "syntax.string": "#a5d6ff", "syntax.comment": "#9198a1",
+        "syntax.number": "#79c0ff", "syntax.type": "#ffa657", "syntax.function": "#d2a8ff",
+        "syntax.constant": "#79c0ff", "syntax.attribute": "#79c0ff", "syntax.variable": "#ffa657",
+        "syntax.tag": "#7ee787", "syntax.property": "#79c0ff",
         "addLine": "#2ea04326", "addNum": "#3fb9504d", "addWord": "#2ea04366",
         "delLine": "#f851491a", "delNum": "#f851494d", "delWord": "#f8514966",
         "hunkLine": "#388bfd1a", "hunkNum": "#388bfd66", "hunkFg": "#9198a1",
@@ -185,6 +193,10 @@ struct Theme {
 
     /// Revue Dark Dimmed with GitHub's stock code and diff colours.
     static let githubDarkDimmed = revueDarkDimmed.with(name: "GitHub Dark Dimmed", cardOpacity: 1, hex: [
+        "syntax.keyword": "#f47067", "syntax.string": "#96d0ff", "syntax.comment": "#768390",
+        "syntax.number": "#6cb6ff", "syntax.type": "#f69d50", "syntax.function": "#dcbdfb",
+        "syntax.constant": "#6cb6ff", "syntax.attribute": "#6cb6ff", "syntax.variable": "#f69d50",
+        "syntax.tag": "#8ddb8c", "syntax.property": "#6cb6ff",
         "addLine": "#46954a26", "addNum": "#57ab5a4d", "addWord": "#46954a66",
         "delLine": "#e5534b1a", "delNum": "#e5534b4d", "delWord": "#e5534b66",
         "hunkLine": "#4184e41a", "hunkNum": "#4184e466", "hunkFg": "#9198a1",
