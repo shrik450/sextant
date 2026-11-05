@@ -260,7 +260,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             alternate(m, "b", [.command, .option])
             m.addItem(.separator())
             item(m, "Show Navigator", #selector(NSSplitViewController.toggleSidebar(_:)), "0")
-            item(m, "Show Inspector", #selector(NSSplitViewController.toggleInspector(_:)), "0", [.command, .option])
+            item(m, "Show Inspector", #selector(W.toggleInspectorColumn(_:)), "0", [.command, .option])
             m.addItem(.separator())
             item(m, "Bigger", #selector(W.biggerFont(_:)), "+")
             item(m, "Bigger", #selector(W.biggerFont(_:)), "=")

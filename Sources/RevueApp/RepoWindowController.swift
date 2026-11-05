@@ -127,7 +127,8 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         let readerItem = NSSplitViewItem(viewController: stripController)
         readerItem.minimumThickness = 420
         readerItem.automaticallyAdjustsSafeAreaInsets = true
-        let inspectorItem = NSSplitViewItem(inspectorWithViewController: inspector)
+        let inspectorItem = NSSplitViewItem(viewController: inspector)
+        inspectorItem.holdingPriority = .init(260)
         inspectorItem.minimumThickness = 220
         inspectorItem.maximumThickness = 420
         inspectorItem.preferredThicknessFraction = 0.18

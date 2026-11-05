@@ -761,6 +761,7 @@ extension RepoWindowController: NSMenuItemValidation {
         switch item.action {
         case #selector(showUnified(_:)): item.state = reader.split ? .off : .on
         case #selector(showSideBySide(_:)): item.state = reader.split ? .on : .off
+        case #selector(toggleInspectorColumn(_:)): item.title = split.splitViewItems[2].isCollapsed ? "Show Inspector" : "Hide Inspector"
         case #selector(toggleWrap(_:)): item.state = reader.wraps ? .on : .off
         case #selector(toggleShowAll(_:)): item.state = reader.showAll ? .on : .off
         case #selector(toggleUnchangedFiles(_:)): item.state = navigator.changes.showsUnchanged ? .on : .off
