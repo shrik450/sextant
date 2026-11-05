@@ -363,21 +363,45 @@ final class PaneCard: NSView {
 }
 
 /// The window's surface behind all three columns and the seams between the cards: the system's
-/// sidebar material, blended with what lies behind the window.
+/// sidebar material, blended with what lies behind the window, under a wash of the theme's
+/// `frostTint`.
 ///
-/// It frosts the desktop and other windows enough that their colour and light come through but
-/// none of their shapes, and it goes flat when the window is inactive, as the system's own
-/// sidebars do.
+/// The material frosts the desktop and other windows so that none of their shapes come through,
+/// and the wash keeps the surface close to the theme's canvas, so the wallpaper only tints it, as
+/// light refracted through glass would. It goes flat when the window is inactive, as the system's
+/// own sidebars do.
 @MainActor
 final class BackdropView: NSVisualEffectView {
+    private let wash = FrostWash()
+
     override init(frame: NSRect) {
         super.init(frame: frame)
         material = .sidebar
         blendingMode = .behindWindow
         state = .followsWindowActiveState
+        wash.frame = bounds
+        wash.autoresizingMask = [.width, .height]
+        addSubview(wash)
     }
 
     required init?(coder: NSCoder) { fatalError() }
+}
+
+/// The theme's `frostTint`, filling the frost it lies over.
+@MainActor
+private final class FrostWash: NSView {
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        layer?.backgroundColor = Appearance.shared.theme(for: effectiveAppearance).color("frostTint").cgColor
+    }
 }
 
 /// The window's split view, whose dividers stay invisible, so the strip and the inspector read

@@ -116,6 +116,7 @@ struct Theme {
         "syntax.constant": "#0466d7", "syntax.attribute": "#0466d7", "syntax.variable": "#b34801",
         "syntax.tag": "#117a32", "syntax.property": "#0466d7",
         "pillStroke": "#1f232817", "pillStrokeFocused": "#1f232824", "cardRim": "#ffffffb3", "cardRimFocused": "#ffffff", "cardShadow": "#1f232833",
+        "frostTint": "#f9fafbb3",
         "fgSubtle": "#818991", "fgFaint": "#1f232866", "selectionPill": "#fdfdfe", "selectionPillStroke": "#1f23281a", "hover": "#1f23280a",
     ])
 
@@ -132,6 +133,7 @@ struct Theme {
         "syntax.constant": "#58a6ff", "syntax.attribute": "#58a6ff", "syntax.variable": "#ffa657",
         "syntax.tag": "#3fb950", "syntax.property": "#58a6ff",
         "pillStroke": "#ffffff12", "pillStrokeFocused": "#ffffff1a", "cardRim": "#ffffff14", "cardRimFocused": "#ffffff24", "cardShadow": "#00000073",
+        "frostTint": "#13171d80",
         "fgSubtle": "#6e7681", "fgFaint": "#e6edf34d", "selectionPill": "#1c2026", "selectionPillStroke": "#ffffff1a", "hover": "#e6edf30b",
     ])
 
@@ -148,6 +150,7 @@ struct Theme {
         "syntax.constant": "#579ff9", "syntax.attribute": "#579ff9", "syntax.variable": "#f69d50",
         "syntax.tag": "#5baf5e", "syntax.property": "#579ff9",
         "pillStroke": "#ffffff12", "pillStrokeFocused": "#ffffff1a", "cardRim": "#ffffff14", "cardRimFocused": "#ffffff24", "cardShadow": "#00000073",
+        "frostTint": "#21283080",
         "fgSubtle": "#768390", "fgFaint": "#d1d7e04d", "selectionPill": "#262c34", "selectionPillStroke": "#ffffff1a", "hover": "#cdd9e50b",
     ])
 
@@ -180,7 +183,7 @@ struct Theme {
 
     /// Revue Dark with GitHub's stock code and diff colours.
     static let githubDark = revueDark.with(name: "GitHub Dark", cardOpacity: 1, hex: [
-        "canvas": "#0d1117", "fgMuted": "#9198a1",
+        "canvas": "#0d1117", "fgMuted": "#9198a1", "frostTint": "#0d111780",
         "syntax.keyword": "#ff7b72", "syntax.string": "#a5d6ff", "syntax.comment": "#9198a1",
         "syntax.number": "#79c0ff", "syntax.type": "#ffa657", "syntax.function": "#d2a8ff",
         "syntax.constant": "#79c0ff", "syntax.attribute": "#79c0ff", "syntax.variable": "#ffa657",
