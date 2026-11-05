@@ -1007,6 +1007,7 @@ final class Gutter: NSRulerView {
 
     /// The line row under the pointer, which shows the button for adding a note.
     private var hoverRow: Int? { didSet { if hoverRow != oldValue { needsDisplay = true } } }
+    private var hoverArea: NSTrackingArea?
     /// The row a drag down the gutter started from.
     private var dragStart: Int?
     private var addingNote = false
@@ -1027,8 +1028,10 @@ final class Gutter: NSRulerView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+        if let hoverArea { removeTrackingArea(hoverArea) }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+        addTrackingArea(area)
+        hoverArea = area
     }
 
     private func lineRow(at event: NSEvent) -> (row: Int, y: CGFloat)? {
