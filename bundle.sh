@@ -4,7 +4,10 @@
 #
 # Usage: bundle.sh <bin-dir> <out-dir> <git-path> <syntax-dir> [codesign-command]
 #
+# <git-path> is the git the app runs. Pass "" to leave it out, so the app finds git on the
+# user's PATH; a build that ships outside the nix store has no git of its own to point at.
 # <syntax-dir> holds the tree-sitter grammars and queries (nix build .#syntaxRuntime).
+# The version comes from the VERSION file beside this script.
 # Without a codesign command, the binaries keep their linker ad-hoc signatures.
 
 set -euo pipefail
@@ -15,6 +18,11 @@ git=$3
 syntax=$4
 sign=${5:-}
 here=$(cd "$(dirname "$0")" && pwd)
+version=$(< "$here/VERSION")
+git_key=""
+if [ -n "$git" ]; then
+  git_key="<key>RevueGitPath</key><string>$git</string>"
+fi
 
 app="$out/Revue.app"
 rm -rf "$app"
@@ -37,15 +45,15 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleDisplayName</key><string>Revue</string>
   <key>CFBundleExecutable</key><string>Revue</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
-  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>$version</string>
+  <key>CFBundleVersion</key><string>$version</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>LSMinimumSystemVersion</key><string>26.0</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSSupportsAutomaticTermination</key><false/>
-  <key>RevueGitPath</key><string>$git</string>
+  $git_key
   <key>CFBundleURLTypes</key>
   <array>
     <dict>

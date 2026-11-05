@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v31
+
+      - name: Check the tag matches VERSION
+        run: test "$GITHUB_REF_NAME" = "v$(cat VERSION)"
+
+      - name: Build the zip
+        id: build
+        run: |
+          { read -r version; read -r zip; read -r sha; } < <(./release.sh build/release)
+          {
+            echo "version=$version"
+            echo "zip=$zip"
+            echo "sha=$sha"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" "${{ steps.build.outputs.zip }}"
+          --title "Revue ${{ steps.build.outputs.version }}" --generate-notes
+
+      - name: Point the cask at the release
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+          VERSION: ${{ steps.build.outputs.version }}
+          SHA: ${{ steps.build.outputs.sha }}
+        run: |
+          git clone "https://x-access-token:$TAP_TOKEN@github.com/${{ github.repository_owner }}/homebrew-tap.git" tap
+          sed -i '' -e "s/^  version \".*\"$/  version \"$VERSION\"/" -e "s/^  sha256 \".*\"$/  sha256 \"$SHA\"/" tap/Casks/revue.rb
+          git -C tap -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -am "Revue $VERSION"
+          git -C tap push

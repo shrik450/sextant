@@ -72,9 +72,9 @@
         }
         "bash ${./nix/syntax-runtime.sh}";
 
-      revue = swiftPkgs.stdenv.mkDerivation {
-        pname = "revue";
-        version = "1.0";
+      mkRevue = { pname, git }: swiftPkgs.stdenv.mkDerivation {
+        inherit pname;
+        version = lib.fileContents ./VERSION;
         src = lib.fileset.toSource {
           root = ./.;
           fileset = lib.fileset.unions [
@@ -83,6 +83,7 @@
             ./Sources
             ./Tests
             ./bundle.sh
+            ./VERSION
             ./icon/AppIcon.icns
           ];
         };
@@ -105,7 +106,7 @@
         installPhase = ''
           runHook preInstall
           mkdir -p $out/Applications $out/bin
-          bash ./bundle.sh "$(swift build -c release --show-bin-path)" $out/Applications ${pkgs.git}/bin/git ${syntaxRuntime}
+          bash ./bundle.sh "$(swift build -c release --show-bin-path)" $out/Applications "${git}" ${syntaxRuntime}
           ln -s $out/Applications/Revue.app/Contents/Helpers/revue $out/bin/revue
           runHook postInstall
         '';
@@ -116,11 +117,14 @@
           mainProgram = "revue";
         };
       };
+
+      revue = mkRevue { pname = "revue"; git = "${pkgs.git}/bin/git"; };
+      release = mkRevue { pname = "revue-release"; git = ""; };
     in
     {
       packages.${system} = {
         default = revue;
-        inherit revue syntaxRuntime;
+        inherit revue release syntaxRuntime;
       };
 
       apps.${system}.default = {
