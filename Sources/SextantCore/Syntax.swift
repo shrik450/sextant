@@ -114,7 +114,7 @@ public final class SyntaxLanguage: Sendable {
         let ns = text as NSString
         let lines = LineIndex(text)
         var out: [Symbol] = []
-        for match in q.execute(in: tree).resolve(with: .init(string: text)) {
+        for match in q.execute(in: tree).resolve(with: .init(string: text)) where SyntaxLanguage.capturesAgree(in: match, ns) {
             guard let nameCapture = match.captures(named: "name").first else { continue }
             for c in match.captures {
                 guard let capture = c.name, capture.hasPrefix("definition.") || capture.hasPrefix("reference.") else { continue }
@@ -139,14 +139,36 @@ public final class SyntaxLanguage: Sendable {
     /// Returns the declaration a definition's name belongs to.
     ///
     /// Some tags queries capture a member's definition as the whole type around it, so the
-    /// nearest declaration above the name inside the capture is the definition's own.
+    /// nearest declaration above the name inside the capture is the definition's own. A
+    /// declaration right inside the capture is the capture's own header instead, like the
+    /// signature of a Vim function or the variable of a Kotlin property.
     static func declaration(around name: Node, within capture: Node) -> Node {
         var n = name.parent
         while let node = n, node.range != capture.range {
-            if let type = node.nodeType, type.hasSuffix("declaration") || type.hasSuffix("definition") { return node }
+            if let type = node.nodeType, type.hasSuffix("declaration") || type.hasSuffix("definition"),
+               node.parent?.range != capture.range { return node }
             n = node.parent
         }
         return capture
+    }
+
+    /// Whether a match passes the `#eq?` and `#not-eq?` predicates that compare two captures.
+    ///
+    /// SwiftTreeSitter only compares captures with strings, and lets these through unchecked.
+    static func capturesAgree(in match: QueryMatch, _ text: NSString) -> Bool {
+        func texts(_ names: [String]) -> [String] {
+            names.flatMap { match.captures(named: $0) }.map { text.substring(with: $0.node.range) }
+        }
+        return match.predicates.allSatisfy { predicate in
+            switch predicate {
+            case .eq(let strings, let names) where strings.isEmpty && names.count == 2:
+                Set(texts(names)).count <= 1
+            case .notEq(let strings, let names) where strings.isEmpty && names.count == 2:
+                Set(texts(names)).count != 1
+            default:
+                true
+            }
+        }
     }
 }
 
