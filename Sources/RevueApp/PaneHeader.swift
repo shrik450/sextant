@@ -1,26 +1,31 @@
 import AppKit
 import RevueCore
 
-/// A pane's header: where the pane is, as folders, file and definition, the size of the change,
-/// and what can be done to the pane.
+/// A pane's header: what the pane shows, as its file or All Changes with the folders it's in and
+/// the definition at the caret, the size of the change, and what can be done to the pane.
 ///
-/// Each folder or file opens a menu of what sits beside it in the snapshot, like Xcode's jump bar.
-/// The pane's buttons show its diff layout, whether its file is reviewed, and close it.
+/// The title and each folder open a menu of what sits beside them in the snapshot, like Xcode's
+/// jump bar. The pane's buttons show its diff layout, whether its file is reviewed, and close it.
 @MainActor
 final class PaneHeader: NSView, NSMenuDelegate {
-    private let crumbs = NSStackView()
+    private let title = NSButton(title: "", target: nil, action: nil)
+    private let folders = NSStackView()
     let symbols = NSPopUpButton(frame: .zero, pullsDown: true)
-    private let symbolChevron = NSImageView(image: NSImage(systemSymbolName: "chevron.compact.right", accessibilityDescription: nil)!)
+    private let symbolChevron = PaneHeader.chevron()
     let stats = NSTextField(labelWithString: "")
-    let splitButton = PaneHeader.button("rectangle.split.2x1", "Side by Side")
-    let reviewedButton = PaneHeader.button("checkmark.circle", "Mark as Reviewed")
-    let closeButton = PaneHeader.button("xmark", "Close Pane")
+    let splitButton = QuietButton.make("rectangle.split.2x1", "Side by Side")
+    let reviewedButton = QuietButton.make("checkmark.circle", "Mark as Reviewed")
+    let closeButton = QuietButton.make("xmark", "Close Pane")
     /// Every file in the snapshot, sorted, for the folder menus.
     var tree: [String] = []
     private(set) var currentFile: Int?
     private(set) var definitions: [Symbol] = []
     private var shownPath: String?
     private var shownKey = ""
+    private var showsOverview = false
+    private var isReviewed = false {
+        didSet { if isReviewed != oldValue { applyEmphasis() } }
+    }
     private var symbolMenuIsCurrent = false
     var onOpenPath: ((String) -> Void)?
     var onShowOverview: (() -> Void)?
@@ -29,25 +34,37 @@ final class PaneHeader: NSView, NSMenuDelegate {
     var onToggleReviewed: (() -> Void)?
     var onClose: (() -> Void)?
 
-    /// Whether this is the pane the keyboard and side columns follow, which the header shows by
-    /// dimming the others.
-    var isFocusedPane = true {
+    /// The header's height, which centres its row on the window's traffic lights when the card
+    /// starts at the strip's top margin.
+    static let height: CGFloat = 36
+
+    private var row = NSStackView()
+
+    /// How far the content keeps in from each end, clear of the titlebar controls over the header.
+    var clearance = NSEdgeInsetsZero {
         didSet {
-            guard isFocusedPane != oldValue else { return }
-            for b in buttons { b.contentTintColor = crumbColor }
+            guard clearance.left != oldValue.left || clearance.right != oldValue.right else { return }
+            row.edgeInsets = rowInsets
         }
     }
 
-    private var crumbColor: NSColor { isFocusedPane ? .labelColor : .secondaryLabelColor }
+    private var rowInsets: NSEdgeInsets {
+        NSEdgeInsets(top: 0, left: 12 + clearance.left, bottom: 0, right: 14 + clearance.right)
+    }
 
-    private static func button(_ symbol: String, _ label: String) -> NSButton {
-        let b = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: label)!, target: nil, action: nil)
-        b.isBordered = false
-        b.contentTintColor = .secondaryLabelColor
-        b.toolTip = label
-        b.setContentHuggingPriority(.required, for: .horizontal)
-        b.setContentCompressionResistancePriority(.required, for: .horizontal)
-        return b
+    /// Whether this is the pane the keyboard and side columns follow, which the header shows in
+    /// full while the others fade.
+    var isFocusedPane = true {
+        didSet { if isFocusedPane != oldValue { applyEmphasis() } }
+    }
+
+    private static func chevron() -> NSImageView {
+        let chevron = NSImageView(image: NSImage(systemSymbolName: "chevron.compact.right", accessibilityDescription: nil)!)
+        chevron.symbolConfiguration = .init(textStyle: .body, scale: .small)
+        chevron.setContentHuggingPriority(.required, for: .horizontal)
+        chevron.setContentCompressionResistancePriority(.required, for: .horizontal)
+        chevron.contentTintColor = .themed("fgSubtle")
+        return chevron
     }
 
     /// Shows the pane's diff layout and whether it can close, which depend on the window rather
@@ -69,53 +86,81 @@ final class PaneHeader: NSView, NSMenuDelegate {
         closeButton.action = #selector(closeClicked)
         closeButton.toolTip = "Close Pane (⌘W)"
         reviewedButton.isHidden = true
-        crumbs.orientation = .horizontal
-        crumbs.spacing = 0
-        crumbs.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        title.isBordered = false
+        title.target = self
+        title.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .medium)
+        title.imagePosition = .imageLeading
+        title.imageHugsTitle = true
+        title.lineBreakMode = .byTruncatingMiddle
+        title.setContentCompressionResistancePriority(.defaultLow + 2, for: .horizontal)
+        folders.orientation = .horizontal
+        folders.spacing = 2
+        folders.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        folders.setHuggingPriority(.required, for: .horizontal)
         symbols.isBordered = false
-        symbols.controlSize = .small
-        symbols.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        symbols.font = .systemFont(ofSize: NSFont.systemFontSize)
         (symbols.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
-        symbols.setContentCompressionResistancePriority(.defaultLow - 1, for: .horizontal)
+        symbols.setContentCompressionResistancePriority(.defaultLow + 1, for: .horizontal)
         symbols.isHidden = true
         symbols.menu = NSMenu()
         symbols.menu?.addItem(withTitle: "", action: nil, keyEquivalent: "")
         symbols.menu?.delegate = self
-        stats.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
+        stats.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         stats.setContentCompressionResistancePriority(.required, for: .horizontal)
         stats.setContentHuggingPriority(.required, for: .horizontal)
-        symbolChevron.symbolConfiguration = .init(pointSize: 10, weight: .regular)
-        symbolChevron.contentTintColor = .tertiaryLabelColor
         symbolChevron.isHidden = true
-        let row = NSStackView(views: [crumbs, symbolChevron, symbols, NSView(), stats, reviewedButton, splitButton, closeButton])
+        row = NSStackView(views: [title, folders, symbolChevron, symbols, NSView(), stats, reviewedButton, splitButton, closeButton])
         row.orientation = .horizontal
         row.spacing = 0
-        row.setCustomSpacing(12, after: stats)
-        row.setCustomSpacing(10, after: reviewedButton)
-        row.setCustomSpacing(10, after: splitButton)
-        row.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 12)
+        row.setCustomSpacing(10, after: title)
+        row.setCustomSpacing(2, after: folders)
+        row.setCustomSpacing(2, after: symbolChevron)
+        row.setCustomSpacing(14, after: stats)
+        row.setCustomSpacing(12, after: reviewedButton)
+        row.setCustomSpacing(12, after: splitButton)
+        row.edgeInsets = rowInsets
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 28),
+            heightAnchor.constraint(equalToConstant: Self.height),
             row.leadingAnchor.constraint(equalTo: leadingAnchor),
             row.trailingAnchor.constraint(equalTo: trailingAnchor),
             row.topAnchor.constraint(equalTo: topAnchor),
             row.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
+        applyEmphasis()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    override func draw(_ dirtyRect: NSRect) {
-        NSColor.windowBackgroundColor.setFill()
-        bounds.fill()
-        NSColor.separatorColor.setFill()
-        NSRect(x: 0, y: 0, width: bounds.width, height: 1).fill()
+    /// Zooms or minimizes the window on a double click, as the title bar the header sits in
+    /// would, following the user's setting for it.
+    override func mouseDown(with event: NSEvent) {
+        guard event.clickCount == 2, let window else { super.mouseDown(with: event); return }
+        switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") {
+        case "Minimize": window.performMiniaturize(nil)
+        case "None": break
+        default: window.performZoom(nil)
+        }
     }
 
-    /// The path shown, as folders then the file.
-    var components: [String] { crumbs.arrangedSubviews.compactMap { ($0 as? NSButton)?.title } }
+    /// Colours the header for whether its pane is focused: the title in full and the rest grey,
+    /// or everything a step fainter.
+    private func applyEmphasis() {
+        let strong = NSColor.themed(isFocusedPane ? "fg" : "fgMuted")
+        let quiet = NSColor.themed(isFocusedPane ? "fgMuted" : "fgSubtle")
+        title.contentTintColor = strong
+        for b in folderButtons { b.contentTintColor = quiet }
+        symbols.contentTintColor = quiet
+        reviewedButton.idleTint = .themed(isReviewed ? "fgMuted" : "fgFaint")
+        reviewedButton.brightensOnHover = !isReviewed
+        stats.alphaValue = isFocusedPane ? 0.85 : 0.5
+    }
+
+    /// The path shown, as folders then the file, after All Changes in the overview.
+    var components: [String] {
+        (showsOverview ? [title.title] : []) + folders.arrangedSubviews.compactMap { ($0 as? NSButton)?.title } + (showsOverview || shownPath == nil ? [] : [title.title])
+    }
 
     func update(path p: String?, files: [FileState], current: Int?, style: Style) {
         let reviewable = current.flatMap { files.indices.contains($0) ? files[$0] : nil }.flatMap { $0.isChange ? $0 : nil }
@@ -125,15 +170,16 @@ final class PaneHeader: NSView, NSMenuDelegate {
         currentFile = current
         let shown = p ?? current.map { files[$0].path }
         shownPath = shown
-        var items: [Crumb] = []
-        if p == nil { items.append(Crumb(title: "All Changes", image: NSImage(systemSymbolName: "square.stack", accessibilityDescription: nil), action: #selector(overviewClicked), tag: 0)) }
-        if let shown {
-            let comps = shown.split(separator: "/").map(String.init)
-            for (i, c) in comps.enumerated() {
-                items.append(Crumb(title: c, image: i == comps.count - 1 ? fileIcon(shown) : nil, action: #selector(crumbClicked(_:)), tag: i))
-            }
+        showsOverview = p == nil
+        let comps = shown.map { $0.split(separator: "/").map(String.init) } ?? []
+        if showsOverview {
+            setTitle("All Changes", image: NSImage(systemSymbolName: "square.stack", accessibilityDescription: nil), action: #selector(overviewClicked))
+            showFolders(comps)
+        } else {
+            setTitle(comps.last ?? "", image: shown.map(fileIcon), action: #selector(crumbClicked(_:)))
+            title.tag = comps.count - 1
+            showFolders(Array(comps.dropLast()))
         }
-        showCrumbs(items)
         toolTip = shown
         let addDel: (Int, Int)
         if p == nil {
@@ -146,10 +192,9 @@ final class PaneHeader: NSView, NSMenuDelegate {
         stats.attributedStringValue = s
         stats.isHidden = !files.contains(where: \.isChange)
         reviewedButton.isHidden = reviewable == nil
-        let reviewed = reviewable?.reviewed == true
-        reviewedButton.image = NSImage(systemSymbolName: reviewed ? "checkmark.circle.fill" : "checkmark.circle", accessibilityDescription: nil)
-        reviewedButton.contentTintColor = reviewed ? style.theme.color("success") : .secondaryLabelColor
-        reviewedButton.toolTip = reviewed ? "Mark as Not Reviewed (R)" : "Mark as Reviewed (R)"
+        isReviewed = reviewable?.reviewed == true
+        reviewedButton.image = NSImage(systemSymbolName: isReviewed ? "checkmark.circle.fill" : "checkmark.circle", accessibilityDescription: nil)
+        reviewedButton.toolTip = isReviewed ? "Mark as Not Reviewed (R)" : "Mark as Reviewed (R)"
         reviewedButton.setAccessibilityLabel(reviewedButton.toolTip)
         definitions = p == nil ? [] : files.first?.definitions ?? []
         symbolMenuIsCurrent = false
@@ -157,61 +202,45 @@ final class PaneHeader: NSView, NSMenuDelegate {
         symbolChevron.isHidden = true
     }
 
-    private struct Crumb {
-        var title: String
-        var image: NSImage?
-        var action: Selector
-        var tag: Int
+    private func setTitle(_ text: String, image: NSImage?, action: Selector) {
+        if title.title != text { title.title = text }
+        if title.image !== image { title.image = image }
+        title.action = action
     }
 
-    private var buttons: [NSButton] = []
+    private var folderButtons: [NSButton] = []
     private var separators: [NSImageView] = []
 
-    /// Shows crumbs separated by chevrons, reusing the views already made, since making controls
-    /// costs more than changing them.
-    private func showCrumbs(_ items: [Crumb]) {
-        while buttons.count < items.count { buttons.append(makeCrumb()) }
-        while separators.count < items.count - 1 { separators.append(makeSeparator()) }
+    /// Shows the folders after the title in grey, separated by chevrons, reusing the views
+    /// already made, since making controls costs more than changing them.
+    ///
+    /// Each folder's tag is its index in the shown path, which its menu lists the parent of.
+    private func showFolders(_ names: [String]) {
+        while folderButtons.count < names.count { folderButtons.append(makeFolderButton()) }
+        while separators.count < names.count - 1 { separators.append(Self.chevron()) }
         var views: [NSView] = []
-        for (i, item) in items.enumerated() {
+        for (i, name) in names.enumerated() {
             if i > 0 { views.append(separators[i - 1]) }
-            let b = buttons[i]
-            if b.title != item.title { b.title = item.title }
-            if b.image !== item.image {
-                b.image = item.image
-                b.imagePosition = item.image == nil ? .noImage : .imageLeading
-            }
-            b.action = item.action
-            b.tag = item.tag
+            let b = folderButtons[i]
+            if b.title != name { b.title = name }
+            b.tag = i
             views.append(b)
         }
-        guard crumbs.arrangedSubviews != views else { return }
-        for v in crumbs.arrangedSubviews where !views.contains(v) { v.removeFromSuperview() }
-        for (i, v) in views.enumerated() where i >= crumbs.arrangedSubviews.count || crumbs.arrangedSubviews[i] !== v {
-            crumbs.insertArrangedSubview(v, at: i)
+        guard folders.arrangedSubviews != views else { return }
+        for v in folders.arrangedSubviews where !views.contains(v) { v.removeFromSuperview() }
+        for (i, v) in views.enumerated() where i >= folders.arrangedSubviews.count || folders.arrangedSubviews[i] !== v {
+            folders.insertArrangedSubview(v, at: i)
         }
-        for v in views { crumbs.setCustomSpacing(3, after: v) }
     }
 
-    private func makeCrumb() -> NSButton {
-        let b = NSButton(title: "", target: self, action: nil)
+    private func makeFolderButton() -> NSButton {
+        let b = NSButton(title: "", target: self, action: #selector(crumbClicked(_:)))
         b.isBordered = false
-        b.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        b.controlSize = .small
-        b.imagePosition = .noImage
-        b.imageHugsTitle = true
-        b.contentTintColor = crumbColor
+        b.font = .systemFont(ofSize: NSFont.systemFontSize)
         b.lineBreakMode = .byTruncatingMiddle
         b.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        b.contentTintColor = .themed(isFocusedPane ? "fgMuted" : "fgSubtle")
         return b
-    }
-
-    private func makeSeparator() -> NSImageView {
-        let chevron = NSImageView(image: NSImage(systemSymbolName: "chevron.compact.right", accessibilityDescription: nil)!)
-        chevron.symbolConfiguration = .init(pointSize: 10, weight: .regular)
-        chevron.contentTintColor = .tertiaryLabelColor
-        chevron.setContentHuggingPriority(.required, for: .horizontal)
-        return chevron
     }
 
     /// Lists the file's definitions under the menu's title item, indented by nesting, when the
@@ -346,4 +375,54 @@ final class PaneHeader: NSView, NSMenuDelegate {
         guard let p = sender.representedObject as? String else { return }
         onOpenPath?(p)
     }
+}
+
+/// A borderless symbol button in a quiet tint that comes up a step while the pointer is over it.
+@MainActor
+final class QuietButton: NSButton {
+    /// The tint while the pointer is elsewhere.
+    var idleTint: NSColor = .themed("fgFaint") { didSet { applyTint() } }
+    /// The tint while the pointer is over the button.
+    var hoverTint: NSColor = .themed("fgMuted") { didSet { applyTint() } }
+    /// Whether the tint comes up under the pointer, which a button showing a state in colour,
+    /// such as a reviewed file's check, turns off.
+    var brightensOnHover = true { didSet { applyTint() } }
+    private var isHovered = false { didSet { applyTint() } }
+    private var hoverArea: NSTrackingArea?
+
+    /// Makes a button showing a symbol, sized to the body text.
+    ///
+    /// - Parameters:
+    ///   - symbol: The SF Symbol's name.
+    ///   - label: What the button does, for its tooltip and accessibility.
+    static func make(_ symbol: String, _ label: String) -> QuietButton {
+        let b = QuietButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: label)!, target: nil, action: nil)
+        b.isBordered = false
+        b.symbolConfiguration = .init(textStyle: .body, scale: .medium)
+        b.toolTip = label
+        b.setContentHuggingPriority(.required, for: .horizontal)
+        b.setContentCompressionResistancePriority(.required, for: .horizontal)
+        b.applyTint()
+        return b
+    }
+
+    private func applyTint() {
+        contentTintColor = isHovered && brightensOnHover && isEnabled ? hoverTint : idleTint
+    }
+
+    override var isEnabled: Bool {
+        didSet { applyTint() }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverArea { removeTrackingArea(hoverArea) }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect], owner: self)
+        addTrackingArea(area)
+        hoverArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) { isHovered = true }
+
+    override func mouseExited(with event: NSEvent) { isHovered = false }
 }

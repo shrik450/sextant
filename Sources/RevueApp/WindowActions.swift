@@ -3,7 +3,7 @@ import RevueCore
 
 /// What the window says about its review: titles, labels and the inspector's card.
 extension RepoWindowController {
-    /// What's being reviewed, as the toolbar names it.
+    /// What’s being reviewed, as the review header names it.
     var subjectLabel: (title: String, symbol: String, tooltip: String) {
         switch review?.subject {
         case .worktree(let root)?:
@@ -56,8 +56,7 @@ extension RepoWindowController {
     func updateTitle() {
         guard let window else { return }
         window.title = repository.name
-        window.subtitle = review == nil ? "" : scopeLabel + (changes.isEmpty ? "" : "  ·  \(changes.count) file\(changes.count == 1 ? "" : "s")")
-        updateSubjectControl()
+        updateReviewHeader()
     }
 
     /// What the inspector says about the review: its commit, pull request, branch or worktree,

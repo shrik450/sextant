@@ -87,7 +87,6 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     static var idleWaiters: [() -> Void] = []
     var lastError: String?
     var picker: NSPopover?
-    weak var subjectControl: SubjectControl?
     var sheet: RevisionSheet?
     var jumpPanel: JumpPanel?
     /// The enabled menu commands when the jump bar opened, for it to offer.
@@ -103,11 +102,14 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         window.title = repository.name
         window.tabbingMode = .automatic
         window.toolbarStyle = .unified
-        window.titlebarSeparatorStyle = .automatic
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
         super.init(window: window)
         window.delegate = self
 
         navigator.delegate = self
+        connectReviewHeader()
         navigator.changes.reviews = repository.reviews
         inspector.delegate = self
         inspector.notes.delegate = self
@@ -124,15 +126,24 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         stripController.view = strip
         let readerItem = NSSplitViewItem(viewController: stripController)
         readerItem.minimumThickness = 420
+        readerItem.automaticallyAdjustsSafeAreaInsets = true
         let inspectorItem = NSSplitViewItem(inspectorWithViewController: inspector)
         inspectorItem.minimumThickness = 220
         inspectorItem.maximumThickness = 420
         inspectorItem.preferredThicknessFraction = 0.18
         inspectorItem.canCollapse = true
         inspectorItem.canCollapseFromWindowResize = true
+        let columns = SeamlessSplitView()
+        columns.isVertical = true
+        columns.dividerStyle = .thin
+        columns.arrangesAllSubviews = false
+        split.splitView = columns
         split.splitViewItems = [navItem, readerItem, inspectorItem]
         split.splitView.autosaveName = "RevueSplit3"
         window.contentViewController = split
+        let backdrop = BackdropView(frame: split.splitView.bounds)
+        backdrop.autoresizingMask = [.width, .height]
+        split.splitView.addSubview(backdrop, positioned: .below, relativeTo: nil)
         window.setContentSize(NSSize(width: 1440, height: 900))
         showPanes(animated: false)
 
@@ -141,6 +152,8 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = false
         window.toolbar = toolbar
+        strip.titlebarControls = { [weak self] in self?.titlebarControlFrames ?? [] }
+        NotificationCenter.default.addObserver(self, selector: #selector(columnsResized(_:)), name: NSSplitView.didResizeSubviewsNotification, object: split.splitView)
 
         window.autorecalculatesKeyViewLoop = false
         navigator.changes.filter.nextKeyView = navigator.changes.outline
@@ -152,6 +165,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         window.setFrameAutosaveName("RevueWindow")
         if !window.setFrameUsingName("RevueWindow") { window.center() }
 
+        NotificationCenter.default.addObserver(self, selector: #selector(appearanceChanged(_:)), name: Appearance.didChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(reviewsChanged(_:)), name: ReviewStore.didChange, object: repository.reviews)
         NotificationCenter.default.addObserver(self, selector: #selector(notesChanged(_:)), name: NotesStore.didChange, object: notes)
         watch()
@@ -790,7 +804,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     private func discard(_ closed: [Pane]) {
         for p in closed {
             p.reader.delegate = nil
-            p.reader.view.removeFromSuperview()
+            p.card.removeFromSuperview()
         }
     }
 
@@ -799,7 +813,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
 
     /// Lays out the strip, sliding the focused pane into view.
     func showPanes(animated: Bool) {
-        strip.show(panes.map(\.reader.view), focused: focusedPane, animated: animated)
+        strip.show(panes.map(\.card), focused: focusedPane, animated: animated)
         for (i, p) in panes.enumerated() {
             p.reader.header.isFocusedPane = i == focusedPane || panes.count == 1
             p.reader.header.setPane(split: p.reader.split, canClose: panes.count > 1)
@@ -879,6 +893,17 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     @objc private func notesChanged(_ n: Notification) {
         showNotes()
         for p in panes where !p.reader.files.isEmpty { p.reader.reload(keepPosition: true) }
+    }
+
+    /// Lays the strip out again when a side column shows, hides or resizes. The strip reaches
+    /// under the side columns, so only its safe area and the titlebar controls over it change,
+    /// which doesn't lay it out by itself.
+    @objc private func columnsResized(_ n: Notification) {
+        strip.needsLayout = true
+    }
+
+    @objc private func appearanceChanged(_ n: Notification) {
+        window?.contentView?.redrawSubtree()
     }
 
     /// The notes on what the focused pane reviews.

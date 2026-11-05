@@ -31,6 +31,7 @@ final class Navigator: NSViewController {
     }
     let changes = ChangesController()
     let search = SearchController()
+    let reviewHeader = ReviewHeader()
     private let tabs = NSSegmentedControl()
     private let container = NSView()
     private(set) var tab: Tab = .changes
@@ -49,12 +50,17 @@ final class Navigator: NSViewController {
         tabs.selectedSegment = 0
         tabs.target = self
         tabs.action = #selector(tabChanged)
+        reviewHeader.translatesAutoresizingMaskIntoConstraints = false
         tabs.translatesAutoresizingMaskIntoConstraints = false
         container.translatesAutoresizingMaskIntoConstraints = false
+        v.addSubview(reviewHeader)
         v.addSubview(tabs)
         v.addSubview(container)
         NSLayoutConstraint.activate([
-            tabs.topAnchor.constraint(equalTo: v.safeAreaLayoutGuide.topAnchor, constant: 4),
+            reviewHeader.topAnchor.constraint(equalTo: v.safeAreaLayoutGuide.topAnchor, constant: 6),
+            reviewHeader.leadingAnchor.constraint(equalTo: v.leadingAnchor, constant: 18),
+            reviewHeader.trailingAnchor.constraint(equalTo: v.trailingAnchor, constant: -14),
+            tabs.topAnchor.constraint(equalTo: reviewHeader.bottomAnchor, constant: 12),
             tabs.leadingAnchor.constraint(equalTo: v.leadingAnchor, constant: 12),
             tabs.trailingAnchor.constraint(equalTo: v.trailingAnchor, constant: -12),
             container.topAnchor.constraint(equalTo: tabs.bottomAnchor, constant: 8),

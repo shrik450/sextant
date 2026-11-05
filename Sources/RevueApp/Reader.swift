@@ -51,6 +51,7 @@ final class Reader: NSViewController, CodeViewDelegate {
 
     override func loadView() {
         let v = NSView()
+        v.wantsLayer = true
         header.translatesAutoresizingMaskIntoConstraints = false
         stack.orientation = .horizontal
         stack.spacing = 0
@@ -67,10 +68,16 @@ final class Reader: NSViewController, CodeViewDelegate {
         v.addSubview(header)
         v.addSubview(emptyLabel)
         NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: v.safeAreaLayoutGuide.topAnchor),
+            header.topAnchor.constraint(equalTo: v.topAnchor),
             header.leadingAnchor.constraint(equalTo: v.leadingAnchor),
             header.trailingAnchor.constraint(equalTo: v.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: header.bottomAnchor),
+            stack.topAnchor.constraint(greaterThanOrEqualTo: header.bottomAnchor),
+            stack.topAnchor.constraint(greaterThanOrEqualTo: v.safeAreaLayoutGuide.topAnchor),
+            {
+                let snug = stack.topAnchor.constraint(equalTo: header.bottomAnchor)
+                snug.priority = .defaultLow
+                return snug
+            }(),
             stack.leadingAnchor.constraint(equalTo: v.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: v.trailingAnchor),
             stack.bottomAnchor.constraint(equalTo: v.bottomAnchor),
@@ -89,8 +96,16 @@ final class Reader: NSViewController, CodeViewDelegate {
     private var appearanceObservation: NSKeyValueObservation?
 
     @objc private func appearanceChanged() {
-        guard !files.isEmpty else { return }
+        guard !files.isEmpty else {
+            paintCanvas(Style.current(for: view.effectiveAppearance))
+            return
+        }
         reload(keepPosition: true)
+    }
+
+    /// Fills the pane behind its header and code with the theme's canvas, so they read as one.
+    private func paintCanvas(_ style: Style) {
+        view.layer?.backgroundColor = style.theme.canvas.cgColor
     }
 
     private func setColumnCount(_ n: Int) {
@@ -201,7 +216,9 @@ final class Reader: NSViewController, CodeViewDelegate {
         emptyLabel.stringValue = message
         emptyLabel.isHidden = false
         stack.isHidden = true
-        header.update(path: nil, files: [], current: nil, style: Style.current(for: view.effectiveAppearance))
+        let style = Style.current(for: view.effectiveAppearance)
+        paintCanvas(style)
+        header.update(path: nil, files: [], current: nil, style: style)
     }
 
     /// Lays out and renders again, such as after toggling split, folds, notes or highlighting.
@@ -214,6 +231,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         layout = layoutRows(files: files, overview: overview, split: split, showAll: showAll, notes: notes)
         setColumnCount(layout.right == nil ? 1 : 2)
         let style = Style.current(for: view.effectiveAppearance)
+        paintCanvas(style)
         let byID = Dictionary(notes.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let sides = layout.right.map { [layout.left, $0] } ?? [layout.left]
         let files = self.files

@@ -48,7 +48,7 @@ final class Inspector: NSViewController, NSSplitViewDelegate {
     weak var delegate: InspectorDelegate?
     let outline = KeyOutlineView()
     let notes = NotesPane()
-    private let split = NSSplitView()
+    private let split = SeamlessSplitView()
     /// The entries the outline shows, under a root that stands for the outline itself.
     private let root = Entry(.section(""))
     private var sections: [Entry] { root.children }

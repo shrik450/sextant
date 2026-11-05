@@ -29,6 +29,10 @@ struct Theme {
     /// Idle controls, which come up to `fgSubtle` on hover.
     var fgFaint: NSColor { color("fgFaint") }
 
+    /// The focused card's shadow: its colour comes from `cardShadow`, and its blur and offset
+    /// from the appearance, softer in light.
+    var cardShadowRadius: CGFloat { isDark ? 8 : 6 }
+
     func syntax(_ k: TokenKind) -> NSColor {
         switch k {
         case .keyword: color("syntax.keyword")
