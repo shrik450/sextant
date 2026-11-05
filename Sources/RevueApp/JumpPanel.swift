@@ -38,6 +38,8 @@ final class JumpPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NSTa
     static let width: CGFloat = 640
     static let rowHeight: CGFloat = 30
     static let visibleRows = 12
+    /// The bar's corner radius, as round as a window's on macOS 26.
+    static let cornerRadius: CGFloat = 20
 
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 60), styleMask: [.borderless, .fullSizeContentView], backing: .buffered, defer: false)
@@ -46,12 +48,10 @@ final class JumpPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NSTa
         backgroundColor = .clear
         isOpaque = false
         hasShadow = true
-        let back = NSVisualEffectView()
-        back.material = .popover
-        back.state = .active
-        back.wantsLayer = true
-        back.layer?.cornerRadius = 12
-        back.layer?.masksToBounds = true
+        let glass = NSGlassEffectView()
+        glass.cornerRadius = Self.cornerRadius
+        let back = NSView()
+        glass.contentView = back
         field.font = .systemFont(ofSize: 20, weight: .light)
         field.placeholderString = "Go to a file or definition, > for commands, : for a line, @ in this file"
         field.isBordered = false
@@ -63,7 +63,7 @@ final class JumpPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NSTa
         table.addTableColumn(column)
         table.headerView = nil
         table.rowHeight = Self.rowHeight
-        table.style = .plain
+        table.style = .inset
         table.backgroundColor = .clear
         table.intercellSpacing = .zero
         table.dataSource = self
@@ -86,14 +86,22 @@ final class JumpPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NSTa
             field.leadingAnchor.constraint(equalTo: back.leadingAnchor, constant: 16),
             field.trailingAnchor.constraint(equalTo: back.trailingAnchor, constant: -16),
             scroll.topAnchor.constraint(equalTo: field.bottomAnchor, constant: 10),
-            scroll.leadingAnchor.constraint(equalTo: back.leadingAnchor, constant: 6),
-            scroll.trailingAnchor.constraint(equalTo: back.trailingAnchor, constant: -6),
+            scroll.leadingAnchor.constraint(equalTo: back.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: back.trailingAnchor),
             status.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 4),
             status.leadingAnchor.constraint(equalTo: back.leadingAnchor, constant: 16),
             status.trailingAnchor.constraint(equalTo: back.trailingAnchor, constant: -16),
             status.bottomAnchor.constraint(equalTo: back.bottomAnchor, constant: -8),
         ])
-        contentView = back
+        let shape = NSView()
+        shape.wantsLayer = true
+        shape.layer?.cornerRadius = Self.cornerRadius
+        shape.layer?.cornerCurve = .continuous
+        shape.layer?.masksToBounds = true
+        glass.autoresizingMask = [.width, .height]
+        shape.addSubview(glass)
+        contentView = shape
+        glass.frame = shape.bounds
     }
 
     override var canBecomeKey: Bool { true }
@@ -146,10 +154,20 @@ final class JumpPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NSTa
         if !items.isEmpty { table.selectRowIndexes([0], byExtendingSelection: false) }
         table.scrollRowToVisible(0)
         status.stringValue = progress?() ?? (items.isEmpty && !field.stringValue.isEmpty ? "Nothing matches" : "")
-        let rows = CGFloat(min(items.count, Self.visibleRows))
-        let height = 14 + field.intrinsicContentSize.height + 10 + rows * Self.rowHeight + 4 + 16 + 8
+        let height = 14 + field.intrinsicContentSize.height + 10 + listHeight + 4 + status.intrinsicContentSize.height + 8
         let top = frame.maxY
         setFrame(NSRect(x: frame.minX, y: top - height, width: Self.width, height: height), display: true)
+        invalidateShadow()
+    }
+
+    /// The height that shows up to `visibleRows` rows in full.
+    ///
+    /// When every result fits, the inset table's padding above the first row is repeated below
+    /// the last. When the list scrolls, it ends at the last whole row, so none of the next shows.
+    private var listHeight: CGFloat {
+        guard !items.isEmpty else { return 0 }
+        let lastShown = table.rect(ofRow: min(items.count, Self.visibleRows) - 1)
+        return items.count > Self.visibleRows ? lastShown.maxY : lastShown.maxY + table.rect(ofRow: 0).minY
     }
 
     func controlTextDidChange(_ obj: Notification) { search() }
