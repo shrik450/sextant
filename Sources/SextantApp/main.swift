@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }()
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        DispatchQueue.global(qos: .userInitiated).async { _ = loginShellPath }
         NSApp.mainMenu = buildMainMenu()
         _ = Appearance.shared
     }

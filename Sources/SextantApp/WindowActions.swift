@@ -809,12 +809,34 @@ func shellQuote(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", w
 
 /// Returns a PATH for launching user tools from a GUI app.
 ///
-/// A GUI app doesn't inherit the login shell's PATH.
+/// A GUI app opened from the Dock or with `open` inherits only the system's directories, where
+/// `/usr/bin/git` may be a stub for tools that aren't installed. So the login shell's PATH comes
+/// first.
 func userPath() -> String {
     let home = FileManager.default.homeDirectoryForCurrentUser.path
     let user = NSUserName()
-    let extra = ["\(home)/.nix-profile/bin", "/etc/profiles/per-user/\(user)/bin", "/run/current-system/sw/bin", "/nix/var/nix/profiles/default/bin", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
-    let existing = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map(String.init)
-    var seen = Set<String>()
-    return (existing + extra).filter { seen.insert($0).inserted }.joined(separator: ":")
+    let known = ["\(home)/.nix-profile/bin", "/etc/profiles/per-user/\(user)/bin", "/run/current-system/sw/bin", "/nix/var/nix/profiles/default/bin", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+    return searchPath(shell: loginShellPath, known: known, inherited: ProcessInfo.processInfo.environment["PATH"])
 }
+
+/// The PATH the user's login shell sets up, read once, or nil if the shell can't be run or takes
+/// longer than five seconds.
+///
+/// Reading it runs the shell's startup files, so the app starts reading it at launch, off the
+/// main thread, before the first git command needs it.
+let loginShellPath: String? = {
+    guard let entry = getpwuid(getuid()), let shell = entry.pointee.pw_shell else { return nil }
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: String(cString: shell))
+    p.arguments = ["-l", "-c", "/usr/bin/env"]
+    p.standardInput = FileHandle.nullDevice
+    p.standardError = FileHandle.nullDevice
+    let out = Pipe()
+    p.standardOutput = out
+    guard (try? p.run()) != nil else { return nil }
+    DispatchQueue.global().asyncAfter(deadline: .now() + 5) { if p.isRunning { p.terminate() } }
+    let data = out.fileHandleForReading.readDataToEndOfFile()
+    p.waitUntilExit()
+    guard p.terminationStatus == 0 else { return nil }
+    return pathVariable(inEnvironment: String(decoding: data, as: UTF8.self))
+}()
