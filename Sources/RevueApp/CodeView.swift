@@ -849,6 +849,7 @@ final class Gutter: NSRulerView {
 
     init(code: CodeView, scrollView: NSScrollView) {
         super.init(scrollView: scrollView, orientation: .verticalRuler)
+        clipsToBounds = true
         clientView = code
         scrollView.postsFrameChangedNotifications = true
         NotificationCenter.default.addObserver(self, selector: #selector(scrollViewResized), name: NSView.frameDidChangeNotification, object: scrollView)
@@ -890,10 +891,15 @@ final class Gutter: NSRulerView {
         needsDisplay = true
     }
 
+    /// Draws the gutter for the rows beside `rect`.
+    ///
+    /// AppKit keeps what the ruler draws and moves it as the code scrolls, asking only for the parts
+    /// it hasn't drawn yet. `rect` can reach beyond the rows in view, such as the whole of a file a
+    /// little taller than the view, so it's drawn in full rather than just what's in view.
     override func drawHashMarksAndLabels(in rect: NSRect) {
         let s = code.style, t = s.theme
         t.canvas.setFill()
-        bounds.fill()
+        rect.fill()
         t.border.withAlphaComponent(0.5).setFill()
         NSRect(x: bounds.maxX - 1, y: rect.minY, width: 1, height: rect.height).fill()
 
@@ -902,12 +908,17 @@ final class Gutter: NSRulerView {
         let plainNumbers: [NSAttributedString.Key: Any] = [.font: s.font, .foregroundColor: t.color("lineNumber")]
         let caretNumbers: [NSAttributedString.Key: Any] = [.font: s.boldFont, .foregroundColor: t.fg]
         let caretRow = code.showsCurrentLine ? code.caretRow : nil
-        let visible = code.visibleRect
+        let asked = code.convert(rect, from: self)
         let offset = convert(NSPoint.zero, from: code).y
         var lastBlame: String?
+        var isFirstRow = true
         let badgeRow = hoverRow ?? (code.selectedRange().length > 0 ? code.selectedRows.last : nil)
 
-        code.visibleRows(in: visible) { r, frag in
+        code.visibleRows(in: NSRect(x: code.bounds.minX, y: asked.minY, width: code.bounds.width, height: asked.height)) { r, frag in
+            if isFirstRow {
+                lastBlame = blameLabel(continuedAt: r)
+                isFirstRow = false
+            }
             let numAttrs = r == caretRow ? caretNumbers : plainNumbers
             let y = frag.minY + offset
             let row = code.rows[r]
@@ -945,7 +956,7 @@ final class Gutter: NSRulerView {
             }
             if r == badgeRow { drawAddBadge(at: y) }
             if let blame, line.kind != .deleted, let c = blame.commit(forLine: line.newNo - 1) {
-                let label = c.isUncommitted ? "Not committed" : "\(String(c.oid.prefix(7)))  \(c.author)"
+                let label = Self.blameLabel(c)
                 if label != lastBlame {
                     let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: s.font.pointSize - 1), .foregroundColor: t.fgMuted]
                     let date = c.isUncommitted ? "" : compactDate(c.date)
@@ -964,6 +975,23 @@ final class Gutter: NSRulerView {
                 lastBlame = label
             }
         }
+    }
+
+    private static func blameLabel(_ c: Blame.Commit) -> String {
+        c.isUncommitted ? "Not committed" : "\(String(c.oid.prefix(7)))  \(c.author)"
+    }
+
+    /// The blame label of the run a row continues from the rows above it, or nil if it starts one.
+    ///
+    /// AppKit asks for the gutter in parts as the code scrolls, so a part that starts mid-run
+    /// labels the run only where drawing the whole gutter would.
+    private func blameLabel(continuedAt r: Int) -> String? {
+        guard let blame else { return nil }
+        for above in stride(from: r - 1, through: 0, by: -1) {
+            guard let line = code.line(ofRow: above) else { return nil }
+            if line.kind != .deleted, let c = blame.commit(forLine: line.newNo - 1) { return Self.blameLabel(c) }
+        }
+        return nil
     }
 
     /// The line row under the pointer, which shows the button for adding a note.
