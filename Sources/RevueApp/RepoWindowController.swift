@@ -392,7 +392,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
                 s.error = error.localizedDescription
                 for p in panes(of: s) {
                     p.focus = nil
-                    p.reader.showEmpty(error.localizedDescription)
+                    p.reader.showEmpty(error.localizedDescription, symbol: "exclamationmark.triangle")
                 }
                 if isFocused(s) {
                     navigator.changes.setScopes([], selected: .everything)
@@ -451,7 +451,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
             restore(loc, in: p)
         } else if s.changes.isEmpty {
             p.focus = nil
-            p.reader.showEmpty(emptyMessage(s))
+            p.reader.showEmpty(emptyMessage(s), symbol: "checkmark.circle")
             if isFocused(p) {
                 navigator.changes.showFocus(.none)
                 inspector.showEmpty(card: card())
@@ -559,7 +559,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
             let f = await fileState(path, in: t, of: s)
             guard gen == p.showGeneration else { return }
             guard let f else {
-                p.reader.showEmpty("\(path) isn’t in this revision")
+                p.reader.showEmpty("\(path) isn’t in this revision", symbol: "questionmark.text.page")
                 if isFocused(p) { inspector.showEmpty(card: card()) }
                 return
             }
@@ -733,7 +733,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         switch loc.place {
         case .overview(let path):
             if s.changes.isEmpty {
-                p.reader.showEmpty(emptyMessage(s))
+                p.reader.showEmpty(emptyMessage(s), symbol: "checkmark.circle")
                 p.focus = nil
             } else {
                 showOverview(in: p, at: path, top: loc.top, caret: loc.caret)

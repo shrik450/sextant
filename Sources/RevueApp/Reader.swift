@@ -45,7 +45,7 @@ final class Reader: NSViewController, CodeViewDelegate {
     private var columns: [Column] = []
     private let stack = NSStackView()
     let header = PaneHeader()
-    private let emptyLabel = NSTextField(labelWithString: "")
+    private let emptyState = EmptyState(symbolSize: 40, font: .preferredFont(forTextStyle: .title3))
     private let changeCounter = ChangeCounter()
     private var layout = Layout(left: [], right: nil)
     private var syncing = false
@@ -58,18 +58,13 @@ final class Reader: NSViewController, CodeViewDelegate {
         stack.spacing = 0
         stack.distribution = .fillEqually
         stack.translatesAutoresizingMaskIntoConstraints = false
-        emptyLabel.font = .systemFont(ofSize: 15)
-        emptyLabel.textColor = .secondaryLabelColor
-        emptyLabel.alignment = .center
-        emptyLabel.lineBreakMode = .byWordWrapping
-        emptyLabel.maximumNumberOfLines = 0
-        emptyLabel.translatesAutoresizingMaskIntoConstraints = false
-        emptyLabel.isHidden = true
+        emptyState.translatesAutoresizingMaskIntoConstraints = false
+        emptyState.isHidden = true
         changeCounter.translatesAutoresizingMaskIntoConstraints = false
         changeCounter.isHidden = true
         v.addSubview(stack)
         v.addSubview(header)
-        v.addSubview(emptyLabel)
+        v.addSubview(emptyState)
         v.addSubview(changeCounter)
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: v.topAnchor),
@@ -85,9 +80,9 @@ final class Reader: NSViewController, CodeViewDelegate {
             stack.leadingAnchor.constraint(equalTo: v.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: v.trailingAnchor),
             stack.bottomAnchor.constraint(equalTo: v.bottomAnchor),
-            emptyLabel.centerXAnchor.constraint(equalTo: stack.centerXAnchor),
-            emptyLabel.centerYAnchor.constraint(equalTo: stack.centerYAnchor),
-            emptyLabel.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor, multiplier: 0.8),
+            emptyState.centerXAnchor.constraint(equalTo: stack.centerXAnchor),
+            emptyState.centerYAnchor.constraint(equalTo: stack.centerYAnchor),
+            emptyState.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor, multiplier: 0.8),
             changeCounter.centerXAnchor.constraint(equalTo: stack.centerXAnchor),
             changeCounter.bottomAnchor.constraint(equalTo: stack.bottomAnchor, constant: -ChangeCounter.margin),
         ])
@@ -218,12 +213,17 @@ final class Reader: NSViewController, CodeViewDelegate {
     /// Whether everything in view is drawn with its colors.
     var isSettled: Bool { !columns.contains { $0.code.awaitsColors } }
 
-    func showEmpty(_ message: String) {
+    /// Shows a quiet message in place of any code.
+    ///
+    /// - Parameters:
+    ///   - message: Why there's nothing to show.
+    ///   - symbol: The SF Symbol shown above the message.
+    func showEmpty(_ message: String, symbol: String) {
         files = []
         layout = Layout(left: [], right: nil)
         for c in columns { c.code.setContent(RenderedText(string: NSAttributedString(), rowStarts: []), rows: [], files: []) }
-        emptyLabel.stringValue = message
-        emptyLabel.isHidden = false
+        emptyState.show(message, symbol: symbol)
+        emptyState.isHidden = false
         stack.isHidden = true
         changeStops = []
         updateChangeCounter()
@@ -237,7 +237,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         let pos = keepPosition ? topPosition : nil
         let kept = keepPosition ? keptSelection : nil
         let topOffset = keepPosition ? offsetFromTopPosition : 0
-        emptyLabel.isHidden = true
+        emptyState.isHidden = true
         stack.isHidden = false
         layout = layoutRows(files: files, overview: overview, split: split, showAll: showAll, notes: notes)
         setColumnCount(layout.right == nil ? 1 : 2)

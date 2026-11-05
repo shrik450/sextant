@@ -21,7 +21,7 @@ final class NotesPane: NSViewController, NSTableViewDataSource, NSTableViewDeleg
     private let count = NSTextField(labelWithString: "")
     private let add = NSButton()
     private let copyAll = NSButton()
-    private let empty = NSTextField(wrappingLabelWithString: "Select lines and press C, or click + beside a line number. Press ⇧C for a note on the whole review.")
+    private let empty = EmptyState(symbolSize: 22, font: .detail)
     private(set) var notes: [Note] = []
 
     override func loadView() {
@@ -69,9 +69,7 @@ final class NotesPane: NSViewController, NSTableViewDataSource, NSTableViewDeleg
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
-        empty.font = .systemFont(ofSize: 12)
-        empty.textColor = .secondaryLabelColor
-        empty.alignment = .center
+        empty.show("Select lines and press C, or click + beside a line number. Press ⇧C for a note on the whole review.", symbol: "note.text")
         for x in [header, scroll, empty] as [NSView] { x.translatesAutoresizingMaskIntoConstraints = false; v.addSubview(x) }
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: v.topAnchor, constant: 16),
@@ -82,7 +80,7 @@ final class NotesPane: NSViewController, NSTableViewDataSource, NSTableViewDeleg
             scroll.leadingAnchor.constraint(equalTo: v.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: v.trailingAnchor),
             scroll.bottomAnchor.constraint(equalTo: v.bottomAnchor),
-            empty.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 12),
+            empty.centerYAnchor.constraint(equalTo: scroll.centerYAnchor),
             empty.leadingAnchor.constraint(equalTo: v.leadingAnchor, constant: 18),
             empty.trailingAnchor.constraint(equalTo: v.trailingAnchor, constant: -18),
         ])
