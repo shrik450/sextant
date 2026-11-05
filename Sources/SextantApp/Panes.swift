@@ -137,11 +137,17 @@ final class PaneStrip: NSView {
         layoutPanes(animated: false)
     }
 
-    /// The width every pane takes: the whole strip for one pane, else two thirds of it, so the
-    /// pane beside the focused one shows.
+    /// Whether every pane takes the whole strip, so the focused one fills it and the strip slides
+    /// a whole pane at a time.
+    var isZoomed = false {
+        didSet { if isZoomed != oldValue { needsLayout = true } }
+    }
+
+    /// The width every pane takes: the whole strip for one pane or while zoomed, else two thirds
+    /// of it, so the pane beside the focused one shows.
     var paneWidth: CGFloat {
         let w = cardArea.width
-        guard cards.count > 1 else { return w }
+        guard cards.count > 1, !isZoomed else { return w }
         let part = (w * 2 / 3).rounded()
         return part < Self.minimumPaneWidth ? w : part
     }

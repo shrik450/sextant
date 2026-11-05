@@ -265,6 +265,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             m.addItem(.separator())
             item(m, "Show Navigator", #selector(NSSplitViewController.toggleSidebar(_:)), "0", symbol: "sidebar.left")
             item(m, "Show Inspector", #selector(W.toggleInspectorColumn(_:)), "0", [.command, .option], symbol: "sidebar.right")
+            item(m, "Zoom Pane", #selector(W.toggleZoomPane(_:)), "\r", [.command, .shift], symbol: "arrow.up.left.and.arrow.down.right")
             m.addItem(.separator())
             item(m, "Bigger", #selector(W.biggerFont(_:)), "+", symbol: "textformat.size.larger")
             item(m, "Bigger", #selector(W.biggerFont(_:)), "=", symbol: "textformat.size.larger")

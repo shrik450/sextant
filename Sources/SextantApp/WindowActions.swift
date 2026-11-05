@@ -776,6 +776,9 @@ extension RepoWindowController: NSMenuItemValidation {
         case #selector(previousPane(_:)): return focusedPane > 0
         case #selector(nextPane(_:)): return focusedPane < panes.count - 1
         case #selector(closeOtherPanes(_:)): return panes.count > 1
+        case #selector(toggleZoomPane(_:)):
+            item.state = strip.isZoomed ? .on : .off
+            return panes.count > 1
         case #selector(goToLine(_:)), #selector(showFileHistory(_:)), #selector(showSymbols(_:)), #selector(nextDefinition(_:)), #selector(previousDefinition(_:)):
             return reading
         case #selector(copyReference(_:)), #selector(copyReferenceWithCode(_:)), #selector(addNote(_:)): return reader.selection != nil

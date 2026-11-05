@@ -756,6 +756,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         p.reader.header.tree = pane.session?.snapshotFiles ?? []
         panes.insert(p, at: focusedPane + 1)
         focusedPane += 1
+        strip.isZoomed = false
         showNotes()
         showPanes(animated: true)
         p.reader.view.layoutSubtreeIfNeeded()
@@ -812,8 +813,18 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     @objc func previousPane(_ sender: Any?) { focusPane(focusedPane - 1) }
     @objc func nextPane(_ sender: Any?) { focusPane(focusedPane + 1) }
 
+    /// Zooms the focused pane to the strip's whole width, or gives every pane its share back.
+    ///
+    /// The zoom holds while moving between panes, each filling the strip in turn, and ends when a
+    /// pane opens beside the focused one or only one is left.
+    @objc func toggleZoomPane(_ sender: Any?) {
+        guard panes.count > 1 else { NSSound.beep(); return }
+        strip.isZoomed.toggle()
+    }
+
     /// Lays out the strip, sliding the focused pane into view.
     func showPanes(animated: Bool) {
+        if panes.count < 2 { strip.isZoomed = false }
         strip.show(panes.map(\.card), focused: focusedPane, animated: animated)
         for (i, p) in panes.enumerated() {
             p.reader.isFocusedPane = i == focusedPane || panes.count == 1
