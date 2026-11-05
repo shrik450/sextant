@@ -494,7 +494,7 @@ extension RepoWindowController: NSMenuItemValidation {
 
     @objc func addNote(_ sender: Any?) {
         guard let subject = review?.subject, let r = selectedReference, let (rect, view) = reader.rect(file: r.file, line: r.line) else { NSSound.beep(); return }
-        let editor = NoteEditor(reference: lineReference(path: r.path, lines: r.lines, old: r.old), text: "", canDelete: false) { [weak self] text in
+        let editor = NoteEditor(place: .lines(path: r.path, range: r.lines, old: r.old), text: "", canDelete: false) { [weak self] text in
             self?.notes.add(Note(subject: subject.key, lines: Note.Lines(path: r.path, range: r.lines, old: r.old, code: r.code), text: text))
         }
         editor.show(relativeTo: rect, of: view)
@@ -505,7 +505,7 @@ extension RepoWindowController: NSMenuItemValidation {
         guard let subject = review?.subject else { NSSound.beep(); return }
         if split.splitViewItems[2].isCollapsed { split.splitViewItems[2].isCollapsed = false }
         let pane = inspector.notes.view
-        let editor = NoteEditor(reference: "Whole review  ·  \(subjectLabel.title)", text: "", canDelete: false) { [weak self] text in
+        let editor = NoteEditor(place: .review(subjectLabel.title), text: "", canDelete: false) { [weak self] text in
             self?.notes.add(Note(subject: subject.key, lines: nil, text: text))
         }
         editor.show(relativeTo: NSRect(x: 0, y: pane.bounds.maxY - 28, width: pane.bounds.width, height: 28), of: pane, edge: .minX)
@@ -514,7 +514,7 @@ extension RepoWindowController: NSMenuItemValidation {
     /// Opens the editor for a note, beside the note in the reader or wherever `anchor` says.
     func editNote(_ id: UUID, relativeTo anchor: (NSRect, NSView)? = nil) {
         guard let note = notes.notes.first(where: { $0.id == id }), let (rect, view) = anchor ?? reader.rect(ofNote: id) else { return }
-        let editor = NoteEditor(reference: note.title, text: note.text, canDelete: true, onSave: { [weak self] text in
+        let editor = NoteEditor(place: note.lines.map { .lines(path: $0.path, range: $0.range, old: $0.old) } ?? .review(subjectLabel.title), text: note.text, canDelete: true, onSave: { [weak self] text in
             var n = note
             n.text = text
             self?.notes.update(n)
