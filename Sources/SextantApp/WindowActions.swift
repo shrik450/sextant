@@ -481,15 +481,25 @@ extension RepoWindowController: NSMenuItemValidation {
         copy("`\(lineReference(path: r.path, lines: r.lines, old: r.old))`\n```\(lang)\n\(r.code.joined(separator: "\n"))\n```\n")
     }
 
+    /// The name of the symbol at the caret, or of the definition around the selected lines.
+    private var symbolAtCaret: String? {
+        if let w = reader.wordAtCaret, w.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || $0 == "_" || $0 == "$" }) {
+            return w
+        }
+        guard let r = selectedReference, !r.old else { return nil }
+        return reader.header.enclosing(line: r.lines.lowerBound - 1)?.name
+    }
+
     /// Copies the name of the symbol at the caret, or of the definition around it.
     @objc func copySymbol(_ sender: Any?) {
-        if let w = reader.wordAtCaret, w.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || $0 == "_" || $0 == "$" }) {
-            copy(w)
-        } else if let r = selectedReference, !r.old, let s = reader.header.enclosing(line: r.lines.lowerBound - 1) {
-            copy(s.name)
-        } else {
-            NSSound.beep()
-        }
+        guard let s = symbolAtCaret else { NSSound.beep(); return }
+        copy(s)
+    }
+
+    /// Copies the symbol at the caret with where it is, as `` `name` (path:line) ``.
+    @objc func copySymbolWithReference(_ sender: Any?) {
+        guard let s = symbolAtCaret, let r = selectedReference else { NSSound.beep(); return }
+        copy("`\(s)` (\(lineReference(path: r.path, lines: r.lines, old: r.old)))")
     }
 
     @objc func addNote(_ sender: Any?) {
@@ -783,6 +793,7 @@ extension RepoWindowController: NSMenuItemValidation {
             return reading
         case #selector(copyReference(_:)), #selector(copyReferenceWithCode(_:)), #selector(addNote(_:)): return reader.selection != nil
         case #selector(jumpToDefinitionAction(_:)), #selector(findReferencesAction(_:)), #selector(copySymbol(_:)): return reader.wordAtCaret != nil
+        case #selector(copySymbolWithReference(_:)): return symbolAtCaret != nil && selectedReference != nil
         case #selector(copyAllNotes(_:)): return !reviewNotes.isEmpty
         case #selector(addReviewNote(_:)): return review != nil
         case #selector(toggleChangeRead(_:)):

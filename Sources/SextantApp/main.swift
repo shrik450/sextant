@@ -233,6 +233,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             item(m, "Copy Reference", #selector(W.copyReference(_:)), "c", [.command, .option], symbol: "link")
             item(m, "Copy Reference with Code", #selector(W.copyReferenceWithCode(_:)), "c", [.command, .option, .shift], symbol: "chevron.left.forwardslash.chevron.right")
             item(m, "Copy Symbol Name", #selector(W.copySymbol(_:)), "c", [.command, .control, .shift], symbol: "curlybraces")
+            item(m, "Copy Symbol with Reference", #selector(W.copySymbolWithReference(_:)), "y", symbol: "link.badge.plus")
             item(m, "Copy Path", #selector(W.copyCurrentPath(_:)), "", symbol: "doc.text")
             item(m, "Select All", #selector(NSText.selectAll(_:)), "a", symbol: "checkmark.rectangle.stack")
             m.addItem(.separator())
