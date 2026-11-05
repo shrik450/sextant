@@ -6,6 +6,8 @@ import RevueCore
 ///
 /// The title and each folder open a menu of what sits beside them in the snapshot, like Xcode's
 /// jump bar. The pane's buttons show its diff layout, whether its file is reviewed, and close it.
+/// They stay out of sight until the pointer comes over the header, except a reviewed file's
+/// filled check, which always shows.
 @MainActor
 final class PaneHeader: NSView, NSMenuDelegate {
     private let title = NSButton(title: "", target: nil, action: nil)
@@ -26,6 +28,8 @@ final class PaneHeader: NSView, NSMenuDelegate {
     private var isReviewed = false {
         didSet { if isReviewed != oldValue { applyEmphasis() } }
     }
+    private var isHovered = false
+    private var hoverArea: NSTrackingArea?
     private var symbolMenuIsCurrent = false
     var onOpenPath: ((String) -> Void)?
     var onShowOverview: (() -> Void)?
@@ -85,6 +89,9 @@ final class PaneHeader: NSView, NSMenuDelegate {
         closeButton.target = self
         closeButton.action = #selector(closeClicked)
         closeButton.toolTip = "Close Pane (⌘W)"
+        for b in [splitButton, closeButton, reviewedButton] {
+            b.onFocusChange = { [weak self] in self?.showControls(animated: true) }
+        }
         reviewedButton.isHidden = true
         title.isBordered = false
         title.target = self
@@ -155,6 +162,42 @@ final class PaneHeader: NSView, NSMenuDelegate {
         reviewedButton.idleTint = .themed(isReviewed ? "fgMuted" : "fgFaint")
         reviewedButton.brightensOnHover = !isReviewed
         stats.alphaValue = isFocusedPane ? 0.85 : 0.5
+        showControls(animated: false)
+    }
+
+    /// Shows the pane's buttons while the pointer is over the header or one of them has keyboard
+    /// focus, fading them in and out.
+    private func showControls(animated: Bool) {
+        let focused = [splitButton, closeButton, reviewedButton].contains { $0.hasKeyboardFocus }
+        let shown: CGFloat = isHovered || focused ? 1 : 0
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = animated ? 0.15 : 0
+            for b in [splitButton, closeButton] { b.animator().alphaValue = shown }
+            reviewedButton.animator().alphaValue = isReviewed ? 1 : shown
+        }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverArea { removeTrackingArea(hoverArea) }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect], owner: self)
+        addTrackingArea(area)
+        hoverArea = area
+        let inside = window.map { bounds.contains(convert($0.mouseLocationOutsideOfEventStream, from: nil)) } ?? false
+        if inside != isHovered {
+            isHovered = inside
+            showControls(animated: false)
+        }
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovered = true
+        showControls(animated: true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovered = false
+        showControls(animated: true)
     }
 
     /// The path shown, as folders then the file, after All Changes in the overview.
@@ -389,6 +432,24 @@ final class QuietButton: NSButton {
     var brightensOnHover = true { didSet { applyTint() } }
     private var isHovered = false { didSet { applyTint() } }
     private var hoverArea: NSTrackingArea?
+    /// Whether the button has keyboard focus, as when Full Keyboard Access tabs to it.
+    private(set) var hasKeyboardFocus = false
+    /// Called when the button gains or loses keyboard focus.
+    var onFocusChange: (() -> Void)?
+
+    override func becomeFirstResponder() -> Bool {
+        guard super.becomeFirstResponder() else { return false }
+        hasKeyboardFocus = true
+        onFocusChange?()
+        return true
+    }
+
+    override func resignFirstResponder() -> Bool {
+        guard super.resignFirstResponder() else { return false }
+        hasKeyboardFocus = false
+        onFocusChange?()
+        return true
+    }
 
     /// Makes a button showing a symbol, sized to the body text.
     ///
