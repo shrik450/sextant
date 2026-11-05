@@ -206,8 +206,12 @@ final class PaneStrip: NSView {
 
 /// A pane as a card: its reader, clipped to rounded corners inside a hairline border.
 ///
-/// The focused card in the main window stands out with a shadow and a firmer border. The shadow
-/// falls only outside the card, so it doesn't darken the card's fill through its translucency.
+/// The focused card in the main window stands out with a shadow and a firmer border, and the
+/// others recede by dimming what's drawn on them: to 70% in the main window and to 50% in an
+/// inactive one. The card's fill, which the content view paints as its own background, keeps the
+/// theme's card opacity, so a dimmed card lets no more of the backdrop through than a focused
+/// one; only its text, line tints and controls fade. The shadow falls only outside the card, so it
+/// doesn't darken the focused card's fill through its translucency.
 ///
 /// The window stays main while a panel or popover of its own, such as Go to Anything or a note,
 /// takes the keyboard, so the cards don't change then. A card cut off at the strip's edge shows as
@@ -231,8 +235,8 @@ final class PaneCard: NSView {
 
     private(set) var isFocused = true
 
-    /// Focuses the card or lets it recede, fading its shadow in step with the strip when
-    /// animated.
+    /// Focuses the card or lets it recede, fading its content and shadow in step with the strip
+    /// when animated.
     ///
     /// - Parameters:
     ///   - focused: Whether the card is the focused one.
@@ -295,7 +299,12 @@ final class PaneCard: NSView {
     }
 
     private func applyEmphasis(animated: Bool) {
+        let alpha: CGFloat = isFocused ? 1 : window?.isMainWindow ?? true ? 0.7 : 0.5
         let opacity: Float = isEmphasized ? 1 : 0
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = animated ? PaneStrip.slideDuration : 0
+            for v in content.subviews { v.animator().alphaValue = alpha }
+        }
         if cardShadow.shadowOpacity != opacity {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
