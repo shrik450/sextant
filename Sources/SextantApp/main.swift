@@ -337,7 +337,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             alternate(m, "n", [.command, .option])
             item(m, "Add Note on Whole Review", #selector(W.addReviewNote(_:)), "c", [.shift], symbol: "text.bubble.fill")
             alternate(m, "n", [.command, .option, .shift])
-            item(m, "Copy Notes as Markdown", #selector(W.copyAllNotes(_:)), "", symbol: "doc.on.clipboard")
+            item(m, "Copy Notes as Markdown", #selector(W.copyAllNotes(_:)), "c", [.command, .shift], symbol: "doc.on.clipboard")
         }
         let window = menu("Window") { m in
             item(m, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m", symbol: "minus.rectangle")

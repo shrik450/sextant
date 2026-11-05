@@ -31,7 +31,7 @@ final class NotesPane: NSViewController, NSTableViewDataSource, NSTableViewDeleg
         title.textColor = .themed("fgMuted")
         count.font = .detailDigits
         count.textColor = .themed("fgSubtle")
-        for (b, symbol, tip, action) in [(add, "plus", "Add a Note", #selector(showAddMenu(_:))), (copyAll, "doc.on.doc", "Copy All Notes as Markdown", #selector(copyAllNotes))] {
+        for (b, symbol, tip, action) in [(add, "plus", "Add a Note", #selector(showAddMenu(_:))), (copyAll, "doc.on.doc", "Copy All Notes as Markdown (⇧⌘C)", #selector(copyAllNotes))] {
             b.image = NSImage(systemSymbolName: symbol, accessibilityDescription: tip)
             b.isBordered = false
             b.bezelStyle = .accessoryBarAction
