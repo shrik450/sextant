@@ -330,13 +330,31 @@ final class CodeView: NSTextView {
         }
         let kind = f.lines[row.line].kind
         if kind != .context {
-            let changed = kind == .added ? t.color("addWord") : t.color("delWord")
-            let wordColor = isReadLine(row.file, row.line) ? changed.asRead : changed
+            let read = isReadLine(row.file, row.line)
+            let tints = kind == .added ? (line: t.color("addLine"), word: t.color("addWord")) : (line: t.color("delLine"), word: t.color("delWord"))
+            let wordColor = read ? tints.word.asRead : tints.word
+            let highlight = wordColor.laid(over: (read ? tints.line.asRead : tints.line).laid(over: t.canvas.rgb))
             for w in f.wordRanges(row.line) where NSMaxRange(w) <= range.length {
-                lm.addTemporaryAttribute(.backgroundColor, value: wordColor, forCharacterRange: NSRange(location: range.location + w.location, length: w.length))
+                let at = NSRange(location: range.location + w.location, length: w.length)
+                lm.addTemporaryAttribute(.backgroundColor, value: wordColor, forCharacterRange: at)
+                makeReadable(at, on: highlight, lm)
             }
         }
         return f.tokens != nil || !f.hasLanguage
+    }
+
+    /// Darkens or lightens each colour of text in `range` just enough to read on `background`,
+    /// as on a changed word, whose highlight is darker than the line it's on.
+    private func makeReadable(_ range: NSRange, on background: RGB, _ lm: NSLayoutManager) {
+        var i = range.location
+        while i < NSMaxRange(range) {
+            var run = NSRange()
+            let color = lm.temporaryAttribute(.foregroundColor, atCharacterIndex: i, effectiveRange: &run) as? NSColor ?? style.theme.fg
+            let part = NSIntersectionRange(run, range)
+            let at = part.length > 0 ? part : NSRange(location: i, length: 1)
+            lm.addTemporaryAttribute(.foregroundColor, value: NSColor(readable(color.rgb, on: background)), forCharacterRange: at)
+            i = NSMaxRange(at)
+        }
     }
 
     func row(at charIndex: Int) -> Int? {
@@ -1189,6 +1207,21 @@ final class Gutter: NSRulerView {
 extension NSColor {
     /// The color at a third of its strength, as a change's colors show once it's been read.
     var asRead: NSColor { withAlphaComponent(alphaComponent / 3) }
+
+    /// The color's sRGB channels, without its alpha.
+    var rgb: RGB {
+        let c = usingColorSpace(.sRGB) ?? self
+        return RGB(red: c.redComponent, green: c.greenComponent, blue: c.blueComponent)
+    }
+
+    /// Returns the color laid over an opaque one, at its own alpha.
+    func laid(over below: RGB) -> RGB {
+        rgb.over(below, alpha: (usingColorSpace(.sRGB) ?? self).alphaComponent)
+    }
+
+    convenience init(_ rgb: RGB) {
+        self.init(srgbRed: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
+    }
 }
 
 extension NSRect {
