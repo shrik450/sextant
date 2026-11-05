@@ -528,6 +528,7 @@ final class CodeView: NSTextView {
                 full.fill()
             case .filler:
                 t.color("emptyLine").setFill(); full.fill()
+                t.color("hatch").setStroke(); full.hatch(origin: .zero)
             case .fold, .gap:
                 t.color("hunkLine").setFill(); full.fill()
             case .header:
@@ -947,9 +948,13 @@ final class Gutter: NSRulerView {
             let y = frag.minY + offset
             let row = code.rows[r]
             guard row.kind == .line, let line = code.line(ofRow: r) else {
-                if case .filler = row.kind {
-                    t.color("emptyLine").setFill()
-                    NSRect(x: blameWidth, y: y, width: bounds.width - blameWidth - 1, height: frag.height).fill()
+                let band = NSRect(x: blameWidth, y: y, width: bounds.width - blameWidth - 1, height: frag.height)
+                switch row.kind {
+                case .filler:
+                    t.color("emptyLine").setFill(); band.fill()
+                    t.color("hatch").setStroke(); band.hatch(origin: convert(NSPoint.zero, from: code))
+                default:
+                    break
                 }
                 lastBlame = nil
                 return
@@ -1097,6 +1102,31 @@ final class Gutter: NSRulerView {
 extension NSColor {
     /// The color at a third of its strength, as a change's colors show once it's been read.
     var asRead: NSColor { withAlphaComponent(alphaComponent / 3) }
+}
+
+extension NSRect {
+    /// Strokes diagonal stripes across the rect in the current stroke colour, as on rows that
+    /// stand for lines the other side has and this one doesn't.
+    ///
+    /// - Parameters:
+    ///   - origin: Where the stripes' pattern is anchored, in the current view's coordinates.
+    ///     Views beside each other that pass the same point continue one pattern.
+    ///   - spacing: The distance between stripes along either axis.
+    func hatch(origin: NSPoint, spacing: CGFloat = 6) {
+        guard !isEmpty else { return }
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(rect: self).addClip()
+        let stripes = NSBezierPath()
+        stripes.lineWidth = 1
+        let first = ((minX - origin.x + minY - origin.y) / spacing).rounded(.down) * spacing
+        let last = maxX - origin.x + maxY - origin.y
+        for diagonal in stride(from: first, through: last, by: spacing) {
+            stripes.move(to: NSPoint(x: origin.x + diagonal - (minY - origin.y), y: minY))
+            stripes.line(to: NSPoint(x: origin.x + diagonal - (maxY - origin.y), y: maxY))
+        }
+        stripes.stroke()
+        NSGraphicsContext.restoreGraphicsState()
+    }
 }
 
 /// A scroll view that places its clip view beside the vertical ruler rather than under it, with
