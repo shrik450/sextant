@@ -382,3 +382,30 @@ extension NSColor {
     /// A theme token as a colour that follows the appearance it's drawn in.
     static func themed(_ key: String) -> NSColor { ThemedColors.color(key) }
 }
+
+extension NSImage {
+    /// Returns an SF Symbol drawn in one colour, keeping the cut-outs of the system's monochrome
+    /// rendering, such as the check in `checkmark.circle.fill`.
+    ///
+    /// A palette of one colour would paint those cut-outs in the colour too. The colour resolves
+    /// when the image draws, so a themed colour follows the appearance it's drawn in.
+    ///
+    /// - Parameters:
+    ///   - name: The symbol's name.
+    ///   - configuration: The symbol's size and weight.
+    ///   - color: The colour to draw it in.
+    ///   - label: What the symbol shows, for accessibility.
+    /// - Returns: The image, or `nil` when there's no such symbol.
+    static func monochromeSymbol(_ name: String, configuration: NSImage.SymbolConfiguration, color: NSColor, label: String? = nil) -> NSImage? {
+        guard let base = NSImage(systemSymbolName: name, accessibilityDescription: label)?.withSymbolConfiguration(configuration) else { return nil }
+        let image = NSImage(size: base.size, flipped: false) { rect in
+            base.draw(in: rect)
+            color.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+        image.alignmentRect = base.alignmentRect
+        image.accessibilityDescription = label
+        return image
+    }
+}

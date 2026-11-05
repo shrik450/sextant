@@ -107,8 +107,8 @@ final class TreeCell: NSTableCellView {
 
     private static let symbolSize = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
 
-    private func symbol(_ name: String, _ colors: [NSColor]) -> NSImage? {
-        NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(TreeCell.symbolSize.applying(.init(paletteColors: colors)))
+    private func symbol(_ name: String, _ color: NSColor) -> NSImage? {
+        .monochromeSymbol(name, configuration: TreeCell.symbolSize, color: color)
     }
 
     private func count(_ reviewed: Int, _ changed: Int) {
@@ -134,7 +134,7 @@ final class TreeCell: NSTableCellView {
             dir.stringValue = showsFolder ? path.deletingLastPathComponent : ""
             toolTip = f.diff.change.isRename ? "\(f.diff.change.oldPath) → \(f.path)" : f.path
             glyph.isEnabled = true
-            glyph.image = f.reviewed ? symbol("checkmark.circle.fill", [.white, .controlAccentColor]) : symbol("circle", [.tertiaryLabelColor])
+            glyph.image = f.reviewed ? symbol("checkmark.circle.fill", .themed("fgMuted")) : symbol("circle", .themed("fgSubtle"))
             glyph.setAccessibilityLabel(f.reviewed ? "Mark as not reviewed" : "Mark as reviewed")
             name.textColor = f.reviewed ? .themed("fgMuted") : .themed("fg")
             var (letter, color) = statusLetter(f.diff.change.status)
@@ -154,16 +154,16 @@ final class TreeCell: NSTableCellView {
             glyph.image = fileIcon(p)
         case .folder(let n, let reviewed, let changed):
             name.stringValue = n
-            glyph.image = symbol("folder", [.secondaryLabelColor])
+            glyph.image = symbol("folder", .themed("fgMuted"))
             count(reviewed, changed)
         case .folded(let n):
             name.stringValue = "\(n) unchanged"
             name.textColor = .themed("fgMuted")
-            glyph.image = symbol("ellipsis", [.tertiaryLabelColor])
+            glyph.image = symbol("ellipsis", .themed("fgSubtle"))
             toolTip = "Show unchanged items"
         case .allChanges(let reviewed, let changed):
             name.stringValue = "All Changes"
-            glyph.image = symbol("square.stack", [.secondaryLabelColor])
+            glyph.image = symbol("square.stack", .themed("fgMuted"))
             count(reviewed, changed)
         }
         needsLayout = true
@@ -208,7 +208,7 @@ final class TargetCell: NSTableCellView {
         identifier = TargetCell.id
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.symbolConfiguration = .init(pointSize: 13, weight: .regular)
-        icon.contentTintColor = .controlAccentColor
+        icon.contentTintColor = .themed("fgMuted")
         title.translatesAutoresizingMaskIntoConstraints = false
         title.lineBreakMode = .byTruncatingTail
         title.font = .row
@@ -250,10 +250,9 @@ final class ProgressPie: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let r = bounds.insetBy(dx: 1.5, dy: 1.5)
-        let color = NSColor.controlAccentColor
+        let color = NSColor.themed("fgMuted")
         if fraction >= 1 {
-            let img = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: "Reviewed")?
-                .withSymbolConfiguration(.init(pointSize: 13, weight: .regular).applying(.init(paletteColors: [.white, NSColor.systemGreen])))
+            let img = NSImage.monochromeSymbol("checkmark.circle.fill", configuration: .init(pointSize: 13, weight: .regular), color: color, label: "Reviewed")
             img?.draw(in: bounds)
             return
         }
