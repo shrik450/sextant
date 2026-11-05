@@ -692,7 +692,8 @@ final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutli
     weak var delegate: NavigatorDelegate?
     let field = NSSearchField()
     let outline = KeyOutlineView()
-    let status = NSTextField(labelWithString: "")
+    private let status = NSTextField(labelWithString: "")
+    private let footer = NSGlassEffectView()
     private var suppressOpen = false
     private var groups: [Group] = []
     private var items: [ObjectIdentifier: [Item]] = [:]
@@ -733,13 +734,22 @@ final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutli
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
-        status.font = .systemFont(ofSize: 11)
-        status.textColor = .secondaryLabelColor
+        scroll.automaticallyAdjustsContentInsets = false
+        scroll.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: Self.footerHeight + 16, right: 0)
+        scroll.scrollerInsets = NSEdgeInsets(top: 0, left: 0, bottom: -(Self.footerHeight + 16), right: 0)
+        status.font = .detail
+        status.textColor = .themed("fgMuted")
         status.lineBreakMode = .byTruncatingTail
-        status.translatesAutoresizingMaskIntoConstraints = false
+        status.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        let padded = NSStackView(views: [status])
+        padded.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
+        footer.contentView = padded
+        footer.cornerRadius = Self.footerHeight / 2
+        footer.isHidden = true
+        footer.translatesAutoresizingMaskIntoConstraints = false
         v.addSubview(field)
         v.addSubview(scroll)
-        v.addSubview(status)
+        v.addSubview(footer)
         NSLayoutConstraint.activate([
             field.topAnchor.constraint(equalTo: v.topAnchor, constant: 2),
             field.leadingAnchor.constraint(equalTo: v.leadingAnchor, constant: 10),
@@ -747,12 +757,25 @@ final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutli
             scroll.topAnchor.constraint(equalTo: field.bottomAnchor, constant: 6),
             scroll.leadingAnchor.constraint(equalTo: v.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: v.trailingAnchor),
-            scroll.bottomAnchor.constraint(equalTo: status.topAnchor, constant: -6),
-            status.leadingAnchor.constraint(equalTo: v.leadingAnchor, constant: 12),
-            status.trailingAnchor.constraint(equalTo: v.trailingAnchor, constant: -12),
-            status.bottomAnchor.constraint(equalTo: v.bottomAnchor, constant: -10),
+            scroll.bottomAnchor.constraint(equalTo: v.bottomAnchor),
+            footer.centerXAnchor.constraint(equalTo: v.centerXAnchor),
+            footer.leadingAnchor.constraint(greaterThanOrEqualTo: v.leadingAnchor, constant: 10),
+            footer.bottomAnchor.constraint(equalTo: v.bottomAnchor, constant: -10),
+            footer.heightAnchor.constraint(equalToConstant: Self.footerHeight),
         ])
         view = v
+    }
+
+    private static let footerHeight: CGFloat = 26
+
+    /// What the search found, or that it's still looking, in a capsule at the foot of the results.
+    /// An empty summary hides the capsule.
+    var summary: String {
+        get { status.stringValue }
+        set {
+            status.stringValue = newValue
+            footer.isHidden = newValue.isEmpty
+        }
     }
 
     @objc private func toggleWord(_ s: NSMenuItem) { wholeWord.toggle(); run() }
@@ -761,14 +784,14 @@ final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutli
     @objc func run() {
         let q = field.stringValue
         guard !q.isEmpty else { return }
-        status.stringValue = "Searching…"
+        summary = "Searching…"
         delegate?.navigatorSearch(q, word: wholeWord, caseSensitive: caseSensitive)
     }
 
     func begin(_ q: String, word: Bool) {
         field.stringValue = q
         wholeWord = word
-        status.stringValue = "Searching…"
+        summary = "Searching…"
     }
 
     /// Shows search results.
@@ -789,7 +812,7 @@ final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutli
         outline.reloadData()
         outline.expandItem(nil, expandChildren: true)
         let n = matches.count
-        status.stringValue = n == 0 ? "No results" : "\(n) result\(n == 1 ? "" : "s") in \(groups.count) file\(groups.count == 1 ? "" : "s")" + (capped ? ", showing the first \(n)" : "")
+        summary = n == 0 ? "No results" : "\(n) result\(n == 1 ? "" : "s") in \(groups.count) file\(groups.count == 1 ? "" : "s")" + (capped ? ", showing the first \(n)" : "")
     }
 
     func outlineView(_ o: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {

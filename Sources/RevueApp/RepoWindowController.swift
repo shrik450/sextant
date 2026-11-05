@@ -1016,7 +1016,7 @@ extension RepoWindowController: NavigatorDelegate {
                 navigator.search.show(Array(m.prefix(limit)), title: query, capped: m.count > limit)
             } catch {
                 guard gen == searchGeneration else { return }
-                navigator.search.status.stringValue = error.localizedDescription
+                navigator.search.summary = error.localizedDescription
             }
         }
     }

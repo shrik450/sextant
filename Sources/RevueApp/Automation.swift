@@ -609,7 +609,7 @@ extension RepoWindowController {
             "inspectorCells": inspectorCells,
             "picker": pickerRows,
             "navigatorTab": "\(navigator.tab)",
-            "searchStatus": navigator.search.status.stringValue,
+            "searchStatus": navigator.search.summary,
             "notes": reviewNotes.map { ["title": $0.title, "text": $0.text] },
             "caretColumn": reader.caretColumn ?? -1,
             "caretWord": reader.wordAtCaret ?? "",

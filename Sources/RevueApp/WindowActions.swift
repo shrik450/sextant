@@ -300,7 +300,7 @@ extension RepoWindowController: NSMenuItemValidation {
                 revealNavigator(.find)
                 navigator.search.begin(word, word: true)
                 navigator.search.show(Array(matches.prefix(5000)), title: word, capped: matches.count > 5000)
-                navigator.search.status.stringValue = "No definition found. " + navigator.search.status.stringValue
+                navigator.search.summary = "No definition found. " + navigator.search.summary
                 takeKeyboardToResults()
             } else {
                 showDefinitionsMenu(defs, word: word)
