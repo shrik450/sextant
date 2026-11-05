@@ -134,6 +134,17 @@ final class Automation {
             guard args.count >= 2, let x = Double(args[0]), let y = Double(args[1]) else { return }
             click(NSPoint(x: x, y: y), count: args.count > 2 ? Int(args[2]) ?? 1 : 1, right: cmd == "rclick", flags: args.count > 3 && args[3] == "opt" ? .option : [])
             await waitIdle()
+        case "hover":
+            guard args.count >= 2, let x = Double(args[0]), let y = Double(args[1]) else { return }
+            hover(NSPoint(x: x, y: y))
+            await waitIdle()
+        case "press", "release":
+            guard args.count >= 2, let x = Double(args[0]), let y = Double(args[1]),
+                  let content = window?.window?.contentView, let frame = content.superview else { return }
+            var v = content.hitTest(frame.convert(windowPoint(NSPoint(x: x, y: y)), from: nil))
+            while let view = v, !(view is NSButton) { v = view.superview }
+            (v as? NSButton)?.highlight(cmd == "press")
+            await waitIdle()
         case "drag":
             await ensureActive()
             guard args.count >= 4, let a = Double(args[0]), let b = Double(args[1]), let c = Double(args[2]), let d = Double(args[3]) else { return }
@@ -163,6 +174,7 @@ final class Automation {
             try? data?.write(to: URL(fileURLWithPath: arg))
         case "appearance":
             NSApp.appearance = NSAppearance(named: arg == "dark" ? .darkAqua : .aqua)
+            for w in NSApp.windows { w.contentView?.superview?.needsLayout = true }
             await waitIdle()
         case "resize":
             guard let w = window?.window, args.count == 2, let width = Double(args[0]), let h = Double(args[1]) else { return }
@@ -224,6 +236,16 @@ final class Automation {
             }
             window?.window?.displayIfNeeded()
             log(String(format: "SETTLE %@: %.0f ms", arg, (CACurrentMediaTime() - t0) * 1000))
+        case "snapr":
+            guard let w = window?.window, let screen = w.screen ?? NSScreen.screens.first else { return }
+            CATransaction.flush()
+            try? await Task.sleep(for: .milliseconds(400))
+            let f = w.frame
+            log("SNAPR \(Int(f.minX)),\(Int(screen.frame.maxY - f.maxY)),\(Int(f.width)),\(Int(f.height)) \(arg)")
+            try? await Task.sleep(for: .milliseconds(1500))
+        case "backdrop":
+            setBackdrop(args)
+            await waitIdle()
         case "log": log(arg)
         case "sh":
             let p = Process()
@@ -237,16 +259,19 @@ final class Automation {
         }
     }
 
-    private func findMenuItem(_ title: String, in menu: NSMenu?) -> NSMenuItem? {
+    /// Finds a menu item by its title, or by its action's selector name, such as
+    /// `toggleSidebar:`, for items whose titles the system changes.
+    private func findMenuItem(_ name: String, in menu: NSMenu?) -> NSMenuItem? {
         for item in menu?.items ?? [] {
-            if item.title == title { return item }
-            if let found = findMenuItem(title, in: item.submenu) { return found }
+            if item.title == name || item.action.map(NSStringFromSelector) == name { return item }
+            if let found = findMenuItem(name, in: item.submenu) { return found }
         }
         return nil
     }
 
     private func sendKey(_ combo: String) {
         guard let w = (window?.jumpPanel?.isVisible == true ? window?.jumpPanel : nil) ?? NSApp.keyWindow.flatMap({ $0.isVisible ? $0 : nil }) ?? window?.window else { return }
+        if w === window?.jumpPanel, !w.isKeyWindow { w.makeKey() }
         var flags: NSEvent.ModifierFlags = []
         var key = combo
         let parts = combo.split(separator: "+").map(String.init)
@@ -327,6 +352,72 @@ final class Automation {
             NSApp.postEvent(u, atStart: false)
             w.sendEvent(d)
         }
+    }
+
+    private var backdropWindow: NSWindow?
+
+    /// Puts a window filled with a gradient right behind the test window, so behind-window
+    /// materials have a known colour to blend, or removes it.
+    ///
+    /// - Parameter colors: The gradient's top and bottom colours in hex, or `off`.
+    private func setBackdrop(_ colors: [String]) {
+        guard let w = window?.window, colors.first != "off", let top = colors.first.flatMap(Theme.parse) else {
+            backdropWindow?.orderOut(nil)
+            backdropWindow = nil
+            return
+        }
+        let bottom = colors.dropFirst().first.flatMap(Theme.parse) ?? top
+        let frame = w.frame.insetBy(dx: -300, dy: -300)
+        let b = backdropWindow ?? NSWindow(contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false)
+        b.isReleasedWhenClosed = false
+        b.setFrame(frame, display: false)
+        let view = NSView(frame: NSRect(origin: .zero, size: frame.size))
+        view.wantsLayer = true
+        let gradient = CAGradientLayer()
+        gradient.frame = view.bounds
+        gradient.colors = [top.cgColor, bottom.cgColor]
+        gradient.startPoint = CGPoint(x: 0, y: 1)
+        gradient.endPoint = CGPoint(x: 1, y: 0)
+        view.layer?.addSublayer(gradient)
+        b.contentView = view
+        b.order(.below, relativeTo: w.windowNumber)
+        backdropWindow = b
+    }
+
+    private var hoveredAreas: [NSTrackingArea] = []
+
+    /// Moves a pretend pointer to a point, without moving the real one.
+    ///
+    /// The views under the point whose own tracking areas contain it are told the pointer entered
+    /// them, and those it has left are told it exited.
+    ///
+    /// - Parameter p: The point, from the top left of the window's content.
+    private func hover(_ p: NSPoint) {
+        guard let w = window?.window, let content = w.contentView, let frame = content.superview else { return }
+        let loc = windowPoint(p)
+        var chain: [NSView] = []
+        var v = content.hitTest(frame.convert(loc, from: nil))
+        while let view = v { chain.append(view); v = view.superview }
+        let areas = chain.flatMap { view in
+            view.trackingAreas.filter { a in
+                a.owner as? NSView === view && (a.options.contains(.inVisibleRect) ? view.visibleRect : a.rect).contains(view.convert(loc, from: nil))
+            }
+        }
+        func event(_ type: NSEvent.EventType) -> NSEvent? {
+            NSEvent.enterExitEvent(with: type, location: loc, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                   windowNumber: w.windowNumber, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil)
+        }
+        let moved = NSEvent.mouseEvent(with: .mouseMoved, location: loc, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                       windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0)
+        for a in hoveredAreas where !areas.contains(where: { $0 === a }) {
+            if let e = event(.mouseExited) { (a.owner as? NSView)?.mouseExited(with: e) }
+        }
+        for a in areas {
+            let owner = a.owner as? NSView
+            if !hoveredAreas.contains(where: { $0 === a }), let e = event(.mouseEntered) { owner?.mouseEntered(with: e) }
+            if a.options.contains(.mouseMoved), let moved { owner?.mouseMoved(with: moved) }
+        }
+        hoveredAreas = areas
     }
 
     private func drag(from a: NSPoint, to b: NSPoint) {
