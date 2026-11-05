@@ -820,7 +820,7 @@ final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutli
             let s = NSMutableAttributedString(string: (g.path as NSString).lastPathComponent, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold)])
             let dir = (g.path as NSString).deletingLastPathComponent
             if !dir.isEmpty { s.append(NSAttributedString(string: "  " + dir, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])) }
-            cell.textField?.attributedStringValue = s
+            cell.textField?.attributedStringValue = truncatingTail(s)
             cell.toolTip = g.path
         } else if let it = item as? Item {
             let m = it.match
@@ -839,7 +839,7 @@ final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutli
             if r.location != NSNotFound {
                 s.addAttribute(.backgroundColor, value: NSColor.findHighlightColor.withAlphaComponent(0.5), range: NSRange(location: start + r.location, length: r.length))
             }
-            cell.textField?.attributedStringValue = s
+            cell.textField?.attributedStringValue = truncatingTail(s)
             cell.toolTip = isDef ? "Definition" : nil
         }
         return cell
@@ -889,3 +889,11 @@ extension SearchController: NSMenuDelegate {
     }
 }
 
+/// Keeps a one-line result to its line, cutting its end off when it doesn't fit, rather than
+/// wrapping its last words out of sight.
+private func truncatingTail(_ text: NSMutableAttributedString) -> NSAttributedString {
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.lineBreakMode = .byTruncatingTail
+    text.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: text.length))
+    return text
+}
