@@ -4,9 +4,12 @@
 #
 # Usage: release.sh <out-dir>
 #
-# Builds .#release with nix, seals the bundle with an ad-hoc signature, and zips it as
-# <out-dir>/Sextant-<version>.zip. Prints the version, the zip's path and its SHA-256, one per
-# line. Publishing is left to the caller.
+# Builds .#release with nix, compiles icon/Sextant.icon into the bundle's asset catalog, seals
+# the bundle with an ad-hoc signature, and zips it as <out-dir>/Sextant-<version>.zip. Prints the
+# version, the zip's path and its SHA-256, one per line. Publishing is left to the caller.
+#
+# Compiling the icon needs Xcode's actool, which the CI runner has; nix builds outside this
+# script ship only the flat icon/AppIcon.icns.
 
 set -euo pipefail
 
@@ -20,6 +23,10 @@ app="$out/Sextant.app"
 rm -rf "$app"
 cp -R "$store/Applications/Sextant.app" "$app"
 chmod -R u+w "$app"
+xcrun actool "$here/icon/Sextant.icon" --compile "$app/Contents/Resources" --app-icon Sextant \
+  --output-partial-info-plist "$out/icon-info.plist" --include-all-app-icons \
+  --target-device mac --minimum-deployment-target 26.0 --platform macosx >/dev/null
+plutil -replace CFBundleIconName -string Sextant "$app/Contents/Info.plist"
 /usr/bin/codesign --force --sign - "$app/Contents/Helpers/sextant"
 /usr/bin/codesign --force --sign - "$app"
 
