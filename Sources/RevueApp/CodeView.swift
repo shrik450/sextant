@@ -427,6 +427,14 @@ final class CodeView: NSTextView {
         return NSRect(x: rect.minX - 2, y: frag.minY + 1, width: rect.width + 4, height: min(frag.height, style.lineHeight) - 2)
     }
 
+    /// The rect of the selected text, or `nil` while nothing is selected.
+    var selectionRect: NSRect? {
+        let sel = selectedRange()
+        guard sel.length > 0, let lm = layoutManager, let tc = textContainer else { return nil }
+        let glyphs = lm.glyphRange(forCharacterRange: sel, actualCharacterRange: nil)
+        return lm.boundingRect(forGlyphRange: glyphs, in: tc).offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+    }
+
     private func drawCaret() {
         guard showsCurrentLine, let rect = caretRect else { return }
         let focused = window?.firstResponder === self && window?.isKeyWindow == true

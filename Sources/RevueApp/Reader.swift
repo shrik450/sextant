@@ -264,10 +264,11 @@ final class Reader: NSViewController, CodeViewDelegate {
         return code.selectedRange().location - code.rowStarts[r]
     }
 
-    /// Where the caret is on screen, for anchoring a popover to the word it's on.
+    /// Where the caret's word is on screen, for anchoring a popover to it: the word the caret is
+    /// on, or the selection, which is the word `wordAtCaret` names when there is one.
     var caretAnchor: (NSRect, NSView)? {
         let code = activeCode
-        guard let rect = code.caretRect else { return nil }
+        guard let rect = code.caretRect ?? code.selectionRect else { return nil }
         return (rect, code)
     }
 
