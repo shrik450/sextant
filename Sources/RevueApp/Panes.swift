@@ -206,13 +206,17 @@ final class PaneStrip: NSView {
 
 /// A pane as a card: its reader, clipped to rounded corners inside a hairline border.
 ///
-/// The focused card in the main window stands out with a shadow and a firmer border. The window
-/// stays main while a panel or popover of its own, such as Go to Anything or a note, takes the
-/// keyboard, so the cards don't change then. A card cut off at the strip's edge shows as a
-/// narrower card, with its own rounded corners and border on the cut side.
+/// The focused card in the main window stands out with a shadow and a firmer border. The shadow
+/// falls only outside the card, so it doesn't darken the card's fill through its translucency.
+///
+/// The window stays main while a panel or popover of its own, such as Go to Anything or a note,
+/// takes the keyboard, so the cards don't change then. A card cut off at the strip's edge shows as
+/// a narrower card, with its own rounded corners and border on the cut side.
 @MainActor
 final class PaneCard: NSView {
     private let clip = NSView()
+    private let cardShadow = CALayer()
+    private let shadowCutout = CAShapeLayer()
     private let highlight = CAShapeLayer()
     private let highlightFade = CAGradientLayer()
     private let content: NSView
@@ -223,6 +227,7 @@ final class PaneCard: NSView {
 
     /// Concentric with the window's corners, at the strip's margin from them.
     static let cornerRadius: CGFloat = PaneStrip.windowCornerRadius - PaneStrip.margins.top
+    private static let shadowOffset = CGSize(width: 0, height: -2)
 
     private(set) var isFocused = true
 
@@ -248,6 +253,10 @@ final class PaneCard: NSView {
         self.header = header
         super.init(frame: .zero)
         wantsLayer = true
+        cardShadow.shadowOpacity = 0
+        shadowCutout.fillRule = .evenOdd
+        cardShadow.mask = shadowCutout
+        layer?.addSublayer(cardShadow)
         clip.wantsLayer = true
         clip.layer?.cornerRadius = Self.cornerRadius
         clip.layer?.cornerCurve = .continuous
@@ -272,26 +281,32 @@ final class PaneCard: NSView {
     private var isEmphasized: Bool { isFocused && (window?.isMainWindow ?? true) }
 
     override func updateLayer() {
-        guard let layer, let clipLayer = clip.layer else { return }
+        guard let clipLayer = clip.layer else { return }
         let theme = Appearance.shared.theme(for: effectiveAppearance)
-        layer.shadowColor = theme.color("cardShadow").cgColor
-        layer.shadowRadius = theme.cardShadowRadius
-        layer.shadowOffset = CGSize(width: 0, height: -2)
+        cardShadow.shadowColor = theme.color("cardShadow").cgColor
+        if cardShadow.shadowRadius != theme.cardShadowRadius {
+            cardShadow.shadowRadius = theme.cardShadowRadius
+            placeParts()
+        }
+        cardShadow.shadowOffset = Self.shadowOffset
         clipLayer.borderWidth = 0.75
         clipLayer.borderColor = theme.color(isEmphasized ? "cardStrokeFocused" : "cardStroke").cgColor
         highlight.strokeColor = theme.color("cardHighlight").cgColor
     }
 
     private func applyEmphasis(animated: Bool) {
-        let shadow: Float = isEmphasized ? 1 : 0
-        if let layer, layer.shadowOpacity != shadow {
+        let opacity: Float = isEmphasized ? 1 : 0
+        if cardShadow.shadowOpacity != opacity {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
             if animated {
                 let fade = CABasicAnimation(keyPath: "shadowOpacity")
-                fade.fromValue = layer.presentation()?.shadowOpacity ?? layer.shadowOpacity
+                fade.fromValue = cardShadow.presentation()?.shadowOpacity ?? cardShadow.shadowOpacity
                 fade.duration = PaneStrip.slideDuration
-                layer.add(fade, forKey: "shadowOpacity")
+                cardShadow.add(fade, forKey: "shadowOpacity")
             }
-            layer.shadowOpacity = shadow
+            cardShadow.shadowOpacity = opacity
+            CATransaction.commit()
         }
         needsDisplay = true
     }
@@ -327,9 +342,17 @@ final class PaneCard: NSView {
         clip.frame = part
         content.frame = NSRect(x: -part.minX, y: -part.minY, width: bounds.width, height: bounds.height)
         let r = Self.cornerRadius
-        layer?.shadowPath = isHidden ? nil : CGPath(roundedRect: part, cornerWidth: r, cornerHeight: r, transform: nil)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        let card = NSRect(origin: .zero, size: part.size)
+        cardShadow.frame = part
+        cardShadow.shadowPath = CGPath(roundedRect: card, cornerWidth: r, cornerHeight: r, transform: nil)
+        let reach = cardShadow.shadowRadius * 3 + abs(Self.shadowOffset.height)
+        let cutout = CGMutablePath()
+        cutout.addRect(card.insetBy(dx: -reach, dy: -reach))
+        cutout.addRoundedRect(in: card, cornerWidth: r, cornerHeight: r)
+        shadowCutout.frame = card
+        shadowCutout.path = cutout
         highlight.frame = part
         let edge = NSRect(origin: .zero, size: part.size).insetBy(dx: 1, dy: 1)
         highlight.path = edge.width > 0 && edge.height > 0 ? CGPath(roundedRect: edge, cornerWidth: r - 1, cornerHeight: r - 1, transform: nil) : nil

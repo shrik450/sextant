@@ -6,7 +6,7 @@ import RevueCore
 ///
 /// User themes live in `~/.config/revue/themes/*.json`:
 ///
-///     { "name": "My Dark", "appearance": "dark", "base": "Revue Dark",
+///     { "name": "My Dark", "appearance": "dark", "base": "Revue Dark", "cardOpacity": 0.8,
 ///       "colors": { "canvas": "#101010", "syntax.keyword": "#ff8080" } }
 ///
 /// Any token not given falls back to the base theme (or the built-in of the same appearance).
@@ -14,6 +14,10 @@ struct Theme {
     var name: String
     var isDark: Bool
     var colors: [String: NSColor]
+    /// How opaque the code cards' canvas is over the window's frost, so the wallpaper's colour
+    /// comes through the cards as it does the frost. A theme keeps it high enough that its syntax
+    /// and diff text stay at WCAG AA on plain, added and removed lines over any backdrop.
+    var cardOpacity: CGFloat
 
     func color(_ key: String) -> NSColor {
         colors[key] ?? (isDark ? Theme.revueDark : Theme.revueLight).colors[key] ?? .magenta
@@ -76,6 +80,7 @@ struct Theme {
           "name": "My \(name)",
           "appearance": "\(isDark ? "dark" : "light")",
           "base": "\(name)",
+          "cardOpacity": \(cardOpacity),
           "colors": {
         \(colorLines)
           }
@@ -84,19 +89,21 @@ struct Theme {
         """
     }
 
-    init(name: String, isDark: Bool, hex: [String: String]) {
+    init(name: String, isDark: Bool, cardOpacity: CGFloat = 1, hex: [String: String]) {
         self.name = name
         self.isDark = isDark
+        self.cardOpacity = cardOpacity
         colors = hex.compactMapValues(Theme.parse)
     }
 
-    init(name: String, isDark: Bool, colors: [String: NSColor]) {
+    init(name: String, isDark: Bool, cardOpacity: CGFloat = 1, colors: [String: NSColor]) {
         self.name = name
         self.isDark = isDark
+        self.cardOpacity = cardOpacity
         self.colors = colors
     }
 
-    static let revueLight = Theme(name: "Revue Light", isDark: false, hex: [
+    static let revueLight = Theme(name: "Revue Light", isDark: false, cardOpacity: 0.95, hex: [
         "canvas": "#f9fafb", "fg": "#1f2328", "fgMuted": "#656c76", "border": "#1f23281a",
         "header": "#1f232808", "lineNumber": "#8c959f",
         "addLine": "#1a7f3714", "addNum": "#1a7f3714", "addWord": "#1a7f3733",
@@ -112,7 +119,7 @@ struct Theme {
         "fgSubtle": "#818991", "fgFaint": "#1f232866", "selectionPill": "#fdfdfe", "selectionPillStroke": "#1f23281a", "hover": "#1f23280a",
     ])
 
-    static let revueDark = Theme(name: "Revue Dark", isDark: true, hex: [
+    static let revueDark = Theme(name: "Revue Dark", isDark: true, cardOpacity: 0.78, hex: [
         "canvas": "#13171d", "fg": "#e6edf3", "fgMuted": "#8b939d", "border": "#ffffff14",
         "header": "#e6edf308", "lineNumber": "#6e7681",
         "addLine": "#3fb9501a", "addNum": "#3fb9501a", "addWord": "#3fb95047",
@@ -128,7 +135,7 @@ struct Theme {
         "fgSubtle": "#6e7681", "fgFaint": "#e6edf34d", "selectionPill": "#1c2026", "selectionPillStroke": "#ffffff1a", "hover": "#e6edf30b",
     ])
 
-    static let revueDarkDimmed = Theme(name: "Revue Dark Dimmed", isDark: true, hex: [
+    static let revueDarkDimmed = Theme(name: "Revue Dark Dimmed", isDark: true, cardOpacity: 0.92, hex: [
         "canvas": "#212830", "fg": "#d1d7e0", "fgMuted": "#9198a1", "border": "#ffffff14",
         "header": "#cdd9e508", "lineNumber": "#656c76",
         "addLine": "#57ab5a1a", "addNum": "#57ab5a1a", "addWord": "#57ab5a47",
@@ -159,7 +166,7 @@ struct Theme {
     ])
 
     /// Revue Light with GitHub's stock code and diff colours.
-    static let githubLight = revueLight.with(name: "GitHub Light", hex: [
+    static let githubLight = revueLight.with(name: "GitHub Light", cardOpacity: 1, hex: [
         "canvas": "#ffffff", "syntax.keyword": "#cf222e", "fgMuted": "#59636e", "lineNumber": "#6e7781",
         "addLine": "#dafbe1", "addNum": "#d1f8d9", "addWord": "#aceebb",
         "delLine": "#ffebe9", "delNum": "#ffcecb", "delWord": "#ff818266",
@@ -168,7 +175,7 @@ struct Theme {
     ])
 
     /// Revue Dark with GitHub's stock code and diff colours.
-    static let githubDark = revueDark.with(name: "GitHub Dark", hex: [
+    static let githubDark = revueDark.with(name: "GitHub Dark", cardOpacity: 1, hex: [
         "canvas": "#0d1117", "fgMuted": "#9198a1",
         "addLine": "#2ea04326", "addNum": "#3fb9504d", "addWord": "#2ea04366",
         "delLine": "#f851491a", "delNum": "#f851494d", "delWord": "#f8514966",
@@ -177,7 +184,7 @@ struct Theme {
     ])
 
     /// Revue Dark Dimmed with GitHub's stock code and diff colours.
-    static let githubDarkDimmed = revueDarkDimmed.with(name: "GitHub Dark Dimmed", hex: [
+    static let githubDarkDimmed = revueDarkDimmed.with(name: "GitHub Dark Dimmed", cardOpacity: 1, hex: [
         "addLine": "#46954a26", "addNum": "#57ab5a4d", "addWord": "#46954a66",
         "delLine": "#e5534b1a", "delNum": "#e5534b4d", "delWord": "#e5534b66",
         "hunkLine": "#4184e41a", "hunkNum": "#4184e466", "hunkFg": "#9198a1",
@@ -235,16 +242,18 @@ struct Theme {
         for (k, v) in (obj["colors"] as? [String: String]) ?? [:] {
             if let c = Theme.parse(v) { colors[k] = c }
         }
-        self.init(name: name, isDark: isDark, colors: colors)
+        let opacity = (obj["cardOpacity"] as? Double).map { CGFloat(max(0.5, min(1, $0))) } ?? base.cardOpacity
+        self.init(name: name, isDark: isDark, cardOpacity: opacity, colors: colors)
     }
 
     /// Returns a copy of the theme under another name, with some colours replaced.
     ///
     /// - Parameters:
     ///   - name: The copy's name.
+    ///   - cardOpacity: The copy's card opacity, or `nil` to keep this theme's.
     ///   - hex: The colours to replace.
-    func with(name: String, hex: [String: String]) -> Theme {
-        Theme(name: name, isDark: isDark, colors: colors.merging(hex.compactMapValues(Theme.parse)) { $1 })
+    func with(name: String, cardOpacity: CGFloat? = nil, hex: [String: String]) -> Theme {
+        Theme(name: name, isDark: isDark, cardOpacity: cardOpacity ?? self.cardOpacity, colors: colors.merging(hex.compactMapValues(Theme.parse)) { $1 })
     }
 }
 

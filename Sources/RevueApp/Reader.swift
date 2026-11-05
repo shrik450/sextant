@@ -105,14 +105,14 @@ final class Reader: NSViewController, CodeViewDelegate {
 
     /// Fills the pane behind its header and code with the theme's canvas, so they read as one.
     private func paintCanvas(_ style: Style) {
-        view.layer?.backgroundColor = style.theme.canvas.cgColor
+        view.layer?.backgroundColor = style.cardFill.cgColor
     }
 
     private func setColumnCount(_ n: Int) {
         guard columns.count != n else { return }
         for c in columns { c.scroll.removeFromSuperview() }
         columns = (0..<n).map { i in
-            let scroll = NSScrollView()
+            let scroll = GutterScrollView()
             scroll.hasVerticalScroller = true
             scroll.hasHorizontalScroller = true
             scroll.autohidesScrollers = true
@@ -241,7 +241,7 @@ final class Reader: NSViewController, CodeViewDelegate {
             c.code.style = style
             c.code.isReadLine = { fi, li in files[fi].run(at: li).map { isRead(files[fi], $0) } ?? false }
             c.code.setContent(render(rows, side: sides.count == 2 ? i : -1, files: files, notes: byID, style: style), rows: rows, files: files)
-            c.scroll.backgroundColor = style.theme.canvas
+            c.scroll.drawsBackground = false
             c.gutter.columns = sides.count == 2 || !files.contains(where: \.isChange) ? 1 : 2
             c.gutter.updateThickness()
         }

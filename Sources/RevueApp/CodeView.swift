@@ -23,6 +23,10 @@ struct Style {
     var tabInterval: CGFloat
     var digitWidth: CGFloat
 
+    /// The card's fill: the canvas at the theme's card opacity, so the backdrop's frost shows
+    /// through the card. Each part of the card is filled with it once.
+    var cardFill: NSColor { theme.canvas.withAlphaComponent(theme.cardOpacity) }
+
     static func current(for appearance: NSAppearance) -> Style {
         let a = Appearance.shared
         let font = a.font
@@ -221,7 +225,7 @@ final class CodeView: NSTextView {
         rowStarts = r.rowStarts
         textStorage?.setAttributedString(r.string)
         colored = []
-        backgroundColor = style.theme.canvas
+        backgroundColor = .clear
         selectedTextAttributes = [.backgroundColor: style.theme.color("selection")]
         linkTextAttributes = [:]
         needsDisplay = true
@@ -907,10 +911,13 @@ final class Gutter: NSRulerView {
     /// AppKit keeps what the ruler draws and moves it as the code scrolls, asking only for the parts
     /// it hasn't drawn yet. `rect` can reach beyond the rows in view, such as the whole of a file a
     /// little taller than the view, so it's drawn in full rather than just what's in view.
+    ///
+    /// The gutter is see-through, so the card's fill behind it shows as it does behind the code;
+    /// `GutterScrollView` hides the system's scroll-edge material behind it.
     override func drawHashMarksAndLabels(in rect: NSRect) {
         let s = code.style, t = s.theme
-        t.canvas.setFill()
-        rect.fill()
+        NSColor.clear.setFill()
+        rect.fill(using: .copy)
         t.border.withAlphaComponent(0.5).setFill()
         NSRect(x: bounds.maxX - 1, y: rect.minY, width: 1, height: rect.height).fill()
 
@@ -1084,4 +1091,32 @@ final class Gutter: NSRulerView {
 extension NSColor {
     /// The color at a third of its strength, as a change's colors show once it's been read.
     var asRead: NSColor { withAlphaComponent(alphaComponent / 3) }
+}
+
+/// A scroll view that places its clip view beside the vertical ruler rather than under it, with
+/// the ruler see-through.
+///
+/// AppKit floats the ruler over the clip view and insets the content instead, so code scrolled
+/// sideways passes under the gutter, and it backs the ruler with a hard scroll-edge pocket in
+/// the system's material. With the code kept clear of the ruler, the pocket has nothing to hide,
+/// so its material is hidden and the gutter shows the card behind it, as the code does.
+@MainActor
+final class GutterScrollView: NSScrollView {
+    override func tile() {
+        super.tile()
+        guard rulersVisible, let ruler = verticalRulerView else { return }
+        hideMaterials(in: ruler)
+        guard contentView.frame.minX < ruler.frame.maxX else { return }
+        var frame = contentView.frame
+        frame.size.width = max(0, frame.maxX - ruler.frame.maxX)
+        frame.origin.x = ruler.frame.maxX
+        contentView.frame = frame
+        contentView.contentInsets.left = 0
+    }
+
+    private func hideMaterials(in view: NSView) {
+        for v in view.subviews {
+            if v is NSVisualEffectView { v.isHidden = true } else { hideMaterials(in: v) }
+        }
+    }
 }
