@@ -229,12 +229,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             item(m, "Refresh", #selector(W.refreshAction(_:)), "r", symbol: "arrow.clockwise")
         }
         _ = menu("Edit") { m in
+            item(m, "Undo", Selector(("undo:")), "z", symbol: "arrow.uturn.backward")
+            item(m, "Redo", Selector(("redo:")), "z", [.command, .shift], symbol: "arrow.uturn.forward")
+            m.addItem(.separator())
+            item(m, "Cut", #selector(NSText.cut(_:)), "x", symbol: "scissors")
             item(m, "Copy", #selector(NSText.copy(_:)), "c", symbol: "doc.on.doc")
             item(m, "Copy Reference", #selector(W.copyReference(_:)), "c", [.command, .option], symbol: "link")
             item(m, "Copy Reference with Code", #selector(W.copyReferenceWithCode(_:)), "c", [.command, .option, .shift], symbol: "chevron.left.forwardslash.chevron.right")
             item(m, "Copy Symbol Name", #selector(W.copySymbol(_:)), "c", [.command, .control, .shift], symbol: "curlybraces")
             item(m, "Copy Symbol with Reference", #selector(W.copySymbolWithReference(_:)), "y", symbol: "link.badge.plus")
             item(m, "Copy Path", #selector(W.copyCurrentPath(_:)), "", symbol: "doc.text")
+            item(m, "Paste", #selector(NSText.paste(_:)), "v", symbol: "doc.on.clipboard")
             item(m, "Select All", #selector(NSText.selectAll(_:)), "a", symbol: "checkmark.rectangle.stack")
             m.addItem(.separator())
             let find = NSMenuItem(title: "Find", action: nil, keyEquivalent: "")
