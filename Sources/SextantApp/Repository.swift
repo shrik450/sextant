@@ -163,13 +163,13 @@ final class Repository {
 
     private static let ghPath: String? = userPath().split(separator: ":").map { "\($0)/gh" }.first { FileManager.default.isExecutableFile(atPath: $0) }
 
-    /// The base a subject is compared with: the one last picked for it, else the pull request's
-    /// own base or the default.
-    func base(for subject: Subject) -> String? { Repository.base(for: subject, usual: defaultBase, commonDir: commonDir) }
+    /// The base a subject is compared with: the one last picked for it while that branch is
+    /// still there, else the pull request's own base or the default.
+    func base(for subject: Subject) -> String? { Repository.base(for: subject, usual: defaultBase, branches: branches, commonDir: commonDir) }
 
-    nonisolated static func base(for subject: Subject, usual: String?, commonDir: CanonicalPath) -> String? {
+    nonisolated static func base(for subject: Subject, usual: String?, branches: [Branch], commonDir: CanonicalPath) -> String? {
         guard subject.hasBase else { return nil }
-        if let saved = savedBases[baseKey(subject, commonDir: commonDir)] { return saved }
+        if let saved = savedBases[baseKey(subject, commonDir: commonDir)], branches.contains(where: { $0.name == saved }) { return saved }
         if case .pullRequest = subject { return nil }
         return usual
     }
@@ -193,7 +193,7 @@ final class Repository {
 
     nonisolated static func review(for spec: RevisionSpec, in worktree: CanonicalPath?, refs: Refs, git: Git, commonDir: CanonicalPath) async throws -> Review {
         let here = worktree ?? refs.worktrees.first?.root
-        func base(_ s: Subject) -> String? { Repository.base(for: s, usual: refs.base, commonDir: commonDir) }
+        func base(_ s: Subject) -> String? { Repository.base(for: s, usual: refs.base, branches: refs.branches, commonDir: commonDir) }
         switch spec {
         case .uncommitted, .staged, .unstaged:
             guard let here else { throw GitError(message: "This repository has no checkout") }
@@ -241,7 +241,7 @@ final class Repository {
         if let spec, !spec.isEmpty, let parsed = parseRevisionSpec(spec) {
             review = try? await Repository.review(for: parsed, in: home, refs: refs, git: git, commonDir: commonDir)
         } else {
-            review = home.map { Review(subject: .worktree($0), base: base(for: .worktree($0), usual: refs.base, commonDir: commonDir)) }
+            review = home.map { Review(subject: .worktree($0), base: base(for: .worktree($0), usual: refs.base, branches: refs.branches, commonDir: commonDir)) }
         }
         guard let review else { return Opening(refs: refs) }
         if case .pullRequest = review.subject { return Opening(refs: refs) }

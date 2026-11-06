@@ -327,6 +327,9 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         s.loadGeneration += 1
         s.isLoading = true
         let gen = s.loadGeneration
+        if let base = s.review.base, !repository.branches.contains(where: { $0.name == base }) {
+            s.review.base = repository.base(for: s.review.subject)
+        }
         let r = s.review
         busy += 1
         Task {
