@@ -452,10 +452,22 @@ extension Inspector: NSOutlineViewDataSource, NSOutlineViewDelegate {
 /// The SF Symbol for a kind of definition.
 func symbolImage(_ kind: String) -> String {
     switch kind {
-    case "class", "struct", "type", "interface", "enum", "trait", "protocol": "cube"
-    case "module", "namespace", "impl": "shippingbox"
-    case "method", "function": "function"
-    case "constant", "variable", "field", "property": "character.textbox"
+    case "class", "struct", "type", "interface", "enum", "trait", "protocol", "union", "object", "mixin": "cube"
+    case "module", "namespace", "impl", "extension": "shippingbox"
+    case "method", "function", "operator": "function"
+    case "constructor": "hammer"
+    case "constant", "variable", "field", "property", "enum_variant": "character.textbox"
+    case "macro": "wand.and.stars"
+    case "test": "checkmark.diamond"
+    case "heading": "textformat.size"
+    case "table": "tablecells"
+    case "view": "eye"
+    case "index": "list.number"
+    case "target": "target"
+    case "anchor": "link"
+    case "keyframes": "film"
+    case "fragment": "puzzlepiece"
+    case "directive": "at"
     default: "number"
     }
 }
