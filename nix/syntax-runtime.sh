@@ -8,13 +8,17 @@
 #   $out/<language>/tags.scm        tags query (definitions/references): Sextant's
 #                                   $queries/<language>/tags.scm, else the grammar's own, when
 #                                   either exists
+#   $out/<language>/locals.scm      locals query (scopes, and the names each defines): Sextant's
+#                                   $queries/<language>/locals.scm, else the grammar's own, when
+#                                   either exists
 #   $out/languages.json             [{name, symbol, fileTypes}]
 #
 # Reads $grammarsFile, which lists one grammar per line as
 # <attr> <package> <source> [<file-types>]. The optional comma-separated <file-types> adds to
 # what the grammar's tree-sitter.json lists.
 #
-# Reads $queries, which holds Sextant's tags queries. One there replaces the grammar's own.
+# Reads $queries, which holds Sextant's tags and locals queries. One there replaces the
+# grammar's own.
 
 set -euo pipefail
 mkdir -p "$out"
@@ -89,11 +93,13 @@ while read -r attr pkg src types; do
   mkdir -p "$out/$attr"
   ln -s "$pkg/parser" "$out/$attr/parser"
   compose "$dir" "$(jq -c ".highlights | $as_list" <<<"$entry")" "$qdir/highlights.scm" "$out/$attr/highlights.scm"
-  if [[ -f $queries/$attr/tags.scm ]]; then
-    cp "$queries/$attr/tags.scm" "$out/$attr/tags.scm"
-  else
-    compose "$dir" "$(jq -c ".tags | $as_list" <<<"$entry")" "$qdir/tags.scm" "$out/$attr/tags.scm"
-  fi
+  for kind in tags locals; do
+    if [[ -f $queries/$attr/$kind.scm ]]; then
+      cp "$queries/$attr/$kind.scm" "$out/$attr/$kind.scm"
+    else
+      compose "$dir" "$(jq -c ".$kind | $as_list" <<<"$entry")" "$qdir/$kind.scm" "$out/$attr/$kind.scm"
+    fi
+  done
 
   fileTypes=$(jq -c --arg extra "${types:-}" '(.["file-types"] // []) + ($extra | split(",") | map(select(. != ""))) | unique' <<<"$entry")
   index+=("$(jq -nc --arg n "$attr" --arg s "tree_sitter_$name" --argjson t "$fileTypes" '{name: $n, symbol: $s, fileTypes: $t}')")

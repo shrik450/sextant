@@ -61,18 +61,20 @@ public final class SyntaxLanguage: Sendable {
     let language: SwiftTreeSitter.Language
     let highlightsQuery: Query?
     let tagsQuery: Query?
+    let localsQuery: Query?
 
-    init(name: String, version: String, language: SwiftTreeSitter.Language, highlights: Query?, tags: Query?) {
+    init(name: String, version: String, language: SwiftTreeSitter.Language, highlights: Query?, tags: Query?, locals: Query?) {
         self.name = name
         self.version = version
         self.language = language
         highlightsQuery = highlights
         tagsQuery = tags
+        localsQuery = locals
     }
 
     public var hasTags: Bool { tagsQuery != nil }
 
-    private func parse(_ text: String) -> MutableTree? {
+    func parse(_ text: String) -> MutableTree? {
         let parser = Parser()
         guard (try? parser.setLanguage(language)) != nil else { return nil }
         return parser.parse(text)
@@ -290,9 +292,9 @@ public final class SyntaxRuntime: @unchecked Sendable {
             guard let data = read(file) else { return nil }
             return try? Query(language: language, data: data)
         }
-        let highlights = query("highlights.scm"), tags = query("tags.scm")
+        let highlights = query("highlights.scm"), tags = query("tags.scm"), locals = query("locals.scm")
         let version = e.name + "@" + digest.finalize().prefix(8).map { String(format: "%02x", $0) }.joined()
-        return SyntaxLanguage(name: e.name, version: version, language: language, highlights: highlights, tags: tags)
+        return SyntaxLanguage(name: e.name, version: version, language: language, highlights: highlights, tags: tags, locals: locals)
     }
 }
 
