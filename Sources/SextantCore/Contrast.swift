@@ -1,7 +1,7 @@
 import Foundation
 
 /// A colour in sRGB, each channel from 0 to 1.
-public struct RGB: Equatable, Sendable {
+public struct RGB: Hashable, Sendable {
     public var red: Double
     public var green: Double
     public var blue: Double

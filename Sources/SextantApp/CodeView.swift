@@ -352,9 +352,27 @@ final class CodeView: NSTextView {
             let color = lm.temporaryAttribute(.foregroundColor, atCharacterIndex: i, effectiveRange: &run) as? NSColor ?? style.theme.fg
             let part = NSIntersectionRange(run, range)
             let at = part.length > 0 ? part : NSRange(location: i, length: 1)
-            lm.addTemporaryAttribute(.foregroundColor, value: NSColor(readable(color.rgb, on: background)), forCharacterRange: at)
+            lm.addTemporaryAttribute(.foregroundColor, value: Self.readable(color.rgb, on: background), forCharacterRange: at)
             i = NSMaxRange(at)
         }
+    }
+
+    private struct ColorPair: Hashable {
+        var text: RGB
+        var background: RGB
+    }
+
+    /// Text colours already made readable, by colour and background. A theme has about a dozen
+    /// text colours and four changed-word highlights, so this stays small, and each search runs
+    /// once rather than on every word drawn.
+    private static var readableColors: [ColorPair: NSColor] = [:]
+
+    private static func readable(_ text: RGB, on background: RGB) -> NSColor {
+        let pair = ColorPair(text: text, background: background)
+        if let known = readableColors[pair] { return known }
+        let color = NSColor(SextantCore.readable(text, on: background))
+        readableColors[pair] = color
+        return color
     }
 
     func row(at charIndex: Int) -> Int? {
