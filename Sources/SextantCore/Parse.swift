@@ -333,6 +333,13 @@ public func untrackedFileDiff(path: String, oid: String, contents: Data?, mode: 
     return FileDiff(change: change, hunks: [hunk])
 }
 
+/// Builds a diff for a repository inside the worktree that git doesn't track, which git would
+/// add as a submodule.
+public func untrackedRepositoryDiff(path: String) -> FileDiff {
+    let change = RawChange(status: "?", oldMode: "000000", newMode: gitlinkMode, oldOid: zeroOid, newOid: zeroOid, oldPath: path, path: path)
+    return FileDiff(change: change, notes: ["Repository inside this one"])
+}
+
 /// Splits blob contents into lines the same way a patch would show them.
 ///
 /// Splits on LF bytes (Swift treats CRLF as one Character, so String splitting misses it)

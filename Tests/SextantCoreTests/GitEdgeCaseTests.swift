@@ -125,3 +125,69 @@ struct ScratchRepo {
         #expect(unstaged.first { $0.path == "gone.txt" }?.change.status == "U")
     }
 }
+
+extension GitEdgeCaseTests {
+    /// A worktree holding what `git hash-object` can't hash: symbolic links (one dangling, one to
+    /// a folder), a submodule moved to another commit, and an untracked repository.
+    func unhashable() throws -> (repo: ScratchRepo, submoduleHead: String) {
+        let upstream = try ScratchRepo("unhashable-upstream")
+        try upstream.write("u.txt", "u\n")
+        try upstream.commitAll("Upstream")
+        let r = try ScratchRepo("unhashable")
+        try r.write("a.txt", "a\n")
+        try r.commitAll("A")
+        try r.git("submodule", "add", "-q", upstream.root.path, "sub")
+        try r.commitAll("Sub")
+        try r.write("a.txt", "a\nmore\n")
+        try r.write("sub/u.txt", "u\nmoved\n")
+        try r.git("commit", "-q", "-am", "Move", in: "sub")
+        try r.link("good", to: "a.txt")
+        try r.link("dangling", to: "nowhere")
+        try FileManager.default.createDirectory(at: r.root.appendingPathComponent("dir"), withIntermediateDirectories: true)
+        try r.write("dir/in.txt", "in\n")
+        try r.link("dirlink", to: "dir")
+        let nested = r.root.appendingPathComponent("nested")
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        try r.git("init", "-q", in: "nested")
+        try r.write("nested/n.txt", "n\n")
+        try r.git("add", "-A", in: "nested")
+        try r.git("commit", "-q", "-m", "Nested", in: "nested")
+        return (r, try r.git("rev-parse", "HEAD", in: "sub"))
+    }
+
+    @Test func hashesWhatGitWouldStoreWithoutFailingOnWhatItCant() async throws {
+        let (r, subHead) = try unhashable()
+        let edited = try r.blobID("a\nmore\n")
+        let hashed = try await r.repo.hashObjects(["a.txt", "good", "dangling", "dirlink", "dir", "nested", "sub", "missing"])
+        #expect(hashed == [edited, try r.blobID("a.txt"), try r.blobID("nowhere"), try r.blobID("dir"), nil, nil, nil, nil])
+
+        let files = try await r.repo.diff(.worktree(since: nil))
+        let byPath = Dictionary(uniqueKeysWithValues: files.map { ($0.path, $0.change) })
+        #expect(Set(byPath.keys) == ["a.txt", "good", "dangling", "dirlink", "dir/in.txt", "nested", "sub"])
+        #expect(byPath["a.txt"]?.newOid == edited)
+        for (link, target) in [("good", "a.txt"), ("dangling", "nowhere"), ("dirlink", "dir")] {
+            let id = try r.blobID(target)
+            #expect(byPath[link]?.newMode == "120000" && byPath[link]?.newOid == id, "\(link)")
+        }
+        #expect(byPath["sub"]?.newMode == "160000" && byPath["sub"]?.newOid == subHead)
+        #expect(byPath["nested"]?.isUntracked == true && byPath["nested"]?.newMode == "160000")
+    }
+
+    @Test func filesDeletedWhileDiffingDontFailIt() async throws {
+        let r = try ScratchRepo("vanishing")
+        try r.write("a.txt", "a\n")
+        try r.commitAll("A")
+        let names = (0..<2000).map { "f\($0).txt" }
+        for round in 0..<10 {
+            for n in names { try r.write(n, "\(round)\n") }
+            let deleting = Task.detached {
+                for n in names.shuffled() {
+                    try? FileManager.default.removeItem(at: r.root.appendingPathComponent(n))
+                    usleep(20)
+                }
+            }
+            _ = try await r.repo.diff(.worktree(since: nil))
+            await deleting.value
+        }
+    }
+}

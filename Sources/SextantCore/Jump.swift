@@ -164,7 +164,7 @@ extension Git {
     /// Hashes worktree files the way git would, without storing them.
     func hashed(_ paths: [String]) async throws -> [SnapshotBlob] {
         guard !paths.isEmpty else { return [] }
-        return zip(paths, try await hashObjects(paths)).map { SnapshotBlob(path: $0, oid: $1, inWorktree: true) }
+        return zip(paths, try await hashObjects(paths)).compactMap { path, oid in oid.map { SnapshotBlob(path: path, oid: $0, inWorktree: true) } }
     }
 
     /// Returns a blob's contents by object ID, or nil if it can't be read.

@@ -188,14 +188,17 @@ public struct Git: Sendable {
         var files = parseRawPatchZ(try await patchData)
 
         if target.includesWorktree {
-            let unhashed = files.indices.filter { files[$0].change.newOid == zeroOid && !files[$0].change.isDeleted }
+            for i in files.indices where files[i].change.newMode == gitlinkMode && files[i].change.newOid == zeroOid {
+                files[i].change.newOid = subprojectCommit(files[i]) ?? zeroOid
+            }
+            let unhashed = files.indices.filter { files[$0].change.newOid == zeroOid && !files[$0].change.isDeleted && files[$0].change.newMode != gitlinkMode }
             let extra = try await untracked
-            let paths = unhashed.map { files[$0].change.path } + extra
-            if !paths.isEmpty {
-                let hashes = try await hashObjects(paths)
-                for (n, i) in unhashed.enumerated() where n < hashes.count { files[i].change.newOid = hashes[n] }
-                for (n, path) in extra.enumerated() {
-                    let oid = unhashed.count + n < hashes.count ? hashes[unhashed.count + n] : zeroOid
+            let hashes = try await hashObjects(unhashed.map { files[$0].change.path } + extra)
+            for (n, i) in unhashed.enumerated() { files[i].change.newOid = hashes[n] ?? zeroOid }
+            for (n, path) in extra.enumerated() {
+                if path.hasSuffix("/") {
+                    files.append(untrackedRepositoryDiff(path: String(path.dropLast())))
+                } else if let oid = hashes[unhashed.count + n] {
                     files.append(untrackedFileDiff(path: path, oid: oid, contents: readWorktreeFile(path), mode: worktreeMode(path)))
                 }
             }
@@ -204,18 +207,64 @@ public struct Git: Sendable {
         return files
     }
 
+    /// Lists untracked files that aren't ignored, and repositories nested in the worktree, as
+    /// their folder's path with a trailing `/`.
     public func untrackedFiles() async throws -> [String] {
         let data = try await run(["ls-files", "--others", "--exclude-standard", "-z"])
         return data.split(separator: 0).map { String(decoding: $0, as: UTF8.self) }
     }
 
-    public func hashObjects(_ paths: [String]) async throws -> [String] {
-        let input = Data(paths.joined(separator: "\n").utf8 + [0x0A])
-        return try await string(["hash-object", "--stdin-paths"], stdin: input).split(separator: "\n").map(String.init)
+    /// Returns the ID git would give each worktree path's contents, without storing them.
+    ///
+    /// Regular files go through `git hash-object`, so the path's filters apply. A symbolic link
+    /// is hashed here from its target path, which is what git stores for it.
+    ///
+    /// - Returns: An ID for each path, in order, or nil for a path that's neither a file nor a
+    ///   symbolic link, such as a folder, a nested repository, or a file deleted since it was
+    ///   listed.
+    public func hashObjects(_ paths: [String]) async throws -> [String?] {
+        var ids = [String?](repeating: nil, count: paths.count)
+        var files: [Int] = []
+        for (i, path) in paths.enumerated() {
+            switch worktreeEntry(path) {
+            case .file: files.append(i)
+            case .link(let target): ids[i] = blobID(of: target)
+            case nil: break
+            }
+        }
+        while !files.isEmpty {
+            do {
+                let input = Data(files.map { paths[$0] }.joined(separator: "\n").utf8 + [0x0A])
+                let out = try await run(["hash-object", "--stdin-paths"], stdin: input)
+                for (i, id) in zip(files, out.split(separator: 0x0A)) { ids[i] = String(decoding: id, as: UTF8.self) }
+                break
+            } catch {
+                let before = files.count
+                files.removeAll { worktreeEntry(paths[$0]) != .file }
+                if files.count == before { throw error }
+            }
+        }
+        return ids
     }
 
-    func string(_ args: [String], stdin: Data) async throws -> String {
-        String(decoding: try await run(args, stdin: stdin), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    /// What a worktree path holds, as git sees it.
+    enum WorktreeEntry: Equatable {
+        case file
+        /// A symbolic link, with its target path as it's stored.
+        case link(Data)
+    }
+
+    /// Returns what a worktree path is, without following a symbolic link, or nil if it's
+    /// neither a regular file nor a symbolic link.
+    func worktreeEntry(_ path: String) -> WorktreeEntry? {
+        let full = root.appendingPathComponent(path).path
+        var st = stat()
+        guard lstat(full, &st) == 0 else { return nil }
+        switch st.st_mode & S_IFMT {
+        case S_IFREG: return .file
+        case S_IFLNK: return readLink(full).map(WorktreeEntry.link)
+        default: return nil
+        }
     }
 
     /// Returns the mode git would record for a worktree file.
@@ -243,6 +292,25 @@ public struct Git: Sendable {
         if c.newOid != zeroOid, let d = try? await blob(c.newOid) { return splitLines(d) }
         return splitLines(readWorktreeFile(c.path) ?? Data())
     }
+}
+
+/// The mode git records for a submodule.
+let gitlinkMode = "160000"
+
+/// Returns the commit a submodule's diff shows it moving to, without a `-dirty` mark.
+func subprojectCommit(_ file: FileDiff) -> String? {
+    let prefix = "Subproject commit "
+    guard let line = file.hunks.last?.lines.last(where: { $0.kind != .deleted && $0.text.hasPrefix(prefix) }) else { return nil }
+    let oid = line.text.dropFirst(prefix.count).prefix { $0.isHexDigit }
+    return oid.count == zeroOid.count ? String(oid) : nil
+}
+
+/// Returns a symbolic link's target path as it's stored, byte for byte.
+func readLink(_ path: String) -> Data? {
+    var buffer = [UInt8](repeating: 0, count: Int(PATH_MAX) + 1)
+    let n = readlink(path, &buffer, buffer.count)
+    guard n >= 0 else { return nil }
+    return Data(buffer[..<n])
 }
 
 final class LockedData: @unchecked Sendable {
