@@ -389,6 +389,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     private func apply(_ diffs: [FileDiff], to s: Session, keepPosition: Bool, firstWhole: [DiffLine]? = nil) {
         guard let res = s.resolved else { return }
         let key = "\(res.target)|\(res.commits.map(\.oid))|\(s.commitDetail?.oid ?? "")"
+        let sameCommits = keepPosition && key == s.lastKey
         if isFocused(s) { navigator.changes.setScopes(scopeRows(), selected: res.review.scope) }
         let showing = panes(of: s)
         if keepPosition, !showing.contains(where: { $0.pendingLocation != nil }), diffs == s.lastDiffs, key == s.lastKey {
@@ -414,9 +415,40 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         s.error = nil
         lastError = nil
         loadSnapshotFiles(s, force: keepPosition)
-        for p in showing { place(p, here: heres[ObjectIdentifier(p)]) }
+        for p in showing {
+            let here = heres[ObjectIdentifier(p)]
+            if sameCommits, p.pendingLocation == nil, case .file(let path)? = p.focus, let shown = p.reader.files.first, shown.path == path {
+                if s.changes.contains(where: { $0 === shown }) {
+                    p.reader.updateHeader()
+                    continue
+                }
+                if !shown.isChange, !s.changes.contains(where: { $0.path == path }) {
+                    keepIfUnchanged(shown, in: p, here: here)
+                    continue
+                }
+            }
+            place(p, here: here)
+        }
         s.pickerIfEmpty = false
         updateTitle()
+    }
+
+    /// Leaves a pane on a file it opened outside the review while the file reads the same, and
+    /// lands it again once it doesn't.
+    private func keepIfUnchanged(_ shown: FileState, in p: Pane, here: Location?) {
+        guard let s = p.session, let t = s.target else { return }
+        let git = s.resolved?.git ?? repository.git
+        busy += 1
+        Task {
+            defer { busy -= 1 }
+            let data = await git.contents(of: shown.path, in: t.snapshot)
+            guard p.session === s, s.target == t, p.reader.files.first === shown, p.pendingLocation == nil else { return }
+            if let data, blobID(of: data) == shown.diff.change.newOid {
+                s.explored[shown.path] = shown
+            } else {
+                place(p, here: here)
+            }
+        }
     }
 
     /// Lands a pane once its review has loaded: where it was asked to go, where it was, or the
