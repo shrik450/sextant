@@ -8,7 +8,9 @@ import SextantCore
 @MainActor
 final class Repository {
     let git: Git
-    let commonDir: URL
+    let commonDir: CanonicalPath
+    /// Which file system changes may change what the repository's reviews show.
+    let changes: RepositoryChanges
     let reviews: ReviewStore
     let notes: NotesStore
     /// The syntax of every version of every file read so far, with definitions saved in the git
@@ -26,41 +28,39 @@ final class Repository {
     private(set) var defaultBase: String?
     /// Open pull requests, or nil when `gh` isn't available or hasn't answered yet.
     private(set) var pullRequests: [PullRequest]?
-    /// The number of uncommitted files in each worktree git gave the status of, by root path.
-    private(set) var uncommitted: [String: Int] = [:]
-    /// Paths with merge conflicts in each worktree, by root path.
-    private(set) var conflicts: [String: Set<String>] = [:]
-    /// Why git couldn't give a worktree's status, by root path.
-    private(set) var statusFailures: [String: String] = [:]
+    /// The number of uncommitted files in each worktree git gave the status of, by root.
+    private(set) var uncommitted: [CanonicalPath: Int] = [:]
+    /// Paths with merge conflicts in each worktree, by root.
+    private(set) var conflicts: [CanonicalPath: Set<String>] = [:]
+    /// Why git couldn't give a worktree's status, by root.
+    private(set) var statusFailures: [CanonicalPath: String] = [:]
 
-    init(commonDir: URL, gitPath: String) {
+    init(commonDir: CanonicalPath, gitPath: String) {
         self.commonDir = commonDir
-        git = Git(root: commonDir, executable: gitPath)
+        changes = RepositoryChanges(commonDir: commonDir)
+        git = Git(root: commonDir.url, executable: gitPath)
         reviews = ReviewStore.shared(for: commonDir)
         notes = NotesStore.shared(for: commonDir)
-        analysis = ContentAnalysis(cache: commonDir.appendingPathComponent("sextant/definitions.json"))
+        analysis = ContentAnalysis(cache: commonDir.url.appendingPathComponent("sextant/definitions.json"))
         definitions = DefinitionIndex(analysis: analysis)
     }
 
     /// The repository's name, from its main checkout.
     var name: String {
-        if let main = worktrees.first { return main.root.lastPathComponent }
-        let parent = commonDir.deletingLastPathComponent()
-        return commonDir.lastPathComponent == ".git" ? parent.lastPathComponent : commonDir.deletingPathExtension().lastPathComponent
+        if let main = worktrees.first { return main.name }
+        let parent = commonDir.url.deletingLastPathComponent()
+        return commonDir.name == ".git" ? parent.lastPathComponent : commonDir.url.deletingPathExtension().lastPathComponent
     }
 
     var resolver: Resolver { Resolver(git: git) }
 
-    func worktree(at root: URL) -> Worktree? {
-        let std = root.standardizedFileURL.path
-        return worktrees.first { $0.root.standardizedFileURL.path == std }
-    }
+    func worktree(at root: CanonicalPath) -> Worktree? { worktrees.first { $0.root == root } }
 
     /// The checkout where a branch is checked out, if any.
     func worktree(onBranch name: String) -> Worktree? { worktrees.first { $0.branch == name } }
 
     /// The checkout to open files in for a subject: its own, the one on its branch, or the main one.
-    func checkout(for subject: Subject, pullRequest: PullRequest?) -> URL? {
+    func checkout(for subject: Subject, pullRequest: PullRequest?) -> CanonicalPath? {
         switch subject {
         case .worktree(let root): return root
         case .branch(let b): return (worktree(onBranch: b) ?? worktrees.first)?.root
@@ -122,22 +122,22 @@ final class Repository {
     @discardableResult
     func refreshStatus() async -> Bool {
         let git = self.git
-        let statuses = await withTaskGroup(of: (String, Result<WorktreeStatus, Error>).self) { group in
+        let statuses = await withTaskGroup(of: (CanonicalPath, Result<WorktreeStatus, Error>).self) { group in
             for w in worktrees {
                 group.addTask {
-                    let checkout = Git(root: w.root, executable: git.executable)
+                    let checkout = Git(root: w.root.url, executable: git.executable)
                     do {
-                        return (w.root.path, .success(try await checkout.status()))
+                        return (w.root, .success(try await checkout.status()))
                     } catch {
-                        return (w.root.path, .failure(error))
+                        return (w.root, .failure(error))
                     }
                 }
             }
-            var out: [String: Result<WorktreeStatus, Error>] = [:]
+            var out: [CanonicalPath: Result<WorktreeStatus, Error>] = [:]
             for await (k, v) in group { out[k] = v }
             return out
         }
-        var newUncommitted: [String: Int] = [:], newConflicts: [String: Set<String>] = [:], newFailures: [String: String] = [:]
+        var newUncommitted: [CanonicalPath: Int] = [:], newConflicts: [CanonicalPath: Set<String>] = [:], newFailures: [CanonicalPath: String] = [:]
         for (root, result) in statuses {
             switch result {
             case .success(let s):
@@ -158,7 +158,7 @@ final class Repository {
     /// Asks `gh` for the open pull requests, leaving `pullRequests` nil if it can't answer.
     func loadPullRequests() async {
         guard let gh = Repository.ghPath, let root = worktrees.first?.root else { return }
-        pullRequests = try? await listPullRequests(in: root, gh: gh, path: userPath())
+        pullRequests = try? await listPullRequests(in: root.url, gh: gh, path: userPath())
     }
 
     private static let ghPath: String? = userPath().split(separator: ":").map { "\($0)/gh" }.first { FileManager.default.isExecutableFile(atPath: $0) }
@@ -167,7 +167,7 @@ final class Repository {
     /// own base or the default.
     func base(for subject: Subject) -> String? { Repository.base(for: subject, usual: defaultBase, commonDir: commonDir) }
 
-    nonisolated static func base(for subject: Subject, usual: String?, commonDir: URL) -> String? {
+    nonisolated static func base(for subject: Subject, usual: String?, commonDir: CanonicalPath) -> String? {
         guard subject.hasBase else { return nil }
         if let saved = savedBases[baseKey(subject, commonDir: commonDir)] { return saved }
         if case .pullRequest = subject { return nil }
@@ -183,15 +183,15 @@ final class Repository {
 
     nonisolated private static var savedBases: [String: String] { UserDefaults.standard.dictionary(forKey: "bases") as? [String: String] ?? [:] }
 
-    nonisolated private static func baseKey(_ s: Subject, commonDir: URL) -> String { commonDir.standardizedFileURL.path + "|" + s.key }
+    nonisolated private static func baseKey(_ s: Subject, commonDir: CanonicalPath) -> String { commonDir.path + "|" + s.key }
 
     /// Reads a typed revision expression as something to review.
-    func review(for spec: RevisionSpec, in worktree: URL?) async throws -> Review {
+    func review(for spec: RevisionSpec, in worktree: CanonicalPath?) async throws -> Review {
         let refs = Refs(base: defaultBase, worktrees: worktrees, branches: branches, stashes: stashes)
         return try await Repository.review(for: spec, in: worktree, refs: refs, git: git, commonDir: commonDir)
     }
 
-    nonisolated static func review(for spec: RevisionSpec, in worktree: URL?, refs: Refs, git: Git, commonDir: URL) async throws -> Review {
+    nonisolated static func review(for spec: RevisionSpec, in worktree: CanonicalPath?, refs: Refs, git: Git, commonDir: CanonicalPath) async throws -> Review {
         let here = worktree ?? refs.worktrees.first?.root
         func base(_ s: Subject) -> String? { Repository.base(for: s, usual: refs.base, commonDir: commonDir) }
         switch spec {
@@ -235,7 +235,7 @@ final class Repository {
 
     /// Reads what opening a repository shows: the review a revision expression names, or all the
     /// work in the checkout it's opened from.
-    nonisolated static func open(_ spec: String?, in home: URL?, git: Git, commonDir: URL) async -> Opening {
+    nonisolated static func open(_ spec: String?, in home: CanonicalPath?, git: Git, commonDir: CanonicalPath) async -> Opening {
         let refs = await readRefs(git)
         let review: Review?
         if let spec, !spec.isEmpty, let parsed = parseRevisionSpec(spec) {

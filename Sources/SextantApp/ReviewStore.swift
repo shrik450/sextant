@@ -8,12 +8,12 @@ import SextantCore
 @MainActor
 final class ReviewStore {
     static let didChange = Notification.Name("SextantReviewStoreDidChange")
-    private static var stores: [URL: ReviewStore] = [:]
+    private static var stores: [CanonicalPath: ReviewStore] = [:]
 
-    static func shared(for commonDir: URL) -> ReviewStore {
-        let key = commonDir.standardizedFileURL
+    static func shared(for commonDir: CanonicalPath) -> ReviewStore {
+        let key = commonDir
         if let s = stores[key] { return s }
-        let s = ReviewStore(directory: key.appendingPathComponent("sextant"))
+        let s = ReviewStore(directory: key.url.appendingPathComponent("sextant"))
         stores[key] = s
         return s
     }

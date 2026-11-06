@@ -2,19 +2,19 @@ import Foundation
 
 /// A checkout of the repository: the main one or a linked worktree.
 public struct Worktree: Sendable, Hashable {
-    public var root: URL
+    public var root: CanonicalPath
     /// The checked-out commit, or nil before the first commit.
     public var head: String?
     /// The checked-out branch's short name, or nil when HEAD is detached.
     public var branch: String?
 
-    public init(root: URL, head: String?, branch: String?) {
+    public init(root: CanonicalPath, head: String?, branch: String?) {
         self.root = root
         self.head = head
         self.branch = branch
     }
 
-    public var name: String { root.lastPathComponent }
+    public var name: String { root.name }
 }
 
 /// Parses `git worktree list --porcelain -z`, leaving out bare and prunable entries.
@@ -32,7 +32,7 @@ public func parseWorktreeList(_ data: Data) -> [Worktree] {
         if s.isEmpty { flush(); continue }
         if s.hasPrefix("worktree ") {
             flush()
-            current = Worktree(root: URL(fileURLWithPath: String(s.dropFirst(9)), isDirectory: true), head: nil, branch: nil)
+            current = Worktree(root: CanonicalPath(path: String(s.dropFirst(9))), head: nil, branch: nil)
         } else if s.hasPrefix("HEAD ") {
             let oid = String(s.dropFirst(5))
             current?.head = oid == zeroOid ? nil : oid

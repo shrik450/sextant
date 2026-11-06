@@ -4,7 +4,7 @@ import Foundation
 public enum Subject: Sendable, Hashable {
     /// All the work in a checkout: its branch's commits since the base, plus whatever isn't
     /// committed yet.
-    case worktree(URL)
+    case worktree(CanonicalPath)
     /// A local or remote-tracking branch, since it split from the base.
     case branch(String)
     /// An open pull request, since its head split from the base.
@@ -26,7 +26,7 @@ public enum Subject: Sendable, Hashable {
     /// A string that names the subject, for keeping things like notes and bases with it.
     public var key: String {
         switch self {
-        case .worktree(let root): "worktree:" + root.standardizedFileURL.path
+        case .worktree(let root): "worktree:" + root.path
         case .branch(let b): "branch:" + b
         case .pullRequest(let n): "pr:\(n)"
         case .commit(let c): "commit:" + c
@@ -124,10 +124,9 @@ public struct Resolver: Sendable {
         let head: String?
         switch review.subject {
         case .worktree(let root):
-            let std = root.standardizedFileURL
-            runIn = Git(root: root, executable: git.executable)
+            runIn = Git(root: root.url, executable: git.executable)
             head = await runIn.head()
-            if let known = worktrees.first(where: { $0.root.standardizedFileURL == std }) {
+            if let known = worktrees.first(where: { $0.root == root }) {
                 worktree = known
             } else {
                 worktree = Worktree(root: root, head: head, branch: await runIn.currentBranch())

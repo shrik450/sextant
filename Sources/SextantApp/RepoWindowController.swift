@@ -58,7 +58,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     let inspector: Inspector
     var notes: NotesStore { repository.notes }
     private var watcher: FileWatcher?
-    private var watchedPaths: [String] = []
+    private var watchedPaths: [CanonicalPath] = []
 
     /// The panes, left to right.
     private(set) var panes: [Pane] = []
@@ -68,7 +68,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     var reader: Reader { pane.reader }
 
     /// The checkout the window was opened from, which typed revisions like `staged` refer to.
-    private(set) var home: URL?
+    private(set) var home: CanonicalPath?
     var session: Session? { pane.session }
     var review: Review? { session?.review }
     var resolved: ResolvedReview? { session?.resolved }
@@ -96,7 +96,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     /// The enabled menu commands when the jump bar opened, for it to offer.
     var jumpCommands: [(path: String, item: NSMenuItem)] = []
 
-    init(repository: Repository, home: URL?) {
+    init(repository: Repository, home: CanonicalPath?) {
         self.repository = repository
         self.home = home
         look = LookChoice.chosen.look
@@ -211,11 +211,11 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
 
     /// Watches the git directory and the checkouts being read.
     private func watch() {
-        var paths = [repository.commonDir.path]
-        for s in sessions { if case .worktree(let root) = s.review.subject, !paths.contains(root.path) { paths.append(root.path) } }
+        var paths = [repository.commonDir]
+        for s in sessions { if case .worktree(let root) = s.review.subject, !paths.contains(root) { paths.append(root) } }
         guard paths != watchedPaths else { return }
         watchedPaths = paths
-        watcher = FileWatcher(paths: paths) { [weak self] changed in self?.filesystemChanged(changed) }
+        watcher = FileWatcher(paths: paths) { [weak self] changed in MainActor.assumeIsolated { self?.filesystemChanged(changed) } }
     }
 
     /// Loads the repository's refs, then a review: the one a revision expression names, or all
@@ -262,7 +262,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         updateTitle()
         for s in sessions {
             guard let res = s.resolved else { continue }
-            let conflicts = res.target.includesWorktree ? repository.conflicts[res.git.root.path] ?? [] : []
+            let conflicts = res.target.includesWorktree ? res.worktree.flatMap { repository.conflicts[$0.root] } ?? [] : []
             for f in s.changes { f.conflicted = conflicts.contains(f.path) }
         }
         guard let res = resolved else { return }
@@ -271,7 +271,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Reviews all the work in a checkout, or offers the picker if there's none to review.
-    func openWork(in root: URL?) {
+    func openWork(in root: CanonicalPath?) {
         guard let root else { showPicker(nil); return }
         home = root
         let subject = Subject.worktree(root)
@@ -279,7 +279,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Reviews what a typed revision expression names.
-    func open(spec: String, in root: URL?) async {
+    func open(spec: String, in root: CanonicalPath?) async {
         if let root { home = root }
         guard let parsed = parseRevisionSpec(spec) else { openWork(in: root); return }
         do {
@@ -394,7 +394,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         }
         let heres = keepPosition ? Dictionary(showing.compactMap { p in currentLocation(of: p).map { (ObjectIdentifier(p), $0) } }, uniquingKeysWith: { a, _ in a }) : [:]
         let previous = Dictionary(s.changes.map { ($0.path, $0) }, uniquingKeysWith: { a, _ in a })
-        let conflicts = res.target.includesWorktree ? repository.conflicts[res.git.root.path] ?? [] : []
+        let conflicts = res.target.includesWorktree ? res.worktree.flatMap { repository.conflicts[$0.root] } ?? [] : []
         s.changes = diffs.map { d in
             let f = previous[d.path].flatMap { $0.diff == d ? $0 : nil } ?? FileState(diff: d, contentAnalysis: repository.analysis)
             f.reviewed = repository.reviews.isReviewed(d.change)
@@ -466,10 +466,10 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         let n = res.commits.count
         let base = res.review.base ?? res.mergeBase.map { String($0.prefix(7)) } ?? ""
         var rows: [ScopeRow] = []
-        if case .worktree = res.review.subject {
+        if case .worktree(let root) = res.review.subject {
             guard n > 0 else { return [] }
             rows.append(.everything(title: "All Work", detail: "\(n) commit\(n == 1 ? "" : "s") since \(base), and what isn’t committed"))
-            rows.append(.uncommitted(count: repository.uncommitted[res.git.root.path] ?? 0, failure: repository.statusFailures[res.git.root.path]))
+            rows.append(.uncommitted(count: repository.uncommitted[root] ?? 0, failure: repository.statusFailures[root]))
         } else {
             guard n > 1 else { return [] }
             rows.append(.everything(title: "All \(n) Commits", detail: "Every change since \(base)"))
@@ -854,12 +854,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     private var refreshTask: Task<Void, Never>?
 
     private func filesystemChanged(_ paths: [String]) {
-        let common = repository.commonDir.path
-        let relevant = paths.contains { p in
-            if p.hasPrefix(common + "/objects") || p.hasPrefix(common + "/sextant") || p.hasPrefix(common + "/lfs") || p.hasPrefix(common + "/logs") { return false }
-            return !p.hasSuffix(".lock") && !p.contains("/.git/objects/")
-        }
-        if relevant { refresh() }
+        if paths.contains(where: repository.changes.matter) { refresh() }
     }
 
     /// Reloads refs and checkouts, then each review shown if anything it shows may have moved.

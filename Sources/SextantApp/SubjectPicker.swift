@@ -23,7 +23,7 @@ final class SubjectPicker: NSViewController {
     private let status = NSTextField(labelWithString: "")
     private let repository: Repository
     private let current: Review?
-    private let here: URL?
+    private let here: CanonicalPath?
     private let onChoose: (Review) -> Void
     private(set) var rows: [Row] = []
     private var found: [Commit] = []
@@ -32,7 +32,7 @@ final class SubjectPicker: NSViewController {
     /// - Parameters:
     ///   - here: The checkout being read, which typed `staged` or `uncommitted` refer to.
     ///   - onChoose: Called with the chosen review.
-    init(repository: Repository, current: Review?, here: URL?, onChoose: @escaping (Review) -> Void) {
+    init(repository: Repository, current: Review?, here: CanonicalPath?, onChoose: @escaping (Review) -> Void) {
         self.repository = repository
         self.current = current
         self.here = here
@@ -274,7 +274,7 @@ extension SubjectPicker: NSTableViewDataSource, NSTableViewDelegate {
         switch row {
         case .section: break
         case .worktree(let w):
-            let n = repository.uncommitted[w.root.path] ?? 0, failed = repository.statusFailures[w.root.path] != nil
+            let n = repository.uncommitted[w.root] ?? 0, failed = repository.statusFailures[w.root] != nil
             cell.set(symbol: "folder", title: w.name, detail: "\(w.branch ?? w.head.map { String($0.prefix(7)) } ?? "no commits")  ·  \(abbreviateHome(w.root.path))",
                      accessory: failed ? "Status unavailable" : n > 0 ? "\(n) uncommitted" : "", current: isCurrent)
         case .pullRequest(let p):
@@ -304,7 +304,7 @@ extension SubjectPicker: NSTableViewDataSource, NSTableViewDelegate {
 
     private func isSubject(_ row: Row, _ s: Subject) -> Bool {
         switch (row, s) {
-        case (.worktree(let w), .worktree(let u)): w.root.standardizedFileURL == u.standardizedFileURL
+        case (.worktree(let w), .worktree(let u)): w.root == u
         case (.pullRequest(let p), .pullRequest(let n)): p.number == n
         case (.branch(let b), .branch(let n)): b.name == n
         case (.commit(let c), .commit(let o)): c.oid == o

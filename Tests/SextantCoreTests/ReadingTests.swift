@@ -181,7 +181,7 @@ private func randomRanges(in length: Int, count: Int, using g: inout SeededRando
 
 @Test func subjectKeysNameTheSubject() {
     #expect(Subject.pullRequest(387).key == "pr:387")
-    #expect(Subject.worktree(URL(fileURLWithPath: "/a/b/../c")).key == "worktree:/a/c")
+    #expect(Subject.worktree(CanonicalPath(path: "/a/b/../c")).key == "worktree:/a/c")
     #expect(Subject.comparison(from: "a", to: "b", sinceAncestor: true).key == "compare:a...b")
 }
 

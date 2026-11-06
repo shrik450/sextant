@@ -28,7 +28,7 @@ extension GitIntegrationTests {
 
     @Test func worktreeReviewsCommitsAndUncommittedWork() async throws {
         #expect(Self.ready)
-        let r = try await resolve(Review(subject: .worktree(Self.fixture), base: "main"))
+        let r = try await resolve(Review(subject: .worktree(CanonicalPath(Self.fixture)), base: "main"))
         #expect(r.worktree?.branch == "feature/peek")
         #expect(r.commits.map(\.subject) == ["Add greet()", "Print usage to stderr"])
         #expect(r.mergeBase == (await repo.resolve("main")))
@@ -37,12 +37,12 @@ extension GitIntegrationTests {
 
     @Test func linkedWorktreeRunsInItsOwnCheckout() async throws {
         #expect(Self.ready)
-        let all = try await resolve(Review(subject: .worktree(Self.agentRoot), base: "main"))
+        let all = try await resolve(Review(subject: .worktree(CanonicalPath(Self.agentRoot)), base: "main"))
         #expect(all.git.root.standardizedFileURL == Self.agentRoot.standardizedFileURL)
         #expect(all.worktree?.branch == "feature/agent")
         #expect(all.commits.map(\.subject) == ["Agent: greet from the agent"])
         #expect(try await paths(all) == ["agent-notes.txt", "main.go", "web/app.ts"])
-        let unfinished = try await resolve(Review(subject: .worktree(Self.agentRoot), base: "main", scope: .uncommitted))
+        let unfinished = try await resolve(Review(subject: .worktree(CanonicalPath(Self.agentRoot)), base: "main", scope: .uncommitted))
         #expect(try await paths(unfinished) == ["agent-notes.txt", "web/app.ts"])
     }
 

@@ -73,12 +73,12 @@ func markdown(_ notes: [Note]) -> String {
 @MainActor
 final class NotesStore {
     static let didChange = Notification.Name("SextantNotesDidChange")
-    private static var stores: [URL: NotesStore] = [:]
+    private static var stores: [CanonicalPath: NotesStore] = [:]
 
-    static func shared(for commonDir: URL) -> NotesStore {
-        let key = commonDir.standardizedFileURL
+    static func shared(for commonDir: CanonicalPath) -> NotesStore {
+        let key = commonDir
         if let s = stores[key] { return s }
-        let s = NotesStore(url: key.appendingPathComponent("sextant/notes.json"))
+        let s = NotesStore(url: key.url.appendingPathComponent("sextant/notes.json"))
         stores[key] = s
         return s
     }

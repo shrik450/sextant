@@ -8,7 +8,7 @@ extension RepoWindowController {
         switch review?.subject {
         case .worktree(let root)?:
             let w = repository.worktree(at: root)
-            return (w?.branch ?? root.lastPathComponent, "folder", "Worktree at \(abbreviateHome(root.path))")
+            return (w?.branch ?? root.name, "folder", "Worktree at \(abbreviateHome(root.path))")
         case .branch(let b)?:
             return (b, "arrow.triangle.branch", "Branch \(b)")
         case .pullRequest(let n)?:
@@ -95,10 +95,10 @@ extension RepoWindowController {
                 add(w?.branch ?? "Detached at \(w?.head?.prefix(7) ?? "nothing")", bold)
                 add(abbreviateHome(root.path), meta)
                 add("\(n) commit\(n == 1 ? "" : "s")" + (res.review.base.map { " since \($0)" } ?? ""), meta)
-                if let failure = repository.statusFailures[root.path] {
+                if let failure = repository.statusFailures[root] {
                     add("Couldn’t read what isn’t committed: \(failure)", meta)
                 } else {
-                    let u = repository.uncommitted[root.path] ?? 0
+                    let u = repository.uncommitted[root] ?? 0
                     add("\(u) uncommitted file\(u == 1 ? "" : "s")", meta)
                 }
             case .branch(let b):
@@ -204,13 +204,13 @@ extension RepoWindowController: NSMenuItemValidation {
     }
 
     /// The checkout that files open from: the reviewed worktree, or the one on the reviewed branch.
-    var checkout: URL? {
+    var checkout: CanonicalPath? {
         review.flatMap { repository.checkout(for: $0.subject, pullRequest: resolved?.pullRequest) } ?? home
     }
 
     @objc func menuReveal(_ sender: NSMenuItem) {
         guard let path = sender.representedObject as? String, let root = checkout else { return }
-        let url = root.appendingPathComponent(path)
+        let url = root.url.appendingPathComponent(path)
         if FileManager.default.fileExists(atPath: url.path) {
             NSWorkspace.shared.activateFileViewerSelecting([url])
         } else {
@@ -221,14 +221,14 @@ extension RepoWindowController: NSMenuItemValidation {
     /// Opens a file of the checkout in the user's editor, which may differ from the revision read.
     func openInEditor(path: String, line: Int) {
         guard let root = checkout else { beep(); return }
-        let url = root.appendingPathComponent(path)
+        let url = root.url.appendingPathComponent(path)
         guard FileManager.default.fileExists(atPath: url.path) else { beep(); return }
         if let cmd = UserDefaults.standard.string(forKey: "editorCommand"), !cmd.trimmingCharacters(in: .whitespaces).isEmpty {
             let full = cmd.replacingOccurrences(of: "{file}", with: shellQuote(url.path)).replacingOccurrences(of: "{line}", with: String(max(1, line)))
             let p = Process()
             p.executableURL = URL(fileURLWithPath: "/bin/sh")
             p.arguments = ["-c", full]
-            p.currentDirectoryURL = root
+            p.currentDirectoryURL = root.url
             var env = ProcessInfo.processInfo.environment
             env["PATH"] = userPath()
             p.environment = env

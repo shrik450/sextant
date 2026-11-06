@@ -315,11 +315,13 @@ final class Appearance {
     /// The folder may not exist yet, so this watches its nearest existing ancestor and only
     /// reacts to paths inside the themes folder.
     private func watchThemes() {
-        let dir = Appearance.themesDirectory.resolvingSymlinksInPath().path
-        var root = URL(fileURLWithPath: dir)
+        let dir = CanonicalPath(Appearance.themesDirectory)
+        var root = dir.url
         while !FileManager.default.fileExists(atPath: root.path), root.path != "/" { root.deleteLastPathComponent() }
-        themeWatcher = FileWatcher(paths: [root.path], latency: 0.2) { [weak self] paths in
-            if paths.contains(where: { $0.hasPrefix(dir) }) { self?.reloadThemes() }
+        themeWatcher = FileWatcher(paths: [CanonicalPath(root)], latency: 0.2) { [weak self] paths in
+            MainActor.assumeIsolated {
+                if paths.contains(where: { dir.components(of: $0) != nil }) { self?.reloadThemes() }
+            }
         }
     }
 

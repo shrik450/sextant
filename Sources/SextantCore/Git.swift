@@ -89,18 +89,20 @@ public struct Git: Sendable {
         return s
     }
 
+    /// Where a repository is: the checkout a path is in, and the git directory its worktrees
+    /// share.
     public struct Location: Sendable {
-        public var root: URL
-        public var commonDir: URL
+        public var root: CanonicalPath
+        public var commonDir: CanonicalPath
     }
 
+    /// Finds the checkout and repository a path is in.
     public static func locate(_ path: URL, executable: String) async throws -> Location {
         let out = String(decoding: try await run(executable, in: path, ["rev-parse", "--show-toplevel", "--git-common-dir"]), as: UTF8.self)
         let lines = out.split(separator: "\n").map(String.init)
         guard lines.count >= 2 else { throw GitError(message: "\(path.path) is not inside a git work tree") }
-        let root = URL(fileURLWithPath: lines[0], isDirectory: true)
-        let common = lines[1].hasPrefix("/") ? URL(fileURLWithPath: lines[1], isDirectory: true) : URL(fileURLWithPath: lines[1], isDirectory: true, relativeTo: path).standardizedFileURL
-        return Location(root: root, commonDir: common)
+        let common = lines[1].hasPrefix("/") ? URL(fileURLWithPath: lines[1]) : URL(fileURLWithPath: path.path).appendingPathComponent(lines[1])
+        return Location(root: CanonicalPath(path: lines[0]), commonDir: CanonicalPath(common))
     }
 
     public func head() async -> String? { await optionalString(["rev-parse", "--verify", "-q", "HEAD"]) }

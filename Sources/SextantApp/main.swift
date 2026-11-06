@@ -82,7 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         Task {
             do {
                 let loc = try await Git.locate(url.hasDirectoryPath || isDirectory(url) ? url : url.deletingLastPathComponent(), executable: gitPath)
-                if let existing = controllers.first(where: { $0.repository.commonDir.standardizedFileURL == loc.commonDir.standardizedFileURL }) {
+                if let existing = controllers.first(where: { $0.repository.commonDir == loc.commonDir }) {
                     existing.window?.raise()
                     if let spec { await existing.open(spec: spec, in: loc.root) } else { existing.openWork(in: loc.root) }
                     if !inBackground { NSApp.activate() }
@@ -98,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 wc.reader.focus()
                 if !inBackground { NSApp.activate() }
                 wc.start(spec: spec, opening: opening)
-                NSDocumentController.shared.noteNewRecentDocumentURL(loc.root)
+                NSDocumentController.shared.noteNewRecentDocumentURL(loc.root.url)
                 saveOpenRepos()
                 completion?(wc)
             } catch {
