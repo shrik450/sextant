@@ -191,3 +191,23 @@ extension GitEdgeCaseTests {
         }
     }
 }
+
+extension GitEdgeCaseTests {
+    @Test func anAddedFileHasNoOldSideToFillIn() async throws {
+        let r = try ScratchRepo("added")
+        try r.write("a.txt", "a\n")
+        try r.commitAll("A")
+        try r.write("b.txt", "one\ntwo\nthree\n")
+        try r.commitAll("B")
+        try r.write("untracked.txt", "u1\nu2\n")
+        let committed = try await r.repo.diff(.commit(try r.git("rev-parse", "HEAD")))
+        let untracked = try await r.repo.diff(.worktree(since: nil))
+        for file in committed + untracked {
+            #expect(file.change.isAdded && file.hunksAreWholeFile, "\(file.path)")
+            let old = try await r.repo.oldLines(of: file)
+            #expect(old.isEmpty, "\(file.path)")
+            #expect(wholeFile(file.hunks, oldLines: old) == file.hunks.flatMap(\.lines), "\(file.path)")
+        }
+        #expect(committed.map(\.path) == ["b.txt"] && untracked.map(\.path) == ["untracked.txt"])
+    }
+}

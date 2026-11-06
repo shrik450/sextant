@@ -144,6 +144,10 @@ public struct FileDiff: Sendable, Hashable, Identifiable {
     }
 
     public var lineCount: Int { hunks.reduce(0) { $0 + $1.lines.count } }
+
+    /// Whether the hunks already hold the whole file, as an added or deleted file's one hunk
+    /// does, so there are no unchanged lines around them to fill in.
+    public var hunksAreWholeFile: Bool { hunks.isEmpty || (hunks.count == 1 && (change.isAdded || change.isDeleted)) }
 }
 
 /// The two sides of a diff to load.

@@ -58,7 +58,7 @@ final class FileState {
         }
         lines = all
         gapsBefore = gaps
-        isWhole = diff.hunks.count <= 1 && gaps.isEmpty && (diff.change.isAdded || diff.change.isDeleted || diff.hunks.isEmpty)
+        isWhole = diff.hunksAreWholeFile && gaps.isEmpty
     }
 
     /// Creates a file opened for reading, outside the change being reviewed.

@@ -286,11 +286,11 @@ public struct Git: Sendable {
     }
 
     /// Old-side file lines, for expanding context around hunks.
+    ///
+    /// - Returns: No lines for a file without an old side, like an added one.
     public func oldLines(of file: FileDiff) async throws -> [String] {
-        let c = file.change
-        if c.oldOid != zeroOid { return splitLines(try await blob(c.oldOid)) }
-        if c.newOid != zeroOid, let d = try? await blob(c.newOid) { return splitLines(d) }
-        return splitLines(readWorktreeFile(c.path) ?? Data())
+        guard file.change.oldOid != zeroOid else { return [] }
+        return splitLines(try await blob(file.change.oldOid))
     }
 }
 
