@@ -37,7 +37,7 @@ extension RepoWindowController {
                 }
             }
             guard let s, !Task.isCancelled else { return }
-            s.definitions = found ?? []
+            s.definitions = found?.filter(\.inOutline) ?? []
             s.indexing = nil
             s.indexTask = nil
             if self?.session === s { self?.jumpPanel?.progressChanged(foundMore: true) }
@@ -80,7 +80,7 @@ extension RepoWindowController {
             let ranked = q.isEmpty ? defs : defs
                 .compactMap { d in fuzzyScore(q, candidate: d.name, name: d.name).map { ($0, d) } }
                 .sorted { $0.0 > $1.0 }.map(\.1)
-            return ranked.prefix(limit).map { definitionItem(LocatedDefinition(name: $0.name, kind: $0.kind, path: f.path, line: $0.nameLine + 1)) }
+            return ranked.prefix(limit).map { definitionItem(LocatedDefinition(name: $0.name, kind: $0.kind, path: f.path, line: $0.nameLine + 1, inOutline: true)) }
         case .line(let n):
             guard let f = focusedFile else { return [] }
             guard let n else { return [] }

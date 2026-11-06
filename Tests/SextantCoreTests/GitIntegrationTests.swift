@@ -180,12 +180,15 @@ import Testing
 
     @Test func blobsNameEachFileByItsContents() async throws {
         #expect(Self.ready)
-        let worktree = Dictionary(try await repo.blobs(in: .worktree).map { ($0.path, $0.oid) }, uniquingKeysWith: { a, _ in a })
+        let worktreeBlobs = try await repo.blobs(in: .worktree)
+        let worktree = Dictionary(worktreeBlobs.map { ($0.path, $0.oid) }, uniquingKeysWith: { a, _ in a })
         let head = Dictionary(try await repo.blobs(in: .commit(try #require(await repo.resolve("HEAD")))).map { ($0.path, $0.oid) }, uniquingKeysWith: { a, _ in a })
         #expect(worktree["src/lib.rs"] == (try await repo.hashObjects(["src/lib.rs"])).first)
         #expect(worktree["src/lib.rs"] != head["src/lib.rs"])
         #expect(worktree["go.mod"] == head["go.mod"])
         #expect(worktree["notes.md"] != nil && head["notes.md"] == nil)
+        #expect(worktreeBlobs.filter(\.inWorktree).map(\.path).contains("src/lib.rs"))
+        #expect(worktreeBlobs.first { $0.path == "go.mod" }?.inWorktree == false)
     }
 
     @Test func definitionIndexParsesEachVersionOnceAndKeepsItBetweenLaunches() async throws {
@@ -194,7 +197,7 @@ import Testing
         try? FileManager.default.removeItem(at: cache)
         let head = Snapshot.commit(try #require(await repo.resolve("HEAD")))
         let parsed = ParseCount()
-        let index = DefinitionIndex(cache: cache)
+        let index = DefinitionIndex(analysis: ContentAnalysis(cache: cache))
         let atHead = try await index.definitions(in: head, git: repo) { done, _ in parsed.set(done) }
         #expect(atHead.contains { $0.name == "main" && $0.path == "main.go" })
         #expect(atHead.contains { $0.name == "get" && $0.path == "src/lib.rs" && $0.line == 15 })
@@ -204,7 +207,8 @@ import Testing
         #expect(parsed.value == 3)
         #expect(inWorktree.contains { $0.name == "get" && $0.path == "src/lib.rs" })
         parsed.set(0)
-        let relaunched = try await DefinitionIndex(cache: cache).definitions(in: head, git: repo) { done, _ in parsed.set(done) }
+        await index.analysis.flush()
+        let relaunched = try await DefinitionIndex(analysis: ContentAnalysis(cache: cache)).definitions(in: head, git: repo) { done, _ in parsed.set(done) }
         #expect(parsed.value == 0)
         #expect(relaunched == atHead)
     }

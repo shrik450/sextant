@@ -235,38 +235,9 @@ extension RepoWindowController: NSMenuItemValidation {
         }
     }
 
-    /// Finds where a name is defined, the way GitHub does it.
-    ///
-    /// Finds the word with `git grep`, then keeps the places the language's tags query says
-    /// define it.
+    /// Finds a name's uses and definitions in the snapshot the review reads.
     private func lookUp(_ word: String, in t: Target) async throws -> (matches: [GrepMatch], definitions: [GrepMatch]) {
-        let snapshot = t.snapshot
-        let git = self.git
-        let matches = try await git.grep(word, in: snapshot, word: true, ignoreCase: false, maxPerFile: 200)
-        var langs: [(String, SyntaxLanguage)] = []
-        for p in Set(matches.map(\.path)).sorted() {
-            if let l = SyntaxRuntime.shared?.language(forPath: p), l.hasTags { langs.append((p, l)) }
-            if langs.count >= 200 { break }
-        }
-        let definitions = await withTaskGroup(of: [GrepMatch].self) { group in
-            for (path, lang) in langs {
-                group.addTask {
-                    guard let data = await git.contents(of: path, in: snapshot) else { return [] }
-                    let text = String(decoding: data, as: UTF8.self)
-                    let defs = lang.symbols(text).filter { $0.isDefinition && $0.name == word }
-                    guard !defs.isEmpty else { return [] }
-                    let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-                    return defs.map { d in
-                        GrepMatch(path: path, line: d.nameLine + 1, column: 1, text: d.nameLine < lines.count ? String(lines[d.nameLine]) : word)
-                    }
-                }
-            }
-            var out: [GrepMatch] = []
-            for await d in group { out += d }
-            var seen = Set<String>()
-            return out.filter { seen.insert("\($0.path):\($0.line)").inserted }
-        }
-        return (matches, definitions)
+        try await repository.definitions.lookUp(word, in: t.snapshot, git: git)
     }
 
     /// Sorts definitions nearest first: the same file, then files sharing the most directories.

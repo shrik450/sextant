@@ -44,12 +44,51 @@ public func rankFuzzy(_ query: String, _ paths: [String]) -> [String] {
         .map(\.1)
 }
 
-/// A definition in a file, as a file's index entry keeps it.
-public struct Definition: Sendable, Equatable, Codable {
+/// A definition in a file, as a file's analysis keeps it.
+public struct Definition: Sendable, Equatable {
     public var name: String
     public var kind: String
     /// The 1-based line of its name.
     public var line: Int
+    /// Whether it belongs in the file's outline, rather than inside a function or method, like a
+    /// local variable.
+    public var inOutline: Bool
+
+    public init(name: String, kind: String, line: Int, inOutline: Bool) {
+        self.name = name
+        self.kind = kind
+        self.line = line
+        self.inOutline = inOutline
+    }
+}
+
+/// Coded as `[name, kind, line, inOutline]`, since a saved index holds a great many.
+extension Definition: Codable {
+    public init(from decoder: Decoder) throws {
+        var c = try decoder.unkeyedContainer()
+        name = try c.decode(String.self)
+        kind = try c.decode(String.self)
+        line = try c.decode(Int.self)
+        inOutline = try c.decode(Bool.self)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.unkeyedContainer()
+        try c.encode(name)
+        try c.encode(kind)
+        try c.encode(line)
+        try c.encode(inOutline)
+    }
+}
+
+/// Returns the definitions among what a tags query found, as a file's analysis keeps them.
+///
+/// - Parameter symbols: Definitions and references in document order.
+public func indexedDefinitions(_ symbols: [Symbol]) -> [Definition] {
+    let defs = symbols.filter(\.isDefinition)
+    return zip(defs, inOutline(defs)).map { d, outlined in
+        Definition(name: d.name, kind: d.kind, line: d.nameLine + 1, inOutline: outlined)
+    }
 }
 
 /// A definition and the file it's in.
@@ -59,157 +98,103 @@ public struct LocatedDefinition: Sendable, Equatable {
     public var path: String
     /// The 1-based line of its name.
     public var line: Int
+    /// Whether it belongs in the file's outline, rather than inside a function or method.
+    public var inOutline: Bool
 
-    public init(name: String, kind: String, path: String, line: Int) {
+    public init(name: String, kind: String, path: String, line: Int, inOutline: Bool) {
         self.name = name
         self.kind = kind
         self.path = path
         self.line = line
+        self.inOutline = inOutline
+    }
+
+    init(_ d: Definition, path: String) {
+        self.init(name: d.name, kind: d.kind, path: path, line: d.line, inOutline: d.inOutline)
     }
 }
 
+/// A regular file in a snapshot, with the ID of its contents.
+struct SnapshotBlob: Sendable, Equatable {
+    var path: String
+    var oid: String
+    /// Whether its contents are only in the worktree, where git hashed them without storing them.
+    var inWorktree: Bool
+}
+
+/// A snapshot's regular files: those git has IDs for, and worktree files that need hashing.
+struct SnapshotListing: Sendable {
+    var blobs: [SnapshotBlob]
+    /// Files changed in the worktree, whose IDs git hasn't computed.
+    var unhashed: [String]
+}
+
 extension Git {
-    /// Every file in a snapshot with the ID of its contents, which for files changed in the
-    /// worktree is the ID git would give them.
-    public func blobs(in snapshot: Snapshot) async throws -> [(path: String, oid: String)] {
+    /// Every regular file in a snapshot with the ID of its contents, which for files changed in
+    /// the worktree is the ID git would give them.
+    ///
+    /// Symbolic links and submodules are left out, since their contents aren't code.
+    func blobs(in snapshot: Snapshot) async throws -> [SnapshotBlob] {
+        let listing = try await listBlobs(in: snapshot)
+        return (listing.blobs + (try await hashed(listing.unhashed))).sorted { $0.path < $1.path }
+    }
+
+    /// Lists a snapshot's regular files without hashing those changed in the worktree.
+    func listBlobs(in snapshot: Snapshot) async throws -> SnapshotListing {
         switch snapshot {
         case .commit(let c):
-            return parseTree(try await run(["ls-tree", "-r", "-z", c]))
+            return SnapshotListing(blobs: parseTree(try await run(["ls-tree", "-r", "-z", c])).map { SnapshotBlob(path: $0.path, oid: $0.oid, inWorktree: false) }, unhashed: [])
         case .index:
-            return parseStaged(try await run(["ls-files", "-s", "-z"]))
+            return SnapshotListing(blobs: parseStaged(try await run(["ls-files", "-s", "-z"])).map { SnapshotBlob(path: $0.path, oid: $0.oid, inWorktree: false) }, unhashed: [])
         case .worktree:
-            var byPath = Dictionary(parseStaged(try await run(["ls-files", "-s", "-z"])).map { ($0.path, $0.oid) }, uniquingKeysWith: { a, _ in a })
-            let changed = try await run(["ls-files", "-z", "-m", "-o", "--exclude-standard"])
-            let fm = FileManager.default
-            var hashable: [String] = []
-            for raw in changed.split(separator: 0) {
+            async let staged = run(["ls-files", "-s", "-z"])
+            async let changed = run(["ls-files", "-z", "-m", "-o", "--exclude-standard"])
+            var byPath = Dictionary(parseStaged(try await staged).map { ($0.path, $0.oid) }, uniquingKeysWith: { a, _ in a })
+            var unhashed = Set<String>()
+            for raw in try await changed.split(separator: 0) {
                 let p = String(decoding: raw, as: UTF8.self)
-                if fm.fileExists(atPath: root.appendingPathComponent(p).path), !p.contains("\n") {
-                    hashable.append(p)
-                } else {
-                    byPath[p] = nil
-                }
+                byPath[p] = nil
+                let type = (try? FileManager.default.attributesOfItem(atPath: root.appendingPathComponent(p).path))?[.type] as? FileAttributeType
+                if type == .typeRegular, !p.contains("\n") { unhashed.insert(p) }
             }
-            let unique = Array(Set(hashable)).sorted()
-            if !unique.isEmpty {
-                let oids = try await hashObjects(unique)
-                for (p, o) in zip(unique, oids) { byPath[p] = o }
-            }
-            return byPath.map { ($0.key, $0.value) }.sorted { $0.path < $1.path }
-        }
-    }
-}
-
-/// Parses `git ls-tree -r -z`, keeping files.
-func parseTree(_ data: Data) -> [(path: String, oid: String)] {
-    data.split(separator: 0).compactMap { record in
-        guard let tab = record.firstIndex(of: 0x09) else { return nil }
-        let fields = record[..<tab].split(separator: 0x20)
-        guard fields.count == 3, fields[1].elementsEqual("blob".utf8) else { return nil }
-        return (String(decoding: record[(tab + 1)...], as: UTF8.self), String(decoding: fields[2], as: UTF8.self))
-    }
-}
-
-/// Parses `git ls-files -s -z`, keeping files at stage 0.
-func parseStaged(_ data: Data) -> [(path: String, oid: String)] {
-    data.split(separator: 0).compactMap { record in
-        guard let tab = record.firstIndex(of: 0x09) else { return nil }
-        let fields = record[..<tab].split(separator: 0x20)
-        guard fields.count == 3, fields[2].elementsEqual("0".utf8), !fields[0].elementsEqual("160000".utf8) else { return nil }
-        return (String(decoding: record[(tab + 1)...], as: UTF8.self), String(decoding: fields[1], as: UTF8.self))
-    }
-}
-
-/// The definitions in a repository's files, found with each language's tags query.
-///
-/// Files are kept by the ID of their contents, so each version of a file is parsed once,
-/// whatever snapshot it's in, and the index is saved between launches.
-public actor DefinitionIndex {
-    private let cache: URL?
-    private var byBlob: [String: [Definition]] = [:]
-    private var loaded = false
-    private let runtime: SyntaxRuntime?
-
-    /// The largest file parsed, in bytes.
-    static let largestFile = 1 << 20
-
-    /// - Parameters:
-    ///   - cache: Where the index is saved, or nil to keep it in memory.
-    ///   - runtime: The grammars, or the shared ones.
-    public init(cache: URL?, runtime: SyntaxRuntime? = SyntaxRuntime.shared) {
-        self.cache = cache
-        self.runtime = runtime
-    }
-
-    /// Returns every definition in a snapshot's files, parsing the files not seen before.
-    ///
-    /// - Parameter progress: Told how many files are parsed of how many need it, as they finish.
-    public func definitions(in snapshot: Snapshot, git: Git, progress: @escaping @Sendable (Int, Int) -> Void = { _, _ in }) async throws -> [LocatedDefinition] {
-        load()
-        guard let runtime else { return [] }
-        let files = try await git.blobs(in: snapshot).filter { runtime.language(forPath: $0.path)?.hasTags == true }
-        let missing = Dictionary(files.filter { byBlob[$0.oid] == nil }.map { ($0.oid, $0.path) }, uniquingKeysWith: { a, _ in a }).map { (oid: $0.key, path: $0.value) }
-        if !missing.isEmpty {
-            try await parse(missing, in: snapshot, git: git, runtime: runtime, progress: progress)
-            save(keeping: Set(files.map(\.oid)))
-        }
-        return files.flatMap { f in
-            (byBlob[f.oid] ?? []).map { LocatedDefinition(name: $0.name, kind: $0.kind, path: f.path, line: $0.line) }
+            return SnapshotListing(blobs: byPath.map { SnapshotBlob(path: $0.key, oid: $0.value, inWorktree: false) }, unhashed: unhashed.sorted())
         }
     }
 
-    private func parse(_ missing: [(oid: String, path: String)], in snapshot: Snapshot, git: Git, runtime: SyntaxRuntime,
-                       progress: @escaping @Sendable (Int, Int) -> Void) async throws {
-        let workers = max(1, ProcessInfo.processInfo.activeProcessorCount - 2)
-        try await withThrowingTaskGroup(of: (String, [Definition]).self) { group in
-            var next = 0
-            func add() {
-                guard next < missing.count else { return }
-                let (oid, path) = missing[next]
-                next += 1
-                group.addTask {
-                    try Task.checkCancellation()
-                    let data = snapshot == .worktree ? git.readWorktreeFile(path, limit: Self.largestFile) : await git.blob(oid: oid)
-                    guard let data, data.count <= Self.largestFile, !data.prefix(8000).contains(0),
-                          let lang = runtime.language(forPath: path) else { return (oid, []) }
-                    let found = outlineDefinitions(lang.symbols(String(decoding: data, as: UTF8.self)).filter(\.isDefinition))
-                    return (oid, found.map { Definition(name: $0.name, kind: $0.kind, line: $0.nameLine + 1) })
-                }
-            }
-            for _ in 0..<workers { add() }
-            var done = 0
-            for try await (oid, defs) in group {
-                byBlob[oid] = defs
-                done += 1
-                if done % 50 == 0 || done == missing.count { progress(done, missing.count) }
-                add()
-            }
-        }
+    /// Hashes worktree files the way git would, without storing them.
+    func hashed(_ paths: [String]) async throws -> [SnapshotBlob] {
+        guard !paths.isEmpty else { return [] }
+        return zip(paths, try await hashObjects(paths)).map { SnapshotBlob(path: $0, oid: $1, inWorktree: true) }
     }
 
-    private func load() {
-        guard !loaded else { return }
-        loaded = true
-        guard let cache, let data = try? Data(contentsOf: cache),
-              let saved = try? JSONDecoder().decode([String: [Definition]].self, from: data) else { return }
-        byBlob.merge(saved) { a, _ in a }
-    }
-
-    /// Saves the index, dropping files from other snapshots once they outnumber this one's,
-    /// so the saved index stays near the size of the repository.
-    private func save(keeping current: Set<String>) {
-        if byBlob.count > current.count * 3 { byBlob = byBlob.filter { current.contains($0.key) } }
-        guard let cache else { return }
-        try? FileManager.default.createDirectory(at: cache.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if let data = try? JSONEncoder().encode(byBlob) { try? data.write(to: cache, options: .atomic) }
-    }
-}
-
-extension Git {
     /// Returns a blob's contents by object ID, or nil if it can't be read.
     func blob(oid: String) async -> Data? {
         try? await blob(oid)
     }
+}
+
+/// Parses `git ls-tree -r -z`, keeping regular files.
+func parseTree(_ data: Data) -> [(path: String, oid: String)] {
+    data.split(separator: 0).compactMap { record in
+        guard let tab = record.firstIndex(of: 0x09) else { return nil }
+        let fields = record[..<tab].split(separator: 0x20)
+        guard fields.count == 3, fields[1].elementsEqual("blob".utf8), isRegularMode(fields[0]) else { return nil }
+        return (String(decoding: record[(tab + 1)...], as: UTF8.self), String(decoding: fields[2], as: UTF8.self))
+    }
+}
+
+/// Parses `git ls-files -s -z`, keeping regular files at stage 0.
+func parseStaged(_ data: Data) -> [(path: String, oid: String)] {
+    data.split(separator: 0).compactMap { record in
+        guard let tab = record.firstIndex(of: 0x09) else { return nil }
+        let fields = record[..<tab].split(separator: 0x20)
+        guard fields.count == 3, fields[2].elementsEqual("0".utf8), isRegularMode(fields[0]) else { return nil }
+        return (String(decoding: record[(tab + 1)...], as: UTF8.self), String(decoding: fields[1], as: UTF8.self))
+    }
+}
+
+private func isRegularMode(_ mode: Data.SubSequence) -> Bool {
+    mode.elementsEqual("100644".utf8) || mode.elementsEqual("100755".utf8)
 }
 
 /// What a query typed to jump means, by its first character.

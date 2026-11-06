@@ -11,7 +11,10 @@ final class Repository {
     let commonDir: URL
     let reviews: ReviewStore
     let notes: NotesStore
-    /// The definitions in every version of every file read so far, saved in the git directory.
+    /// The syntax of every version of every file read so far, with definitions saved in the git
+    /// directory.
+    let analysis: ContentAnalysis
+    /// The definitions in each snapshot, found through `analysis`.
     let definitions: DefinitionIndex
 
     /// The main checkout first, then linked worktrees.
@@ -33,7 +36,8 @@ final class Repository {
         git = Git(root: commonDir, executable: gitPath)
         reviews = ReviewStore.shared(for: commonDir)
         notes = NotesStore.shared(for: commonDir)
-        definitions = DefinitionIndex(cache: commonDir.appendingPathComponent("sextant/definitions.json"))
+        analysis = ContentAnalysis(cache: commonDir.appendingPathComponent("sextant/definitions.json"))
+        definitions = DefinitionIndex(analysis: analysis)
     }
 
     /// The repository's name, from its main checkout.
