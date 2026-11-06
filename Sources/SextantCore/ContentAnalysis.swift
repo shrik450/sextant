@@ -72,9 +72,10 @@ public actor ContentAnalysis {
 
     /// A version of a file to find definitions in.
     public struct Source: Sendable {
+        /// The version git names, which the contents read are expected to have.
         public var key: ContentKey
         public var language: SyntaxLanguage
-        /// Reads the contents, or returns nil for contents not worth parsing.
+        /// Reads the contents, or returns nil when they can't be read now.
         public var read: @Sendable () async -> Data?
 
         public init(key: ContentKey, language: SyntaxLanguage, read: @escaping @Sendable () async -> Data?) {
@@ -84,28 +85,45 @@ public actor ContentAnalysis {
         }
     }
 
+    /// The largest contents parsed for definitions, in bytes.
+    public static let largestFile = 1 << 20
+
+    /// Whether contents are worth parsing for definitions: not too large, and not binary.
+    public static func isParseable(_ data: Data) -> Bool {
+        data.count <= largestFile && !data.prefix(8000).contains(0)
+    }
+
     /// Returns the definitions in some versions of files, reading and parsing in parallel those
     /// not analyzed before.
     ///
-    /// - Parameter progress: Told how many versions are parsed of how many need it, as they finish.
+    /// What's read is named by its own blob ID, so a file that changed after git named it is
+    /// saved as the version read, and a source that can't be read is left out and read again
+    /// next time.
+    ///
+    /// - Parameter progress: Told how many versions are read of how many need it, as they finish.
+    /// - Returns: The definitions of each source read, by the key it was asked for.
     public func definitions(of sources: [Source], progress: @escaping @Sendable (Int, Int) -> Void = { _, _ in }) async throws -> [ContentKey: [Definition]] {
         load()
         var seen = Set<ContentKey>()
         let missing = sources.filter { definitions[$0.key] == nil && seen.insert($0.key).inserted }
+        var readAs: [ContentKey: ContentKey] = [:]
         if !missing.isEmpty {
             let workers = max(1, ProcessInfo.processInfo.activeProcessorCount - 2)
-            try await withThrowingTaskGroup(of: (ContentKey, [Definition]).self) { group in
+            try await withThrowingTaskGroup(of: Found?.self) { group in
                 var next = 0
                 func add() {
                     guard next < missing.count else { return }
                     let source = missing[next]
                     next += 1
-                    group.addTask { (source.key, try await Self.definitions(of: source)) }
+                    group.addTask { try await Self.found(in: source, analysis: self) }
                 }
                 for _ in 0..<workers { add() }
                 var done = 0
-                for try await (key, found) in group {
-                    definitions[key] = found
+                for try await found in group {
+                    if let found {
+                        definitions[found.read] = found.definitions
+                        readAs[found.asked] = found.read
+                    }
                     done += 1
                     if done % 50 == 0 || done == missing.count { progress(done, missing.count) }
                     add()
@@ -114,8 +132,28 @@ public actor ContentAnalysis {
             saveSoon()
         }
         var out: [ContentKey: [Definition]] = [:]
-        for s in sources { out[s.key] = definitions[s.key] }
+        for s in sources { out[s.key] = definitions[s.key] ?? readAs[s.key].flatMap { definitions[$0] } }
         return out
+    }
+
+    /// The definitions found in one source, under the key of the contents read.
+    private struct Found: Sendable {
+        var asked: ContentKey
+        var read: ContentKey
+        var definitions: [Definition]
+    }
+
+    private func saved(_ key: ContentKey) -> [Definition]? { definitions[key] }
+
+    @concurrent private static func found(in source: Source, analysis: ContentAnalysis) async throws -> Found? {
+        try Task.checkCancellation()
+        guard let data = await source.read() else { return nil }
+        let read = ContentKey(oid: blobID(of: data), grammar: source.key.grammar)
+        if let saved = await analysis.saved(read) { return Found(asked: source.key, read: read, definitions: saved) }
+        let found = isParseable(data)
+            ? autoreleasepool { indexedDefinitions(source.language.symbols(splitLines(data).joined(separator: "\n"))) }
+            : []
+        return Found(asked: source.key, read: read, definitions: found)
     }
 
     /// Forgets the saved definitions of other versions once they outnumber these threefold, so
@@ -134,12 +172,6 @@ public actor ContentAnalysis {
     public func flush() async {
         save()
         await saving?.value
-    }
-
-    @concurrent private static func definitions(of source: Source) async throws -> [Definition] {
-        try Task.checkCancellation()
-        guard let data = await source.read() else { return [] }
-        return autoreleasepool { indexedDefinitions(source.language.symbols(splitLines(data).joined(separator: "\n"))) }
     }
 
 

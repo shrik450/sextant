@@ -8,9 +8,6 @@ public struct DefinitionIndex: Sendable {
     public let analysis: ContentAnalysis
     private let runtime: SyntaxRuntime?
 
-    /// The largest file parsed, in bytes.
-    static let largestFile = 1 << 20
-
     /// - Parameter runtime: The grammars, or the shared ones.
     public init(analysis: ContentAnalysis, runtime: SyntaxRuntime? = SyntaxRuntime.shared) {
         self.analysis = analysis
@@ -56,7 +53,8 @@ public struct DefinitionIndex: Sendable {
     /// Pairs the files a grammar finds definitions in with how to read them.
     ///
     /// Worktree files git only hashed are read from the worktree, and every other file from git's
-    /// objects, so the contents always match the ID.
+    /// objects. A worktree file can change after git hashed it, so the content analysis names
+    /// what it reads by the contents.
     @concurrent private func tagged(_ blobs: [SnapshotBlob], git: Git) async -> [File] {
         guard let runtime else { return [] }
         let covered = blobs.filter { runtime.hasLanguage(forPath: $0.path) }
@@ -64,7 +62,7 @@ public struct DefinitionIndex: Sendable {
         return covered.compactMap { b in
             guard let language = runtime.language(forPath: b.path), language.hasTags else { return nil }
             let read: @Sendable () async -> Data? = { [path = b.path, oid = b.oid, inWorktree = b.inWorktree] in
-                Self.parseable(inWorktree ? git.readWorktreeFile(path, limit: Self.largestFile) : await git.blob(oid: oid))
+                inWorktree ? git.readWorktreeFile(path, limit: ContentAnalysis.largestFile) : await git.blob(oid: oid)
             }
             return File(path: b.path, source: ContentAnalysis.Source(key: ContentKey(oid: b.oid, grammar: language.version), language: language, read: read))
         }
@@ -84,7 +82,7 @@ public struct DefinitionIndex: Sendable {
                     let url = git.root.appendingPathComponent(path)
                     guard let language = runtime.language(forPath: path), language.hasTags,
                           (try? FileManager.default.attributesOfItem(atPath: url.path))?[.type] as? FileAttributeType == .typeRegular,
-                          let data = Self.parseable(git.readWorktreeFile(path, limit: Self.largestFile)) else { return nil }
+                          let data = git.readWorktreeFile(path, limit: ContentAnalysis.largestFile), ContentAnalysis.isParseable(data) else { return nil }
                     return File(path: path, source: ContentAnalysis.Source(key: ContentKey(oid: blobID(of: data), grammar: language.version), language: language, read: { data }))
                 }
             }
@@ -92,12 +90,6 @@ public struct DefinitionIndex: Sendable {
             for await f in group { if let f { files.append(f) } }
             return files.sorted { $0.path < $1.path }
         }
-    }
-
-    /// Returns contents worth parsing: not too large, and not binary.
-    private static func parseable(_ data: Data?) -> Data? {
-        guard let data, data.count <= largestFile, !data.prefix(8000).contains(0) else { return nil }
-        return data
     }
 }
 
