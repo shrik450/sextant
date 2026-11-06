@@ -33,14 +33,25 @@ public func unquoteGitPath(_ s: Substring) -> String {
 }
 
 /// Parses the metadata part of a raw entry: `:100644 100644 <oid> <oid> R087`.
+///
+/// An unmerged path in the worktree gets a combined entry instead, with a mode and an ID for
+/// each side and the result: `::100644 100644 100644 <oid> <oid> <oid> MM`. That becomes status
+/// `U`, from our side to the result.
 func parseRawMeta(_ meta: Substring) -> (status: Character, score: Int?, oldMode: String, newMode: String, oldOid: String, newOid: String)? {
-    let parts = meta.dropFirst().split(separator: " ", omittingEmptySubsequences: true)
-    guard parts.count >= 5, let st = parts[4].first else { return nil }
-    let score = Int(parts[4].dropFirst())
-    return (st, score, String(parts[0]), String(parts[1]), String(parts[2]), String(parts[3]))
+    let parents = meta.prefix { $0 == ":" }.count
+    let sides = parents + 1
+    let parts = meta.dropFirst(parents).split(separator: " ")
+    guard parents > 0, parts.count == 2 * sides + 1, let st = parts[2 * sides].first else { return nil }
+    let combined = parents > 1
+    return (combined ? "U" : st, combined ? nil : Int(parts[2 * sides].dropFirst()),
+            String(parts[0]), String(parts[sides - 1]), String(parts[sides]), String(parts[2 * sides - 1]))
 }
 
 /// Parses `git diff --raw -p -z` output into file diffs.
+///
+/// Patches are matched to raw entries by path, since git leaves some entries without one (an
+/// unmerged path, a change only in mode) and lists unmerged paths first. When an unmerged path
+/// also has an entry against one side, as with `--ours`, the two become one unmerged file.
 public func parseRawPatchZ(_ data: Data) -> [FileDiff] {
     let bytes = [UInt8](data)
     var i = 0
@@ -67,57 +78,52 @@ public func parseRawPatchZ(_ data: Data) -> [FileDiff] {
     }
     while i < bytes.count, bytes[i] == 0 || bytes[i] == UInt8(ascii: "\n") { i += 1 }
 
-    let patches = splitPatches(bytes[i...])
-    var result: [FileDiff] = []
-    result.reserveCapacity(changes.count)
-    var pi = 0
-    for c in changes {
-        if c.status == "U" {
-            if pi < patches.count, patches[pi].isCombined {
-                result.append(parseFilePatch(patches[pi].lines, change: c))
-                pi += 1
-            } else {
-                result.append(FileDiff(change: c, notes: ["Unmerged"]))
-            }
-            continue
-        }
-        if pi < patches.count {
-            result.append(parseFilePatch(patches[pi].lines, change: c))
-            pi += 1
-        } else {
-            result.append(FileDiff(change: c))
+    let unmerged = Set(changes.lazy.filter { $0.status == "U" }.map(\.path))
+    if !unmerged.isEmpty {
+        let againstASide = Set(changes.lazy.filter { $0.status != "U" && unmerged.contains($0.path) }.map(\.path))
+        changes = changes.compactMap { c in
+            guard unmerged.contains(c.path) else { return c }
+            if c.status == "U" { return againstASide.contains(c.path) ? nil : c }
+            var c = c
+            c.status = "U"
+            return c
         }
     }
-    return result
+
+    var patches: [String: PatchChunk] = [:]
+    for p in splitPatches(bytes[i...]) where patches[p.path] == nil { patches[p.path] = p }
+    return changes.map { c in
+        if let p = patches[c.path] { return parseFilePatch(p.lines, change: c) }
+        return FileDiff(change: c, notes: c.status == "U" ? ["Unmerged"] : [])
+    }
 }
 
 struct PatchChunk {
+    /// The path on the new side, which the raw entry for it names.
+    var path: String
     var lines: [ArraySlice<UInt8>]
-    var isCombined: Bool
 }
 
 func splitPatches(_ bytes: ArraySlice<UInt8>) -> [PatchChunk] {
     var chunks: [PatchChunk] = []
     var cur: [ArraySlice<UInt8>] = []
-    var curCombined = false
     var start = bytes.startIndex
     let diffGit = Array("diff --git ".utf8)
     let diffCC = Array("diff --cc ".utf8)
     let diffCombined = Array("diff --combined ".utf8)
     let unmerged = Array("* Unmerged path ".utf8)
     func flush() {
-        if !cur.isEmpty { chunks.append(PatchChunk(lines: cur, isCombined: curCombined)) }
+        if let first = cur.first, let path = patchPath(first, header: cur.dropFirst()) { chunks.append(PatchChunk(path: path, lines: cur)) }
         cur = []
     }
     func handle(_ line: ArraySlice<UInt8>) {
-        if line.starts(with: diffGit) {
-            flush(); curCombined = false
-        } else if line.starts(with: diffCC) || line.starts(with: diffCombined) {
-            flush(); curCombined = true
+        if line.starts(with: diffGit) || line.starts(with: diffCC) || line.starts(with: diffCombined) {
+            flush()
         } else if line.starts(with: unmerged) {
+            flush()
             return
         }
-        if !cur.isEmpty || line.starts(with: diffGit) || curCombined { cur.append(line) }
+        if !cur.isEmpty || line.starts(with: diffGit) || line.starts(with: diffCC) || line.starts(with: diffCombined) { cur.append(line) }
     }
     var idx = bytes.startIndex
     while idx < bytes.endIndex {
@@ -130,6 +136,46 @@ func splitPatches(_ bytes: ArraySlice<UInt8>) -> [PatchChunk] {
     if start < bytes.endIndex { handle(bytes[start..<bytes.endIndex]) }
     flush()
     return chunks
+}
+
+/// Returns the new-side path a patch is for, from its `diff --git a/<old> b/<new>` line, or the
+/// `rename to` or `copy to` line in its header when the two paths differ.
+///
+/// The two paths in the first line are only told apart there when they're the same, since an
+/// unquoted path can hold ` b/`. A combined patch's line names its one path.
+func patchPath(_ first: ArraySlice<UInt8>, header: ArraySlice<ArraySlice<UInt8>>) -> String? {
+    for line in header {
+        if line.starts(with: [UInt8(ascii: "@"), UInt8(ascii: "@")]) { break }
+        for prefix in ["rename to ", "copy to "] where line.starts(with: prefix.utf8) {
+            return unquoteGitPath(Substring(String(decoding: line.dropFirst(prefix.utf8.count), as: UTF8.self)))
+        }
+    }
+    let s = String(decoding: first, as: UTF8.self)
+    for prefix in ["diff --cc ", "diff --combined "] where s.hasPrefix(prefix) {
+        return unquoteGitPath(s.dropFirst(prefix.count))
+    }
+    let rest = Array(first.dropFirst("diff --git ".utf8.count))
+    if rest.first == UInt8(ascii: "\"") {
+        guard let close = closingQuote(rest, from: 0), close + 2 < rest.count else { return nil }
+        let b = unquoteGitPath(Substring(String(decoding: rest[(close + 2)...], as: UTF8.self)))
+        return b.hasPrefix("b/") ? String(b.dropFirst(2)) : nil
+    }
+    let half = (rest.count - 1) / 2
+    guard rest.count % 2 == 1, rest.count > 5, rest[half] == UInt8(ascii: " "),
+          rest[..<half].starts(with: "a/".utf8), rest[(half + 1)...].starts(with: "b/".utf8),
+          rest[2..<half].elementsEqual(rest[(half + 3)...]) else { return nil }
+    return String(decoding: rest[(half + 3)...], as: UTF8.self)
+}
+
+/// Returns the index of the quote that closes a C-quoted string opening at `open`.
+func closingQuote(_ bytes: [UInt8], from open: Int) -> Int? {
+    var i = open + 1
+    while i < bytes.count {
+        if bytes[i] == UInt8(ascii: "\\") { i += 2; continue }
+        if bytes[i] == UInt8(ascii: "\"") { return i }
+        i += 1
+    }
+    return nil
 }
 
 func parseHunkHeader(_ line: Substring) -> (Int, Int, Int, Int, String)? {

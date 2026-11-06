@@ -149,7 +149,7 @@ public struct Git: Sendable {
     }
 
 
-    static let diffFlags = ["--raw", "-p", "-z", "--no-abbrev", "--no-color", "--no-ext-diff", "--no-textconv", "--no-relative", "-M", "--submodule=short"]
+    static let diffFlags = ["--raw", "-p", "-z", "--no-abbrev", "--no-color", "--no-ext-diff", "--no-textconv", "--no-relative", "-M", "--submodule=short", "--src-prefix=a/", "--dst-prefix=b/"]
 
     /// Resolves the two sides of a target to arguments for `git diff`.
     public func diffArgs(_ target: Target) async throws -> [String] {
@@ -157,7 +157,7 @@ public struct Git: Sendable {
         case .worktree(let since?): return [since]
         case .worktree(nil): return [await head() ?? emptyTreeOid]
         case .staged: return ["--cached", await head() ?? emptyTreeOid]
-        case .unstaged: return []
+        case .unstaged: return ["--ours"]
         case .commit(let c):
             let parent = await resolve(c + "^1")
             return [parent ?? emptyTreeOid, c]

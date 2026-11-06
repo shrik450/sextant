@@ -63,6 +63,64 @@ private func rawPatch(_ raw: [String], _ patch: String) -> Data {
     #expect(r.additions == 1 && r.deletions == 1)
 }
 
+@Test func pairsPatchesWithRawEntriesByPath() {
+    let a = String(repeating: "a", count: 40), b = String(repeating: "b", count: 40), z = zeroOid
+    let data = rawPatch([
+        "::100644 100644 100644 \(a) \(b) \(z) MM", "both.txt",
+        ":100644 100644 \(a) \(z) M", "a b/c.txt",
+        ":100644 100755 \(a) \(a) M", "mode only.sh",
+        ":100644 100644 \(a) \(z) M", "tab\there.txt",
+        ":100644 100644 \(a) \(z) M", "z.txt",
+    ], """
+    diff --git a/a b/c.txt b/a b/c.txt
+    @@ -1 +1 @@
+    -x
+    +a b/c
+    diff --git a/mode only.sh b/mode only.sh
+    old mode 100644
+    new mode 100755
+    diff --git "a/tab\\there.txt" "b/tab\\there.txt"
+    @@ -1 +1 @@
+    -x
+    +tab
+    diff --git a/z.txt b/z.txt
+    @@ -1 +1 @@
+    -x
+    +z
+
+    """)
+    let files = parseRawPatchZ(data)
+    let added = Dictionary(uniqueKeysWithValues: files.map { ($0.path, $0.hunks.flatMap(\.lines).filter { $0.kind == .added }.map(\.text)) })
+    #expect(files.map(\.path) == ["both.txt", "a b/c.txt", "mode only.sh", "tab\there.txt", "z.txt"])
+    #expect(added == ["both.txt": [], "a b/c.txt": ["a b/c"], "mode only.sh": [], "tab\there.txt": ["tab"], "z.txt": ["z"]])
+    let both = files[0].change
+    #expect(both.status == "U" && both.oldOid == a && both.newOid == z && both.oldMode == "100644" && both.newMode == "100644")
+    #expect(files[2].notes == ["old mode 100644", "new mode 100755"])
+}
+
+@Test func mergesAnUnmergedEntryWithItsEntryAgainstOurSide() {
+    let a = String(repeating: "a", count: 40), z = zeroOid
+    let data = rawPatch([
+        ":000000 100644 \(z) \(z) U", "both.txt",
+        ":100644 100644 \(a) \(z) M", "both.txt",
+        ":000000 100644 \(z) \(z) U", "gone.txt",
+    ], """
+    * Unmerged path both.txt
+    diff --git a/both.txt b/both.txt
+    @@ -1 +1,3 @@
+    +<<<<<<< HEAD
+     x
+    +>>>>>>> theirs
+    * Unmerged path gone.txt
+
+    """)
+    let files = parseRawPatchZ(data)
+    #expect(files.map(\.path) == ["both.txt", "gone.txt"])
+    #expect(files.map(\.change.status) == ["U", "U"])
+    #expect(files[0].change.oldOid == a && files[0].additions == 2)
+    #expect(files[1].hunks.isEmpty && files[1].notes == ["Unmerged"])
+}
+
 @Test func parsesHunkHeaderWithoutCounts() {
     let h = parseHunkHeader("@@ -5 +7 @@")!
     #expect(h.0 == 5 && h.1 == 1 && h.2 == 7 && h.3 == 1 && h.4 == "")

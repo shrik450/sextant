@@ -152,6 +152,7 @@ public enum Target: Sendable, Hashable {
     /// `since` is nil.
     case worktree(since: String?)
     case staged
+    /// The working files against the index, with an unmerged file against our side of the merge.
     case unstaged
     /// A commit against its first parent.
     case commit(String)
