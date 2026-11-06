@@ -4,6 +4,17 @@
 # the overview and stepping through commits.
 
 #######################################
+# Prints a script command once per line, a number of times.
+# Arguments:
+#   How many times, then the command.
+#######################################
+repeat() {
+  local n=$1 i
+  shift
+  for ((i = 0; i < n; i++)); do echo "$*"; done
+}
+
+#######################################
 # Reads the work review (the agent branch against origin/main) the way a reviewer does.
 # Globals:
 #   SCENARIO_DIR, FIX
@@ -18,8 +29,10 @@ sleep 3000
 mark reading-start
 measure 20 menu Next File
 measure 10 menu Previous File
+$(repeat 8 menu Next File)
 measure 40 key w
 measure 40 key j
+$(repeat 8 menu Previous File)
 measure 100 scroll 40
 measure 100 scroll -40
 measure 2 menu Side by Side
