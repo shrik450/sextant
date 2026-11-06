@@ -22,8 +22,25 @@ import SextantCore
 ///     resize <w> <h>
 ///     defaults <key> <value>
 ///     menu <title>            perform a menu item by title
+///     note <text>             add a note on the selected lines, as Add Note's editor saves it
 ///     log <text>
 ///     quit
+///
+/// And these, for the benchmarks in Tests/perf:
+///
+///     measure <n> key|scroll|menu|note <what>
+///                             do something n times, logging the main thread's time for each
+///                             and the time until the window settled
+///     timeopen <path> [rev]   open, logging when the window, content and settled state came
+///     mark <name>             log the time since launch and the footprint
+///     settle <name>           wait for the window to settle, logging how long it took
+///     stall <ms>              block the main thread, to check that the probe sees it
+///     waitindex [timeout-ms]  wait for Go to Anything's definitions, logging how long it took
+///     jumptype <text>         type into Go to Anything one key at a time, waiting for each
+///                             key's results before the next
+///     jumpburst <text>        type into Go to Anything without waiting, then wait for the
+///                             results of the whole text
+///     watch <file>|stop       record each change to the review's files, with when it was shown
 @MainActor
 final class Automation {
     let lines: [String]
@@ -208,6 +225,8 @@ final class Automation {
                     sendKey(what)
                 } else if kind == "scroll", let d = Double(what) {
                     window?.reader.scrollBy(lines: CGFloat(d))
+                } else if kind == "note" {
+                    window?.noteOnSelection()?(what)
                 } else if let item = findMenuItem(what, in: NSApp.mainMenu), let action = item.action {
                     if !(window?.window?.firstResponder?.tryToPerform(action, with: item) ?? false) {
                         NSApp.sendAction(action, to: item.target, from: item)
@@ -229,7 +248,8 @@ final class Automation {
             }
             log("MEASURE \(kind) \(what) ×\(n): frame \(stats(frame)) | settled \(stats(settled)) ms")
         case "mark":
-            log(String(format: "MARK %@: %.0f ms since launch, %d MB", arg, (Date().timeIntervalSince1970 - processStart()) * 1000, physicalFootprint() / 1_048_576))
+            let now = Date().timeIntervalSince1970
+            log(String(format: "MARK %@: %.0f ms since launch, %d MB, at %lld", arg, (now - processStart()) * 1000, physicalFootprint() / 1_048_576, Int64(now * 1e9)))
         case "settle":
             let t0 = CACurrentMediaTime()
             while !(window.map { $0.busy == 0 && $0.reader.isSettled } ?? true), CACurrentMediaTime() - t0 < 10 {
@@ -247,6 +267,23 @@ final class Automation {
         case "backdrop":
             setBackdrop(args)
             await waitIdle()
+        case "note":
+            if let save = window?.noteOnSelection() { save(arg) } else { log("! no lines to note") }
+            await waitIdle()
+        case "stall":
+            usleep(useconds_t((Double(arg) ?? 0) * 1000))
+        case "waitindex":
+            let t0 = CACurrentMediaTime()
+            let limit = (Double(arg) ?? 600_000) / 1000
+            while let s = window?.session, s.definitions == nil || s.indexTask != nil, CACurrentMediaTime() - t0 < limit {
+                try? await Task.sleep(for: .milliseconds(5))
+            }
+            log(String(format: "INDEXED %.0f ms, %d definitions, %d MB", (CACurrentMediaTime() - t0) * 1000, window?.session?.definitions?.count ?? -1, physicalFootprint() / 1_048_576))
+        case "jumptype", "jumpburst":
+            await typeIntoJump(arg, waitingForEachKey: cmd == "jumptype")
+        case "watch":
+            watching?.cancel()
+            watching = arg == "stop" ? nil : watch(to: arg)
         case "log": log(arg)
         case "sh":
             let p = Process()
@@ -268,6 +305,75 @@ final class Automation {
             if let found = findMenuItem(name, in: item.submenu) { return found }
         }
         return nil
+    }
+
+    /// Types into the open Go to Anything bar and logs how long the results took.
+    ///
+    /// Waiting for each key logs a `JUMPKEY` line per key and a `JUMP` summary; otherwise every
+    /// key is sent at once and one `JUMPBURST` line says when the whole text's results showed.
+    private func typeIntoJump(_ text: String, waitingForEachKey: Bool) async {
+        guard let panel = window?.jumpPanel, panel.isVisible else {
+            log("! no jump panel")
+            return
+        }
+        func waitForResults(since t0: Double) async -> Double {
+            while panel.itemsQuery != panel.field.stringValue, CACurrentMediaTime() - t0 < 60 {
+                try? await Task.sleep(for: .microseconds(250))
+            }
+            return (CACurrentMediaTime() - t0) * 1000
+        }
+        if !waitingForEachKey {
+            let t0 = CACurrentMediaTime()
+            for ch in text { sendKey(String(ch)) }
+            log(String(format: "JUMPBURST %@: results %.1f ms", text, await waitForResults(since: t0)))
+            return
+        }
+        var keys: [Double] = [], results: [Double] = []
+        for ch in text {
+            let t0 = CACurrentMediaTime()
+            sendKey(String(ch))
+            keys.append((CACurrentMediaTime() - t0) * 1000)
+            results.append(await waitForResults(since: t0))
+            log(String(format: "JUMPKEY %@: key %.1f, results %.1f ms", String(ch), keys.last!, results.last!))
+        }
+        func stats(_ v: [Double]) -> String {
+            let s = v.sorted()
+            return String(format: "median %.1f, p90 %.1f, max %.1f", s[s.count / 2], s[min(s.count - 1, s.count * 9 / 10)], s.last!)
+        }
+        guard !text.isEmpty else { return }
+        log("JUMP \(text) ×\(text.count): key \(stats(keys)) | results \(stats(results)) ms")
+    }
+
+    private var watching: Task<Void, Never>?
+
+    /// Records, every 10 ms, whether the focused review's files changed, so a benchmark can
+    /// tell when the window first showed what git says.
+    ///
+    /// Each change appends `STATE <unix ns> <files> <added> <deleted> <base>` and then one
+    /// `<path>\t<added>\t<deleted>` line per file, sorted by path.
+    ///
+    /// - Parameter path: The file to append to.
+    /// - Returns: The task recording, to cancel when done.
+    private func watch(to path: String) -> Task<Void, Never> {
+        FileManager.default.createFile(atPath: path, contents: nil)
+        let out = FileHandle(forWritingAtPath: path)
+        return Task { [weak self] in
+            var last: [String]?
+            while !Task.isCancelled {
+                if let w = self?.window, w.session?.isLoading == false {
+                    let files = w.changes.map { "\($0.path)\t\($0.diff.additions)\t\($0.diff.deletions)" }.sorted()
+                    if files != last {
+                        last = files
+                        let added = w.changes.reduce(0) { $0 + $1.diff.additions }
+                        let deleted = w.changes.reduce(0) { $0 + $1.diff.deletions }
+                        let header = "STATE \(Int64(Date().timeIntervalSince1970 * 1e9)) \(files.count) \(added) \(deleted) \(w.review?.base ?? "-")"
+                        out?.write(Data(([header] + files).map { $0 + "\n" }.joined().utf8))
+                    }
+                }
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+            try? out?.close()
+        }
     }
 
     private func sendKey(_ combo: String) {

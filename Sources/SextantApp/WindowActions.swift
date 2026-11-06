@@ -473,11 +473,18 @@ extension RepoWindowController: NSMenuItemValidation {
     }
 
     @objc func addNote(_ sender: Any?) {
-        guard let subject = review?.subject, let r = selectedReference, let (rect, view) = reader.rect(file: r.file, line: r.line) else { NSSound.beep(); return }
-        let editor = NoteEditor(place: .lines(path: r.path, range: r.lines, old: r.old), text: "", canDelete: false) { [weak self] text in
+        guard let save = noteOnSelection(), let r = selectedReference, let (rect, view) = reader.rect(file: r.file, line: r.line) else { NSSound.beep(); return }
+        let editor = NoteEditor(place: .lines(path: r.path, range: r.lines, old: r.old), text: "", canDelete: false, onSave: save)
+        editor.show(relativeTo: rect, of: view)
+    }
+
+    /// Returns what adds a note with the given text on the lines selected now, or nil when no
+    /// lines are selected.
+    func noteOnSelection() -> ((String) -> Void)? {
+        guard let subject = review?.subject, let r = selectedReference else { return nil }
+        return { [weak self] text in
             self?.notes.add(Note(subject: subject.key, lines: Note.Lines(path: r.path, range: r.lines, old: r.old, code: r.code), text: text))
         }
-        editor.show(relativeTo: rect, of: view)
     }
 
     /// Writes a note on the whole review, which heads the notes when they're copied.

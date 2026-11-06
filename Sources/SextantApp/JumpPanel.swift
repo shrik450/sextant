@@ -27,6 +27,8 @@ final class JumpPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NSTa
     private let scroll = NSScrollView()
     private let status = NSTextField(labelWithString: "")
     private(set) var items: [JumpItem] = []
+    /// The text the shown results were found for.
+    private(set) var itemsQuery: String?
     private var searching: Task<Void, Never>?
     /// Finds what the text names, best first.
     var find: ((String) async -> [JumpItem])?
@@ -110,6 +112,7 @@ final class JumpPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NSTa
 
     func dismiss() {
         searching?.cancel()
+        itemsQuery = nil
         parent?.removeChildWindow(self)
         orderOut(nil)
     }
@@ -137,6 +140,7 @@ final class JumpPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NSTa
 
     private func show(_ found: [JumpItem]) {
         items = found
+        itemsQuery = field.stringValue
         table.reloadData()
         if !items.isEmpty { table.selectRowIndexes([0], byExtendingSelection: false) }
         table.scrollRowToVisible(0)
