@@ -130,6 +130,24 @@ struct TagsSample: Sendable, CustomTestStringConvertible {
                 "type Name", "constructor Name", "interface Describe", "method describe", "function area",
                 "function total", "function limit",
             ]),
+        TagsSample(path: "shapes.erl", text: """
+            -module(shapes).
+            -define(LIMIT, 3).
+            -record(point, {x = 0}).
+            -type shape() :: {circle, float()}.
+
+            area({circle, R}) -> R * R;
+            area({square, S}) -> S * S.
+
+            start() -> helper(?LIMIT).
+
+            %% Returns its argument.
+            -spec helper(integer()) -> integer().
+            helper(N) -> N.
+            """, definitions: [
+                "module shapes", "macro LIMIT", "struct point", "type shape", "function area",
+                "function start", "function helper",
+            ]),
         TagsSample(path: "core.clj", text: """
             (ns my.app.core)
             (def limit 3)
