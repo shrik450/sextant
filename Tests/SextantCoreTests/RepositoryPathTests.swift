@@ -71,14 +71,33 @@ import Testing
         }
     }
 
+    @Test func lockFilesMatterOnlyOutsideGitDirectories() async throws {
+        let (r, _) = try linked("locks")
+        let loc = try await Git.locate(r.root, executable: GitIntegrationTests.git)
+        let changes = RepositoryChanges(commonDir: loc.commonDir)
+        let seen = Paths()
+        let watcher = FileWatcher(paths: [loc.commonDir, loc.root], latency: 0.05, queue: DispatchQueue(label: "locks")) { seen.add($0) }
+        try await Task.sleep(for: .milliseconds(300))
+        try r.write("Cargo.lock", "version = 4\n")
+        try r.git("add", "Cargo.lock")
+        let lockfile = loc.root.path + "/Cargo.lock", indexLock = loc.commonDir.path + "/index.lock"
+        for _ in 0..<100 where !(seen.all.contains(lockfile) && seen.all.contains(indexLock)) { try await Task.sleep(for: .milliseconds(50)) }
+        withExtendedLifetime(watcher) {}
+        #expect(seen.all.contains(lockfile) && seen.all.contains(indexLock))
+        #expect(changes.matter(lockfile))
+        #expect(!changes.matter(indexLock))
+    }
+
     @Test func gitsBookkeepingAndSextantsFilesDontMatter() {
         let changes = RepositoryChanges(commonDir: CanonicalPath(path: "/r/.git"))
         for path in ["/r/.git/objects/ab/cdef", "/r/.git/logs/HEAD", "/r/.git/lfs/tmp/x", "/r/.git/sextant/notes.json",
-                     "/r/.git/worktrees/wt/logs/HEAD", "/r/.git/index.lock", "/r/sub/.git/objects/pack/p"] {
+                     "/r/.git/worktrees/wt/logs/HEAD", "/r/.git/index.lock", "/r/.git/refs/heads/main.lock",
+                     "/r/.git/worktrees/wt/index.lock", "/r/vendor/.git/index.lock", "/r/sub/.git/objects/pack/p"] {
             #expect(!changes.matter(path), "\(path)")
         }
         for path in ["/r/a.txt", "/r/.git/index", "/r/.git/HEAD", "/r/.git/refs/heads/main", "/r/.git/worktrees/wt/index",
-                     "/r/.git/worktrees/wt/HEAD", "/r/.git/objectsmith", "/wt/a.txt"] {
+                     "/r/.git/worktrees/wt/HEAD", "/r/.git/objectsmith", "/wt/a.txt", "/r/Cargo.lock", "/r/nix/flake.lock",
+                     "/wt/web/yarn.lock", "/r/.github/x.lock"] {
             #expect(changes.matter(path), "\(path)")
         }
     }

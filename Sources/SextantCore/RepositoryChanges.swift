@@ -13,18 +13,21 @@ public struct RepositoryChanges: Sendable {
     ///
     /// - Parameter path: A changed path, canonical as FSEvents reports it.
     public func matter(_ path: String) -> Bool {
-        if path.hasSuffix(".lock") { return false }
         if let inGit = commonDir.components(of: path) { return matterInGitDirectory(inGit) }
-        return !path.contains("/.git/objects/")
+        guard let nested = path.range(of: "/.git/") else { return true }
+        let inside = path[nested.upperBound...]
+        return !inside.hasPrefix("objects/") && !path.hasSuffix(".lock")
     }
 
     /// Whether a change inside the common git directory may change a review.
     ///
     /// Objects only matter once a ref, the index or HEAD points at them, and logs, LFS's
     /// cache and Sextant's own files never do. Each linked worktree's directory under
-    /// `worktrees` has logs of its own.
+    /// `worktrees` has logs of its own. A lock file is git writing what it renames into place
+    /// once it's done, which is the change that matters.
     private func matterInGitDirectory(_ c: [Substring]) -> Bool {
         guard let first = c.first else { return true }
+        if c.last?.hasSuffix(".lock") == true { return false }
         switch first {
         case "objects", "logs", "lfs", "sextant": return false
         case "worktrees": return !(c.count > 2 && c[2] == "logs")
