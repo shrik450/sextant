@@ -156,7 +156,8 @@ launch() {
       kill -9 "$pid" 2>/dev/null || true
       break
     fi
-    if [[ -n $background ]] && tail -n 3 "$run/samples.txt" | awk '!/^#/ && NF >= 31 && $31 == 1 { found = 1 } END { exit !found }'; then
+    if [[ -n $background ]] && { [[ $(lsappinfo info -only pid "$(lsappinfo front)") == "\"pid\"=$pid" ]] ||
+      tail -n 3 "$run/samples.txt" | awk '!/^#/ && NF >= 31 && $31 == 1 { found = 1 } END { exit !found }'; }; then
       echo "KILLED came in front of the windows in use" >> "$run/meta.txt"
       kill -9 "$pid" 2>/dev/null || true
       break
