@@ -257,6 +257,21 @@ private func hunk(_ oldStart: Int, _ newStart: Int, _ lines: [(LineKind, String)
     #expect(parseGrepZ(Data("a:b.txt\u{0}1\u{0}1\u{0}x\n".utf8), revisionPrefix: nil).map(\.path) == ["a:b.txt"])
 }
 
+@Test func grepOutputKeepsNewlinesInPaths() {
+    let raw = Data("rev:new\nline.txt\u{0}3\u{0}5\u{0}x = needle\nplain.txt\u{0}1\u{0}1\u{0}needle\u{0}after a NUL\n".utf8)
+    #expect(parseGrepZ(raw, revisionPrefix: "rev") == [
+        GrepMatch(path: "new\nline.txt", line: 3, column: 5, text: "x = needle"),
+        GrepMatch(path: "plain.txt", line: 1, column: 1, text: "needle\u{0}after a NUL"),
+    ])
+}
+
+@Test func quotesOnlyPathsHashObjectWouldMisread() {
+    #expect(stdinPathLine("plain name.txt") == Array("plain name.txt\n".utf8))
+    #expect(stdinPathLine("späce\\back.txt") == Array("späce\\back.txt\n".utf8))
+    #expect(stdinPathLine("new\nline\t\u{1}\\\".txt") == Array("\"new\\012line\\011\\001\\\\\\\".txt\"\n".utf8))
+    #expect(stdinPathLine("\"quoted\".txt") == Array("\"\\\"quoted\\\".txt\"\n".utf8))
+}
+
 @Test func blamePorcelainSharesCommitInfoAcrossLines() {
     let a = String(repeating: "a", count: 40), b = String(repeating: "b", count: 40)
     let raw = """

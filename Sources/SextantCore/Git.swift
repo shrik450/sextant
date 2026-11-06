@@ -234,7 +234,7 @@ public struct Git: Sendable {
         }
         while !files.isEmpty {
             do {
-                let input = Data(files.map { paths[$0] }.joined(separator: "\n").utf8 + [0x0A])
+                let input = Data(files.flatMap { stdinPathLine(paths[$0]) })
                 let out = try await run(["hash-object", "--stdin-paths"], stdin: input)
                 for (i, id) in zip(files, out.split(separator: 0x0A)) { ids[i] = String(decoding: id, as: UTF8.self) }
                 break
@@ -346,4 +346,23 @@ final class LockedData: @unchecked Sendable {
     private let lock = NSLock()
     func set(_ d: Data) { lock.lock(); data = d; lock.unlock() }
     func get() -> Data { lock.lock(); defer { lock.unlock() }; return data }
+}
+
+/// Returns a path's line for `git hash-object --stdin-paths`, which reads paths a line at a time
+/// and has no NUL-separated form.
+///
+/// A path that holds a control character, like a newline, or starts with a quote is C-quoted,
+/// which git unquotes. Others go as they are.
+func stdinPathLine(_ path: String) -> [UInt8] {
+    let bytes = Array(path.utf8)
+    guard bytes.contains(where: { $0 < 0x20 || $0 == 0x7F }) || bytes.first == UInt8(ascii: "\"") else { return bytes + [0x0A] }
+    var out: [UInt8] = [UInt8(ascii: "\"")]
+    for byte in bytes {
+        switch byte {
+        case UInt8(ascii: "\""), UInt8(ascii: "\\"): out += [UInt8(ascii: "\\"), byte]
+        case 0..<0x20, 0x7F: out += [UInt8(ascii: "\\")] + Array(String(format: "%03o", byte).utf8)
+        default: out.append(byte)
+        }
+    }
+    return out + [UInt8(ascii: "\""), 0x0A]
 }

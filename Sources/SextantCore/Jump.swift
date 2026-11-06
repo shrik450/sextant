@@ -155,7 +155,7 @@ extension Git {
                 let p = String(decoding: raw, as: UTF8.self)
                 byPath[p] = nil
                 let type = (try? FileManager.default.attributesOfItem(atPath: root.appendingPathComponent(p).path))?[.type] as? FileAttributeType
-                if type == .typeRegular, !p.contains("\n") { unhashed.insert(p) }
+                if type == .typeRegular { unhashed.insert(p) }
             }
             return SnapshotListing(blobs: byPath.map { SnapshotBlob(path: $0.key, oid: $0.value, inWorktree: false) }, unhashed: unhashed.sorted())
         }

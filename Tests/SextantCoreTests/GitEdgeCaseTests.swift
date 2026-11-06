@@ -255,3 +255,24 @@ extension GitEdgeCaseTests {
         #expect(all.filter { $0.kind != .deleted }.map(\.text) == splitLines(try #require(r.repo.readWorktreeFile("dos.txt"))))
     }
 }
+
+extension GitEdgeCaseTests {
+    @Test func pathsHoldingNewlinesHashAndSearch() async throws {
+        let r = try ScratchRepo("newline-paths")
+        let tracked = "new\nline.txt", untracked = "un\ntracked.txt", quoted = "\"quoted\".txt"
+        try r.write(tracked, "needle one\n")
+        try r.commitAll("Tracked")
+        try r.write(tracked, "needle two\n")
+        try r.write(untracked, "needle three\n")
+        try r.write(quoted, "needle four\n")
+        let ids = [tracked: try r.blobID("needle two\n"), untracked: try r.blobID("needle three\n"), quoted: try r.blobID("needle four\n")]
+
+        let files = try await r.repo.diff(.worktree(since: nil))
+        #expect(Dictionary(uniqueKeysWithValues: files.map { ($0.path, $0.change.newOid) }) == ids)
+        let blobs = try await r.repo.blobs(in: .worktree)
+        #expect(Dictionary(uniqueKeysWithValues: blobs.map { ($0.path, $0.oid) }) == ids)
+        let found = try await r.repo.grep("needle", in: .worktree, word: true, ignoreCase: false)
+        #expect(Set(found.map(\.path)) == Set(ids.keys))
+        #expect(found.allSatisfy { $0.line == 1 && $0.column == 1 && $0.text.hasPrefix("needle ") })
+    }
+}

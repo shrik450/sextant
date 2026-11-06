@@ -2,18 +2,27 @@ import Foundation
 
 /// Parses `git grep -n -z --column` output.
 ///
+/// Each match is a path, line and column, each ended by NUL, then the line's text ended by LF.
+/// They're read in that order, since a path can hold an LF and the text can hold a NUL.
+///
 /// - Parameter revisionPrefix: The revision that a revision search prefixes each path with,
 ///   as `<rev>:`, or nil for a search without that prefix.
 public func parseGrepZ(_ data: Data, revisionPrefix: String?) -> [GrepMatch] {
+    let bytes = [UInt8](data)
     var out: [GrepMatch] = []
-    for record in data.split(separator: 0x0A, omittingEmptySubsequences: true) {
-        let f = record.split(separator: 0, maxSplits: 3, omittingEmptySubsequences: false)
-        guard f.count == 4, let line = Int(String(decoding: f[1], as: UTF8.self)),
-              let col = Int(String(decoding: f[2], as: UTF8.self)) else { continue }
-        var path = String(decoding: f[0], as: UTF8.self)
+    var i = 0
+    func field(endingAt end: UInt8) -> ArraySlice<UInt8>? {
+        guard i < bytes.count else { return nil }
+        let start = i
+        while i < bytes.count, bytes[i] != end { i += 1 }
+        defer { i += 1 }
+        return bytes[start..<i]
+    }
+    while let rawPath = field(endingAt: 0), let lineField = field(endingAt: 0), let colField = field(endingAt: 0), let text = field(endingAt: 0x0A) {
+        guard let line = Int(String(decoding: lineField, as: UTF8.self)), let col = Int(String(decoding: colField, as: UTF8.self)) else { continue }
+        var path = String(decoding: rawPath, as: UTF8.self)
         if let p = revisionPrefix, path.hasPrefix(p + ":") { path.removeFirst(p.count + 1) }
-        let raw = f[3].last == 0x0D ? f[3].dropLast() : f[3]
-        out.append(GrepMatch(path: path, line: line, column: col, text: String(decoding: raw, as: UTF8.self)))
+        out.append(GrepMatch(path: path, line: line, column: col, text: String(decoding: text.last == 0x0D ? text.dropLast() : text, as: UTF8.self)))
     }
     return out
 }
