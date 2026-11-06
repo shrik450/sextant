@@ -289,4 +289,14 @@ extension GitEdgeCaseTests {
         let names = Set(await r.repo.branches(comparedWith: "main").map(\.name))
         #expect(names == ["main", "feature/HEAD", "origin/main", "origin/topic/HEAD"])
     }
+
+    @Test func summarizesACRLFMessageByItsFirstLine() async throws {
+        let r = try ScratchRepo("crlf-message")
+        try r.write("a.txt", "a\n")
+        try r.commitAll("A")
+        let oid = try r.git("commit-tree", "HEAD^{tree}", "-p", "HEAD", stdin: "Subject line\r\n\r\nBody line\r\n")
+        let detail = try await r.repo.commitDetail(oid)
+        #expect(detail.summary == "Subject line")
+        #expect(detail.body == "Body line")
+    }
 }

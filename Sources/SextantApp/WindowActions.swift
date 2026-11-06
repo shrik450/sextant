@@ -78,8 +78,7 @@ extension RepoWindowController {
         if let d = commitDetail {
             if case .stash = res.target { title = "Stash" } else { title = "Commit" }
             add(d.summary, bold)
-            let rest = d.message.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).dropFirst().first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            if !rest.isEmpty { add(rest, body) }
+            if !d.body.isEmpty { add(d.body, body) }
             add("\(d.author)  ·  \(date(d.authorDate))", meta)
             add(d.oid, mono)
         } else {

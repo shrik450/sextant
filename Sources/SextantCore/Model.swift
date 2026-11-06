@@ -62,8 +62,10 @@ public struct CommitDetail: Sendable, Hashable {
     public var committerDate: Date
     public var message: String
 
-    /// The message's first line.
-    public var summary: String { message.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? "" }
+    /// The message's first line, whichever line ending it has.
+    public var summary: String { String(message.prefix { !$0.isNewline }) }
+    /// The message after its first line, without the blank lines around it.
+    public var body: String { message.drop { !$0.isNewline }.trimmingCharacters(in: .whitespacesAndNewlines) }
 }
 
 public struct Stash: Sendable, Hashable, Identifiable {
