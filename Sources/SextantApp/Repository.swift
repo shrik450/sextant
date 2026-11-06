@@ -26,10 +26,12 @@ final class Repository {
     private(set) var defaultBase: String?
     /// Open pull requests, or nil when `gh` isn't available or hasn't answered yet.
     private(set) var pullRequests: [PullRequest]?
-    /// The number of uncommitted files in each worktree, by root path.
+    /// The number of uncommitted files in each worktree git gave the status of, by root path.
     private(set) var uncommitted: [String: Int] = [:]
     /// Paths with merge conflicts in each worktree, by root path.
     private(set) var conflicts: [String: Set<String>] = [:]
+    /// Why git couldn't give a worktree's status, by root path.
+    private(set) var statusFailures: [String: String] = [:]
 
     init(commonDir: URL, gitPath: String) {
         self.commonDir = commonDir
@@ -113,23 +115,43 @@ final class Repository {
     /// Reloads what's uncommitted and conflicted in each worktree, which only counts and marks
     /// need, so a review can open without waiting for it.
     ///
+    /// A worktree git can't give the status of keeps the conflicts it last had, since they may
+    /// still be there.
+    ///
     /// - Returns: Whether anything changed.
     @discardableResult
     func refreshStatus() async -> Bool {
         let git = self.git
-        let statuses = await withTaskGroup(of: (String, WorktreeStatus).self) { group in
+        let statuses = await withTaskGroup(of: (String, Result<WorktreeStatus, Error>).self) { group in
             for w in worktrees {
-                group.addTask { (w.root.path, await Repository.status(of: Git(root: w.root, executable: git.executable))) }
+                group.addTask {
+                    let checkout = Git(root: w.root, executable: git.executable)
+                    do {
+                        return (w.root.path, .success(try await checkout.status()))
+                    } catch {
+                        return (w.root.path, .failure(error))
+                    }
+                }
             }
-            var out: [String: WorktreeStatus] = [:]
+            var out: [String: Result<WorktreeStatus, Error>] = [:]
             for await (k, v) in group { out[k] = v }
             return out
         }
-        let newUncommitted = statuses.mapValues(\.count)
-        let newConflicts = statuses.mapValues(\.conflicts)
-        let changed = newUncommitted != uncommitted || newConflicts != conflicts
+        var newUncommitted: [String: Int] = [:], newConflicts: [String: Set<String>] = [:], newFailures: [String: String] = [:]
+        for (root, result) in statuses {
+            switch result {
+            case .success(let s):
+                newUncommitted[root] = s.count
+                newConflicts[root] = s.conflicts
+            case .failure(let error):
+                newFailures[root] = error.localizedDescription
+                newConflicts[root] = conflicts[root]
+            }
+        }
+        let changed = newUncommitted != uncommitted || newConflicts != conflicts || newFailures != statusFailures
         uncommitted = newUncommitted
         conflicts = newConflicts
+        statusFailures = newFailures
         return changed
     }
 
@@ -140,24 +162,6 @@ final class Repository {
     }
 
     private static let ghPath: String? = userPath().split(separator: ":").map { "\($0)/gh" }.first { FileManager.default.isExecutableFile(atPath: $0) }
-
-    private struct WorktreeStatus: Sendable {
-        var count = 0
-        var conflicts: Set<String> = []
-    }
-
-    private nonisolated static func status(of git: Git) async -> WorktreeStatus {
-        guard let data = try? await git.run(["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames", "--ignore-submodules=dirty"], priority: .utility) else { return WorktreeStatus() }
-        var s = WorktreeStatus()
-        for entry in data.split(separator: 0) where entry.count >= 3 {
-            s.count += 1
-            let x = Character(UnicodeScalar(entry[entry.startIndex])), y = Character(UnicodeScalar(entry[entry.startIndex + 1]))
-            if x == "U" || y == "U" || (x == "A" && y == "A") || (x == "D" && y == "D") {
-                s.conflicts.insert(String(decoding: entry.dropFirst(3), as: UTF8.self))
-            }
-        }
-        return s
-    }
 
     /// The base a subject is compared with: the one last picked for it, else the pull request's
     /// own base or the default.

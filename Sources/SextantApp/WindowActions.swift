@@ -95,8 +95,12 @@ extension RepoWindowController {
                 add(w?.branch ?? "Detached at \(w?.head?.prefix(7) ?? "nothing")", bold)
                 add(abbreviateHome(root.path), meta)
                 add("\(n) commit\(n == 1 ? "" : "s")" + (res.review.base.map { " since \($0)" } ?? ""), meta)
-                let u = repository.uncommitted[root.path] ?? 0
-                add("\(u) uncommitted file\(u == 1 ? "" : "s")", meta)
+                if let failure = repository.statusFailures[root.path] {
+                    add("Couldn’t read what isn’t committed: \(failure)", meta)
+                } else {
+                    let u = repository.uncommitted[root.path] ?? 0
+                    add("\(u) uncommitted file\(u == 1 ? "" : "s")", meta)
+                }
             case .branch(let b):
                 title = "Branch"
                 add(b, bold)

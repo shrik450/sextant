@@ -73,8 +73,8 @@ struct ScratchRepo {
 @Suite struct GitEdgeCaseTests {
     /// A merge stopped on conflicts in `both.txt` (changed on both sides), `added.txt` (added on
     /// both) and `gone.txt` (deleted here, changed there), with clean edits in files around them.
-    func conflicted() throws -> ScratchRepo {
-        let r = try ScratchRepo("conflicted")
+    func conflicted(_ name: String = "conflicted") throws -> ScratchRepo {
+        let r = try ScratchRepo(name)
         try r.write("a.txt", "a\n")
         try r.write("both.txt", "one\ntwo\nthree\n")
         try r.write("gone.txt", "base\n")
@@ -123,6 +123,15 @@ struct ScratchRepo {
         let old = try await r.repo.oldLines(of: both)
         #expect(wholeFile(both.hunks, oldLines: old).filter { $0.kind != .added }.map(\.text) == old)
         #expect(unstaged.first { $0.path == "gone.txt" }?.change.status == "U")
+    }
+
+    @Test func statusCountsWhatIsUncommittedAndFailsRatherThanReadingClean() async throws {
+        let r = try conflicted("conflicted-status")
+        let status = try await r.repo.status()
+        #expect(status.conflicts == ["both.txt", "added.txt", "gone.txt"])
+        #expect(status.count == 5)
+        try Data("not an index".utf8).write(to: r.root.appendingPathComponent(".git/index"))
+        await #expect(throws: GitError.self) { try await r.repo.status() }
     }
 }
 

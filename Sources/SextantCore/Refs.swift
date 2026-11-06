@@ -117,7 +117,32 @@ public func parsePullRequests(_ data: Data) throws -> [PullRequest] {
     return try d.decode([PullRequest].self, from: data)
 }
 
+/// What's uncommitted and conflicted in a worktree, as `git status` gives it.
+public struct WorktreeStatus: Sendable, Hashable {
+    /// The number of paths that aren't committed, untracked files included.
+    public var count = 0
+    /// The paths with merge conflicts.
+    public var conflicts: Set<String> = []
+}
+
 extension Git {
+    /// Reads what's uncommitted and conflicted in the worktree.
+    ///
+    /// - Throws: When git can't give the status, such as for a damaged index, so a worktree
+    ///   it can't read isn't taken for a clean one.
+    public func status() async throws -> WorktreeStatus {
+        let data = try await run(["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames", "--ignore-submodules=dirty"], priority: .utility)
+        var s = WorktreeStatus()
+        for entry in data.split(separator: 0) where entry.count >= 3 {
+            s.count += 1
+            let x = Character(UnicodeScalar(entry[entry.startIndex])), y = Character(UnicodeScalar(entry[entry.startIndex + 1]))
+            if x == "U" || y == "U" || (x == "A" && y == "A") || (x == "D" && y == "D") {
+                s.conflicts.insert(String(decoding: entry.dropFirst(3), as: UTF8.self))
+            }
+        }
+        return s
+    }
+
     public func worktrees() async -> [Worktree] {
         guard let data = try? await run(["worktree", "list", "--porcelain", "-z"]) else { return [] }
         return parseWorktreeList(data)

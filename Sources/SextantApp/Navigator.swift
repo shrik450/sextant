@@ -123,7 +123,8 @@ final class Navigator: NSViewController {
 /// A row of the commits list: the whole review, its uncommitted work, or one of its commits.
 enum ScopeRow: Equatable {
     case everything(title: String, detail: String)
-    case uncommitted(count: Int)
+    /// What's uncommitted, with why git couldn't count it when it couldn't.
+    case uncommitted(count: Int, failure: String?)
     case commit(Commit)
 }
 
@@ -580,10 +581,15 @@ extension ChangesController: NSTableViewDataSource, NSTableViewDelegate {
             cell.configure(title: title, symbol: "square.stack.3d.up", count: 0)
             cell.toolTip = detail
             return cell
-        case .uncommitted(let n):
+        case .uncommitted(let n, let failure):
             let cell = (tableView.makeView(withIdentifier: TargetCell.id, owner: nil) as? TargetCell) ?? TargetCell()
-            cell.configure(title: "Uncommitted", symbol: "pencil.and.list.clipboard", count: n)
-            cell.toolTip = "Work in the checkout that isn’t committed yet"
+            if let failure {
+                cell.configure(title: "Uncommitted", symbol: "exclamationmark.triangle", count: 0)
+                cell.toolTip = "Couldn’t read what isn’t committed: \(failure)"
+            } else {
+                cell.configure(title: "Uncommitted", symbol: "pencil.and.list.clipboard", count: n)
+                cell.toolTip = "Work in the checkout that isn’t committed yet"
+            }
             return cell
         case .commit(let c):
             let cell = (tableView.makeView(withIdentifier: CommitCell.id, owner: nil) as? CommitCell) ?? CommitCell()

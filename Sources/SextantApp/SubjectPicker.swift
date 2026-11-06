@@ -274,9 +274,9 @@ extension SubjectPicker: NSTableViewDataSource, NSTableViewDelegate {
         switch row {
         case .section: break
         case .worktree(let w):
-            let n = repository.uncommitted[w.root.path] ?? 0
+            let n = repository.uncommitted[w.root.path] ?? 0, failed = repository.statusFailures[w.root.path] != nil
             cell.set(symbol: "folder", title: w.name, detail: "\(w.branch ?? w.head.map { String($0.prefix(7)) } ?? "no commits")  ·  \(abbreviateHome(w.root.path))",
-                     accessory: n > 0 ? "\(n) uncommitted" : "", current: isCurrent)
+                     accessory: failed ? "Status unavailable" : n > 0 ? "\(n) uncommitted" : "", current: isCurrent)
         case .pullRequest(let p):
             cell.set(symbol: "arrow.triangle.pull", title: "#\(p.number)  \(p.title)", detail: "\(p.headRefName) → \(p.baseRefName)  ·  \(p.author.login)",
                      accessory: (p.isDraft ? "Draft  ·  " : "") + compactDate(p.updatedAt), current: isCurrent)

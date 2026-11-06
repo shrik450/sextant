@@ -673,7 +673,7 @@ extension RepoWindowController {
             let mark = navigator.changes.commits.selectedRowIndexes.contains(i) ? "> " : ""
             switch r {
             case .everything(let t, _): return mark + t
-            case .uncommitted(let n): return mark + "Uncommitted \(n)"
+            case .uncommitted(let n, let failure): return mark + "Uncommitted " + (failure == nil ? "\(n)" : "failed")
             case .commit(let c): return mark + "\(c.shortOid) \(c.subject)"
             }
         }

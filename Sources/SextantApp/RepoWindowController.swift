@@ -469,7 +469,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         if case .worktree = res.review.subject {
             guard n > 0 else { return [] }
             rows.append(.everything(title: "All Work", detail: "\(n) commit\(n == 1 ? "" : "s") since \(base), and what isn’t committed"))
-            rows.append(.uncommitted(count: repository.uncommitted[res.git.root.path] ?? 0))
+            rows.append(.uncommitted(count: repository.uncommitted[res.git.root.path] ?? 0, failure: repository.statusFailures[res.git.root.path]))
         } else {
             guard n > 1 else { return [] }
             rows.append(.everything(title: "All \(n) Commits", detail: "Every change since \(base)"))
