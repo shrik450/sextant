@@ -61,8 +61,20 @@ final class Automation {
     /// The script driving the app, if one is.
     private(set) static weak var running: Automation?
 
+    /// Makes a window log a key that nothing handled, instead of sounding the alert, so a script
+    /// running behind the windows in use stays silent and its log shows the refusal.
+    private static func silenceUnhandledKeys() {
+        let selector = #selector(NSResponder.noResponder(for:))
+        guard let method = class_getInstanceMethod(NSWindow.self, selector) else { return }
+        let log: @convention(block) (NSWindow, Selector) -> Void = { _, event in
+            MainActor.assumeIsolated { Automation.running?.log("! beep: nothing handled \(NSStringFromSelector(event))") }
+        }
+        class_replaceMethod(NSWindow.self, selector, imp_implementationWithBlock(log), method_getTypeEncoding(method))
+    }
+
     func start() {
         Self.running = self
+        if app.inBackground { Self.silenceUnhandledKeys() }
         activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical], reason: "Automation")
         Task {
             for line in lines where !line.isEmpty && !line.hasPrefix("#") {
@@ -428,7 +440,7 @@ final class Automation {
             if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
                                         windowNumber: w.windowNumber, context: nil, characters: shown, charactersIgnoringModifiers: shown,
                                         isARepeat: false, keyCode: code) {
-                NSApp.sendEvent(e)
+                if w === window?.jumpPanel { w.sendEvent(e) } else { NSApp.sendEvent(e) }
             }
         }
     }
