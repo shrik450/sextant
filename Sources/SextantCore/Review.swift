@@ -159,7 +159,7 @@ public struct Resolver: Sendable {
             }
             let commits = (try? await git.log("\(base)..\(t)", skip: 0, count: 1000)) ?? []
             return ResolvedReview(review: review, git: git, head: t, mergeBase: base, commits: commits,
-                                  target: scoped(review.scope, everything: .range(base: base, head: t), commits: commits))
+                                  target: try await target(for: review.scope, everything: .range(base: base, head: t), commits: commits))
         case .stash(let s):
             return ResolvedReview(review: review, git: git, head: s, commits: [], target: .stash(s))
         }
@@ -179,7 +179,16 @@ public struct Resolver: Sendable {
         }
         if case .commit = review.subject { review.scope = .everything }
         return ResolvedReview(review: review, git: runIn, worktree: worktree, pullRequest: pr, head: head, mergeBase: mergeBase,
-                              commits: commits, target: scoped(review.scope, everything: everything, commits: commits))
+                              commits: commits, target: try await target(for: review.scope, everything: everything, commits: commits))
+    }
+
+    /// Decides what to diff for part of a review, reading the oldest commit of a run when it's
+    /// older than the commits listed, so the run starts at its parent.
+    private func target(for scope: Scope, everything: Target, commits: [Commit]) async throws -> Target {
+        if case .commits(let newest, let oldest) = scope, newest != oldest, !commits.contains(where: { $0.oid == oldest }) {
+            return scoped(scope, everything: everything, commits: commits + (try await git.log(oldest, skip: 0, count: 1)))
+        }
+        return scoped(scope, everything: everything, commits: commits)
     }
 }
 
@@ -187,7 +196,8 @@ public struct Resolver: Sendable {
 ///
 /// - Parameters:
 ///   - everything: The diff for the whole subject.
-///   - commits: The subject's own commits, newest first, which a commit scope refers to.
+///   - commits: The subject's own commits, newest first, which a commit scope refers to. A run
+///     of them starts at its oldest commit's first parent, so that commit must be among them.
 public func scoped(_ scope: Scope, everything: Target, commits: [Commit]) -> Target {
     switch scope {
     case .everything:

@@ -299,4 +299,23 @@ extension GitEdgeCaseTests {
         #expect(detail.summary == "Subject line")
         #expect(detail.body == "Body line")
     }
+
+    @Test func aRunOfCommitsPastTheListedOnesDiffsFromItsOwnParent() async throws {
+        let r = try ScratchRepo("long-branch")
+        try r.write("base.txt", "base\n")
+        try r.commitAll("Base")
+        try r.git("checkout", "-q", "-b", "long")
+        var stream = ""
+        for i in 0..<1005 {
+            stream += "commit refs/heads/long\ncommitter Fixture <fixture@example.com> \(1700000000 + i) +0000\ndata 3\nc\(i % 10)\n"
+            stream += (i == 0 ? "from refs/heads/long^0\n" : "") + "M 100644 inline f\(i).txt\ndata 2\n\(i % 10)\n\n"
+        }
+        try r.git("fast-import", "--quiet", "--force", stdin: stream)
+        let oldest = try r.git("rev-parse", "long~1004"), second = try r.git("rev-parse", "long~1003")
+        let resolved = try await Resolver(git: r.repo).resolve(Review(subject: .branch("long"), base: "main", scope: .commits(newest: second, oldest: oldest)),
+                                                               worktrees: [], pullRequests: [])
+        #expect(resolved.commits.count == 1000 && !resolved.commits.contains { $0.oid == oldest })
+        #expect(resolved.target == .range(base: try r.git("rev-parse", "main"), head: second))
+        #expect(try await resolved.git.diff(resolved.target).map(\.path) == ["f0.txt", "f1.txt"])
+    }
 }
