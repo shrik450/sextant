@@ -226,17 +226,15 @@ final class Inspector: NSViewController, NSSplitViewDelegate {
         let old = parent.children
         let shared = min(old.count, fresh.count)
         let replaced = IndexSet((0..<shared).filter { !old[$0].fits(fresh[$0]) })
-        for i in replaced { parent.children[i] = fresh[i] }
-        if !replaced.isEmpty {
-            outline.removeItems(at: replaced, inParent: item)
-            outline.insertItems(at: replaced, inParent: item)
-        }
-        if old.count > fresh.count {
-            parent.children.removeLast(old.count - fresh.count)
-            outline.removeItems(at: IndexSet(fresh.count..<old.count), inParent: item)
-        } else if fresh.count > old.count {
-            parent.children += fresh[old.count...]
-            outline.insertItems(at: IndexSet(old.count..<fresh.count), inParent: item)
+        let removed = replaced.union(IndexSet(shared..<old.count))
+        let inserted = replaced.union(IndexSet(shared..<fresh.count))
+        if !removed.isEmpty || !inserted.isEmpty {
+            outline.beginUpdates()
+            parent.children = old.indices.filter { !removed.contains($0) }.map { old[$0] }
+            outline.removeItems(at: removed, inParent: item)
+            parent.children = fresh.indices.map { inserted.contains($0) ? fresh[$0] : old[$0] }
+            outline.insertItems(at: inserted, inParent: item)
+            outline.endUpdates()
         }
         for i in (0..<shared) where !replaced.contains(i) {
             old[i].kind = fresh[i].kind
