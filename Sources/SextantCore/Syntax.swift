@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import SwiftTreeSitter
 
@@ -54,12 +55,16 @@ public struct Symbol: Sendable, Hashable {
 
 public final class SyntaxLanguage: Sendable {
     public let name: String
+    /// Names this build of the grammar and its queries, so what parsing found with another build
+    /// isn't taken for what this one would find.
+    public let version: String
     let language: SwiftTreeSitter.Language
     let highlightsQuery: Query?
     let tagsQuery: Query?
 
-    init(name: String, language: SwiftTreeSitter.Language, highlights: Query?, tags: Query?) {
+    init(name: String, version: String, language: SwiftTreeSitter.Language, highlights: Query?, tags: Query?) {
         self.name = name
+        self.version = version
         self.language = language
         highlightsQuery = highlights
         tagsQuery = tags
@@ -251,11 +256,21 @@ public final class SyntaxRuntime: @unchecked Sendable {
               let sym = dlsym(handle, e.symbol) else { return nil }
         typealias Entrypoint = @convention(c) () -> OpaquePointer
         let language = SwiftTreeSitter.Language(language: unsafeBitCast(sym, to: Entrypoint.self)())
+        var digest = SHA256()
+        func read(_ file: String) -> Data? {
+            let data = try? Data(contentsOf: dir.appendingPathComponent(file))
+            digest.update(data: Data(file.utf8))
+            digest.update(data: data ?? Data())
+            return data
+        }
+        _ = read("parser")
         func query(_ file: String) -> Query? {
-            guard let data = try? Data(contentsOf: dir.appendingPathComponent(file)) else { return nil }
+            guard let data = read(file) else { return nil }
             return try? Query(language: language, data: data)
         }
-        return SyntaxLanguage(name: e.name, language: language, highlights: query("highlights.scm"), tags: query("tags.scm"))
+        let highlights = query("highlights.scm"), tags = query("tags.scm")
+        let version = e.name + "@" + digest.finalize().prefix(8).map { String(format: "%02x", $0) }.joined()
+        return SyntaxLanguage(name: e.name, version: version, language: language, highlights: highlights, tags: tags)
     }
 }
 

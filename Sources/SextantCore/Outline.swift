@@ -39,8 +39,16 @@ public struct OutlineItem: Sendable, Equatable {
 ///
 /// - Parameter definitions: Definitions sorted by where they start.
 public func outlineDefinitions(_ definitions: [Symbol]) -> [Symbol] {
+    zip(definitions, inOutline(definitions)).filter(\.1).map(\.0)
+}
+
+/// Returns whether each definition belongs in a file's outline, rather than inside a function or
+/// method, like a local variable.
+///
+/// - Parameter definitions: Definitions sorted by where they start.
+public func inOutline(_ definitions: [Symbol]) -> [Bool] {
     var functionEnd = -1
-    return definitions.filter { d in
+    return definitions.map { d in
         guard d.range.location >= functionEnd else { return false }
         if d.kind == "function" || d.kind == "method" { functionEnd = NSMaxRange(d.range) }
         return true
