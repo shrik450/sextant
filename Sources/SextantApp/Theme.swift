@@ -287,7 +287,7 @@ final class Appearance {
 
     private init() {
         UserDefaults.standard.register(defaults: [
-            "lightTheme": "Revue Light", "darkTheme": "Revue Dark",
+            LookChoice.defaultsKey: LookChoice.glass.rawValue,
             "fontSize": 12.0, "fontName": "", "diffMode": "unified", "tabWidth": 4,
         ])
         reloadThemes()
@@ -300,7 +300,7 @@ final class Appearance {
     private var lastSignature = ""
     private func defaultsChanged() {
         let d = UserDefaults.standard
-        let sig = "\(d.string(forKey: "lightTheme") ?? "")|\(d.string(forKey: "darkTheme") ?? "")|\(d.double(forKey: "fontSize"))|\(d.string(forKey: "fontName") ?? "")|\(d.integer(forKey: "tabWidth"))"
+        let sig = "\(d.string(forKey: LookChoice.defaultsKey) ?? "")|\(d.string(forKey: "lightTheme") ?? "")|\(d.string(forKey: "darkTheme") ?? "")|\(d.double(forKey: "fontSize"))|\(d.string(forKey: "fontName") ?? "")|\(d.integer(forKey: "tabWidth"))"
         if sig != lastSignature {
             lastSignature = sig
             publishThemes()
@@ -356,10 +356,17 @@ final class Appearance {
         ThemedColors.use(light: theme(for: NSAppearance(named: .aqua)!), dark: theme(for: NSAppearance(named: .darkAqua)!))
     }
 
+    /// The theme for an appearance: the one the user chose for it, or else the chosen look's.
     func theme(for appearance: NSAppearance) -> Theme {
         let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        let name = UserDefaults.standard.string(forKey: dark ? "darkTheme" : "lightTheme") ?? ""
+        let name = UserDefaults.standard.string(forKey: dark ? "darkTheme" : "lightTheme") ?? Self.defaultThemeName(dark: dark)
         return themes.first { $0.name == name } ?? (dark ? Theme.revueDark : Theme.revueLight)
+    }
+
+    /// The chosen look's theme for light or dark, for when the user hasn't chosen one.
+    static func defaultThemeName(dark: Bool) -> String {
+        let themes = LookChoice.chosen.look.defaultThemes
+        return dark ? themes.dark : themes.light
     }
 
     var font: NSFont {

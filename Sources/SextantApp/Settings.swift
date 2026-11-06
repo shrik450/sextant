@@ -2,8 +2,9 @@ import AppKit
 import SwiftUI
 
 struct SettingsView: View {
-    @AppStorage("lightTheme") private var lightTheme = "Revue Light"
-    @AppStorage("darkTheme") private var darkTheme = "Revue Dark"
+    @AppStorage(LookChoice.defaultsKey) private var look: LookChoice = .glass
+    @AppStorage("lightTheme") private var lightTheme: String?
+    @AppStorage("darkTheme") private var darkTheme: String?
     @AppStorage("fontName") private var fontName = ""
     @AppStorage("fontSize") private var fontSize = 12.0
     @AppStorage("tabWidth") private var tabWidth = 4
@@ -18,10 +19,20 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section {
-                Picker("Light appearance", selection: $lightTheme) {
+                Picker("Look", selection: $look) {
+                    ForEach(LookChoice.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+            } header: {
+                Text("Window")
+            } footer: {
+                Text("Applies to windows you open next.")
+                    .foregroundStyle(.secondary)
+            }
+            Section {
+                Picker("Light appearance", selection: theme($lightTheme, dark: false)) {
                     ForEach(themes, id: \.self) { Text($0).tag($0) }
                 }
-                Picker("Dark appearance", selection: $darkTheme) {
+                Picker("Dark appearance", selection: theme($darkTheme, dark: true)) {
                     ForEach(themes, id: \.self) { Text($0).tag($0) }
                 }
                 HStack {
@@ -62,6 +73,15 @@ struct SettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: Appearance.didChange)) { _ in
             themes = Appearance.shared.themes.map(\.name)
         }
+    }
+
+    /// A theme choice that shows the look's theme until the user chooses one.
+    ///
+    /// - Parameters:
+    ///   - stored: The user's choice, if they made one.
+    ///   - dark: Whether the choice is for the dark appearance.
+    private func theme(_ stored: Binding<String?>, dark: Bool) -> Binding<String> {
+        Binding(get: { stored.wrappedValue ?? Appearance.defaultThemeName(dark: dark) }, set: { stored.wrappedValue = $0 })
     }
 
     private func revealThemes() {

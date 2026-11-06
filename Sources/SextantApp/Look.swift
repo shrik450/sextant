@@ -1,13 +1,15 @@
 import AppKit
 
-/// The look a window takes when it opens and keeps.
+/// The look the user chose in Settings, which each window takes when it opens and keeps.
 enum LookChoice: String, CaseIterable {
     /// Cards of code on frosted glass, under a toolbar that floats over them.
     case glass
+    /// Flat columns between a title band and a status bar, the way macOS looked before glass.
+    case classic
 
     static let defaultsKey = "look"
 
-    /// The look chosen in the defaults.
+    /// The look chosen in Settings.
     static var chosen: LookChoice {
         UserDefaults.standard.string(forKey: defaultsKey).flatMap(LookChoice.init) ?? .glass
     }
@@ -17,6 +19,14 @@ enum LookChoice: String, CaseIterable {
     var look: any Look {
         switch self {
         case .glass: GlassLook()
+        case .classic: ClassicLook()
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .glass: "Glass"
+        case .classic: "Classic"
         }
     }
 }
