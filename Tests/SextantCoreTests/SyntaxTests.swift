@@ -150,3 +150,31 @@ private func liveHeapMB() -> Int {
     }.value
     #expect(grown < 4, "parsing kept \(grown) MB")
 }
+
+/// Checks the predicates SwiftTreeSitter lets through, against the real grammars.
+@Suite struct QueryPredicateTests {
+    func kinds(_ path: String, _ text: String) throws -> [String: Set<TokenKind>] {
+        let lang = try #require(SyntaxRuntime.shared?.language(forPath: path))
+        let ns = text as NSString
+        return lang.tokens(text).reduce(into: [:]) { $0[ns.substring(with: $1.range), default: []].insert($1.kind) }
+    }
+
+    @Test func zigColoursOnlyCapitalisedNamesAsTypesAndConstants() throws {
+        let k = try kinds("a.zig", "const Allocator = std.mem.Allocator;\nconst max_len = MAX_LEN + count;\n")
+        #expect(k["Allocator"]?.contains(.type) == true)
+        #expect(k["MAX_LEN"]?.contains(.constant) == true)
+        for name in ["std", "max_len", "count"] { #expect(k[name] == nil, "\(name)") }
+    }
+
+    @Test func cmakeColoursOnlyUppercaseArgumentsAsConstants() throws {
+        let k = try kinds("CMakeLists.txt", "set(CMAKE_CXX_STANDARD on)\nproject(demo LANGUAGES CXX)\n")
+        #expect(k["CMAKE_CXX_STANDARD"] == [.constant])
+        #expect(k["on"]?.contains(.constant) == false)
+        #expect(k["demo"] == nil)
+    }
+
+    @Test func juliaColoursEndAsBuiltInOnlyInsideAnIndex() throws {
+        #expect(try kinds("a.jl", "x = a[end]\n")["end"] == [.keyword])
+        #expect(try kinds("a.jl", "begin = 2\n")["begin"] == nil)
+    }
+}

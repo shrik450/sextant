@@ -59,17 +59,17 @@ public final class SyntaxLanguage: Sendable {
     /// isn't taken for what this one would find.
     public let version: String
     let language: SwiftTreeSitter.Language
-    let highlightsQuery: Query?
-    let tagsQuery: Query?
-    let localsQuery: Query?
+    let highlightsQuery: CheckedQuery?
+    let tagsQuery: CheckedQuery?
+    let localsQuery: CheckedQuery?
 
     init(name: String, version: String, language: SwiftTreeSitter.Language, highlights: Query?, tags: Query?, locals: Query?) {
         self.name = name
         self.version = version
         self.language = language
-        highlightsQuery = highlights
-        tagsQuery = tags
-        localsQuery = locals
+        highlightsQuery = highlights.map(CheckedQuery.init)
+        tagsQuery = tags.map(CheckedQuery.init)
+        localsQuery = locals.map(CheckedQuery.init)
     }
 
     public var hasTags: Bool { tagsQuery != nil }
@@ -106,7 +106,7 @@ public final class SyntaxLanguage: Sendable {
 
     private func tokens(in tree: MutableTree, _ text: String) -> [Token] {
         guard let q = highlightsQuery else { return [] }
-        return q.execute(in: tree).resolve(with: .init(string: text)).highlights().compactMap { r in
+        return q.matches(in: tree, text).highlights().compactMap { r in
             TokenKind(capture: r.name).map { Token(range: r.range, kind: $0) }
         }
     }
@@ -116,7 +116,7 @@ public final class SyntaxLanguage: Sendable {
         let ns = text as NSString
         let lines = LineIndex(text)
         var out: [Symbol] = []
-        for match in q.execute(in: tree).resolve(with: .init(string: text)) where SyntaxLanguage.capturesAgree(in: match, ns) {
+        for match in q.matches(in: tree, text) {
             guard let nameCapture = match.captures(named: "name").first else { continue }
             for c in match.captures {
                 guard let capture = c.name, capture.hasPrefix("definition.") || capture.hasPrefix("reference.") else { continue }
@@ -152,25 +152,6 @@ public final class SyntaxLanguage: Sendable {
             n = node.parent
         }
         return capture
-    }
-
-    /// Whether a match passes the `#eq?` and `#not-eq?` predicates that compare two captures.
-    ///
-    /// SwiftTreeSitter only compares captures with strings, and lets these through unchecked.
-    static func capturesAgree(in match: QueryMatch, _ text: NSString) -> Bool {
-        func texts(_ names: [String]) -> [String] {
-            names.flatMap { match.captures(named: $0) }.map { text.substring(with: $0.node.range) }
-        }
-        return match.predicates.allSatisfy { predicate in
-            switch predicate {
-            case .eq(let strings, let names) where strings.isEmpty && names.count == 2:
-                Set(texts(names)).count <= 1
-            case .notEq(let strings, let names) where strings.isEmpty && names.count == 2:
-                Set(texts(names)).count != 1
-            default:
-                true
-            }
-        }
     }
 }
 

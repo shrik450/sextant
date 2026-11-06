@@ -308,9 +308,9 @@ extension SyntaxLanguage {
     ///
     /// The tree's root isn't taken for a scope, so what's defined at the top level is
     /// named by spelling like everything outside the scopes.
-    static func locals(_ query: Query, in tree: MutableTree, _ text: String) -> LocalCaptures {
+    static func locals(_ query: CheckedQuery, in tree: MutableTree, _ text: String) -> LocalCaptures {
         var out = LocalCaptures()
-        for match in query.execute(in: tree).resolve(with: .init(string: text)) {
+        for match in query.matches(in: tree, text) {
             for c in match.captures {
                 guard let name = c.name else { continue }
                 let range = c.node.range
