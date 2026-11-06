@@ -173,6 +173,18 @@ extension GitEdgeCaseTests {
         #expect(byPath["nested"]?.isUntracked == true && byPath["nested"]?.newMode == "160000")
     }
 
+    @Test func untrackedFilesThatCantBeReadDontFailTheDiff() async throws {
+        let r = try ScratchRepo("unreadable")
+        try r.write("b.txt", "b\n")
+        try r.commitAll("B")
+        try r.write("b.txt", "b\nmore\n")
+        try r.write("locked.txt", "secret\n")
+        #expect(chmod(r.root.appendingPathComponent("locked.txt").path, 0) == 0)
+        let files = try await r.repo.diff(.worktree(since: nil))
+        #expect(files.map(\.path) == ["b.txt"])
+        #expect(files.first?.change.newOid == (try r.blobID("b\nmore\n")))
+    }
+
     @Test func filesDeletedWhileDiffingDontFailIt() async throws {
         let r = try ScratchRepo("vanishing")
         try r.write("a.txt", "a\n")

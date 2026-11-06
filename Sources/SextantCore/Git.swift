@@ -219,17 +219,17 @@ public struct Git: Sendable {
     /// Regular files go through `git hash-object`, so the path's filters apply. A symbolic link
     /// is hashed here from its target path, which is what git stores for it.
     ///
-    /// - Returns: An ID for each path, in order, or nil for a path that's neither a file nor a
-    ///   symbolic link, such as a folder, a nested repository, or a file deleted since it was
-    ///   listed.
+    /// - Returns: An ID for each path, in order, or nil for a path that's neither a file this
+    ///   process can read nor a symbolic link, such as a folder, a nested repository, or a file
+    ///   deleted since it was listed.
     public func hashObjects(_ paths: [String]) async throws -> [String?] {
         var ids = [String?](repeating: nil, count: paths.count)
         var files: [Int] = []
         for (i, path) in paths.enumerated() {
             switch worktreeEntry(path) {
-            case .file: files.append(i)
+            case .file where isReadable(path): files.append(i)
             case .link(let target): ids[i] = blobID(of: target)
-            case nil: break
+            default: break
             }
         }
         while !files.isEmpty {
@@ -240,12 +240,15 @@ public struct Git: Sendable {
                 break
             } catch {
                 let before = files.count
-                files.removeAll { worktreeEntry(paths[$0]) != .file }
+                files.removeAll { worktreeEntry(paths[$0]) != .file || !isReadable(paths[$0]) }
                 if files.count == before { throw error }
             }
         }
         return ids
     }
+
+    /// Whether this process can read a worktree path.
+    func isReadable(_ path: String) -> Bool { access(root.appendingPathComponent(path).path, R_OK) == 0 }
 
     /// What a worktree path holds, as git sees it.
     enum WorktreeEntry: Equatable {
