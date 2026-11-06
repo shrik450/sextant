@@ -258,9 +258,9 @@ final class JumpCell: NSTableCellView {
         icon.frame = NSRect(x: 10, y: round((h - 16) / 2), width: 16, height: 16)
         let th = title.intrinsicContentSize.height
         let titleWidth = min(ceil(title.attributedStringValue.size().width) + 4, bounds.width * 0.55)
-        title.frame = NSRect(x: 34, y: round((h - th) / 2), width: titleWidth, height: th)
+        title.frame = textFieldFrame(NSRect(x: 34, y: round((h - th) / 2), width: titleWidth, height: th))
         let dh = detail.intrinsicContentSize.height
         let x = title.frame.maxX + 10
-        detail.frame = NSRect(x: x, y: round((h - dh) / 2), width: max(0, bounds.width - x - 10), height: dh)
+        detail.frame = textFieldFrame(NSRect(x: x, y: round((h - dh) / 2), width: max(0, bounds.width - x - 10), height: dh))
     }
 }

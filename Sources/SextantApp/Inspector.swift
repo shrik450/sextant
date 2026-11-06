@@ -535,7 +535,7 @@ final class InspectorSectionCell: NSTableCellView {
             right = t.frame.minX - 6
         }
         let th = title.intrinsicContentSize.height
-        title.frame = NSRect(x: 2, y: round((h - th) / 2) - 1, width: max(0, right - 2), height: th)
+        title.frame = textFieldFrame(NSRect(x: 2, y: round((h - th) / 2) - 1, width: max(0, right - 2), height: th))
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -574,7 +574,7 @@ final class InspectorRowCell: NSTableCellView {
         icon.frame = NSRect(x: 2, y: round((h - 16) / 2), width: 16, height: 16)
         marker.frame = NSRect(x: bounds.width - 14, y: round((h - 6) / 2), width: 6, height: 6)
         let t = title.intrinsicContentSize.height
-        title.frame = NSRect(x: 23, y: round((h - t) / 2), width: max(0, marker.frame.minX - 6 - 23), height: t)
+        title.frame = textFieldFrame(NSRect(x: 23, y: round((h - t) / 2), width: max(0, marker.frame.minX - 6 - 23), height: t))
     }
 
     required init?(coder: NSCoder) { fatalError() }

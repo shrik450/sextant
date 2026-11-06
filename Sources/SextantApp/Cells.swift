@@ -2,6 +2,21 @@ import AppKit
 import UniformTypeIdentifiers
 import SextantCore
 
+extension NSView {
+    /// Returns a frame for a text field laid out by hand in this view, grown outward to the
+    /// window's pixels.
+    ///
+    /// A text field on glass grows its own frame to the pixels whenever it lays out. A frame set
+    /// off the pixels then changes under the layout that set it, which lays out again and sets it
+    /// back, until AppKit gives up on the window. Rows land off the pixels whenever a table
+    /// scrolls by its estimates of row heights it hasn't measured yet.
+    ///
+    /// - Parameter frame: The field's frame, in this view's coordinates.
+    func textFieldFrame(_ frame: NSRect) -> NSRect {
+        backingAlignedRect(frame, options: .alignAllEdgesOutward)
+    }
+}
+
 /// Returns the arrow key a list treats `j` or `k` as, the way the reader moves its caret with
 /// them, or the event itself for any other key.
 private func listArrow(for event: NSEvent) -> NSEvent {
@@ -91,16 +106,16 @@ final class TreeCell: NSTableCellView {
         glyph.frame = NSRect(x: 0, y: (h - 18) / 2, width: 18, height: 18)
         badge.sizeToFit()
         let bw = badge.stringValue.isEmpty ? 0 : max(16, badge.frame.width)
-        badge.frame = NSRect(x: bounds.width - 4 - bw, y: (h - badge.frame.height) / 2, width: bw, height: badge.frame.height)
+        badge.frame = textFieldFrame(NSRect(x: bounds.width - 4 - bw, y: (h - badge.frame.height) / 2, width: bw, height: badge.frame.height))
         let x0: CGFloat = 23
         let right = (bw > 0 ? badge.frame.minX : bounds.width) - 6
         name.sizeToFit()
-        name.frame = NSRect(x: x0, y: (h - name.frame.height) / 2, width: min(name.frame.width, max(0, right - x0)), height: name.frame.height)
+        name.frame = textFieldFrame(NSRect(x: x0, y: (h - name.frame.height) / 2, width: min(name.frame.width, max(0, right - x0)), height: name.frame.height))
         dir.sizeToFit()
         let dirX = name.frame.maxX + 6
         let dirW = min(dir.frame.width, right - dirX)
         dir.isHidden = dir.stringValue.isEmpty || dirW < min(dir.frame.width, 48)
-        dir.frame = NSRect(x: dirX, y: name.frame.minY + name.baselineOffsetFromBottom - dir.baselineOffsetFromBottom, width: max(0, dirW), height: dir.frame.height)
+        dir.frame = textFieldFrame(NSRect(x: dirX, y: name.frame.minY + name.baselineOffsetFromBottom - dir.baselineOffsetFromBottom, width: max(0, dirW), height: dir.frame.height))
     }
 
     @objc private func toggle() { onToggle?() }
