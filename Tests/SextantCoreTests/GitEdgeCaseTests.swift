@@ -240,3 +240,18 @@ extension GitEdgeCaseTests {
         #expect(good.hunks.last?.lines.last?.noNewline == true)
     }
 }
+
+extension GitEdgeCaseTests {
+    @Test func crlfLinesReadAlikeFromPatchesAndBlobs() async throws {
+        let r = try ScratchRepo("crlf")
+        try r.write("dos.txt", "one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix\r\nseven\r\neight\r\n")
+        try r.commitAll("DOS")
+        try r.write("dos.txt", "one\r\ntwo\r\nthree\r\nfour\r\nFIVE\r\nsix\r\nseven\r\neight\r\nnine\r\n")
+        let file = try #require(try await r.repo.diff(.worktree(since: nil)).first)
+        #expect(file.hunks.flatMap(\.lines).allSatisfy { !$0.text.hasSuffix("\r") })
+        let old = try await r.repo.oldLines(of: file)
+        let all = wholeFile(file.hunks, oldLines: old)
+        #expect(all.filter { $0.kind != .added }.map(\.text) == old)
+        #expect(all.filter { $0.kind != .deleted }.map(\.text) == splitLines(try #require(r.repo.readWorktreeFile("dos.txt"))))
+    }
+}

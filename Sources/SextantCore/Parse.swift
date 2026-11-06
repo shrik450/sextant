@@ -198,6 +198,10 @@ func parseHunkHeader(_ line: Substring) -> (Int, Int, Int, Int, String)? {
     return (o.0, o.1, n.0, n.1, section)
 }
 
+/// Parses one file's patch.
+///
+/// A line's trailing CR is dropped, as `splitLines(_:)` drops it, so a line reads the same from
+/// a patch as from its blob.
 func parseFilePatch(_ lines: [ArraySlice<UInt8>], change: RawChange) -> FileDiff {
     var hunks: [Hunk] = []
     var notes: [String] = []
@@ -245,7 +249,8 @@ func parseFilePatch(_ lines: [ArraySlice<UInt8>], change: RawChange) -> FileDiff
             continue
         }
         let prefix = raw.prefix(prefixWidth)
-        let text = String(decoding: raw.dropFirst(prefixWidth), as: UTF8.self)
+        let body = raw.dropFirst(prefixWidth)
+        let text = String(decoding: body.last == 0x0D ? body.dropLast() : body, as: UTF8.self)
         if prefixWidth == 1 {
             switch first {
             case UInt8(ascii: "+"):
