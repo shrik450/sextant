@@ -62,7 +62,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
 
     /// The panes, left to right.
     private(set) var panes: [Pane] = []
-    private(set) var focusedPane = 0
+    private(set) var focusedPane = 0 { didSet { runWorkWaitingForFile() } }
     /// The pane the keyboard and the side columns follow.
     var pane: Pane { panes[focusedPane] }
     var reader: Reader { pane.reader }
@@ -146,6 +146,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     /// Makes a pane's reader, set up like the others.
     private func makePane() -> Pane {
         let p = Pane(look: look)
+        p.loadingChanged = { [weak self] in self?.runWorkWaitingForFile() }
         let r = p.reader
         r.delegate = self
         r.split = UserDefaults.standard.string(forKey: "diffMode") == "split"
@@ -578,32 +579,43 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private var afterFrame: [String: Timer] = [:]
+    /// Work that came due while the focused pane's file was loading, by key, to run once it shows.
+    private var waitingForFile: [String: @MainActor () -> Void] = [:]
 
     /// Runs work once the run loop has committed what the current event drew, and once however
     /// often it's asked for before then.
     ///
     /// A timer fires after the commit, so the code shows first and the side columns follow.
     /// Work that waits for a loading file waits until the focused pane's file shows, so it
-    /// doesn't delay it.
-    private func afterFrame(_ key: String, waitingForFile: Bool = false, _ work: @escaping @MainActor () -> Void) {
-        if afterFrame[key] == nil { busy += 1 }
+    /// doesn't delay it. The window stays busy from the first ask until the work runs.
+    private func afterFrame(_ key: String, waitingForFile waits: Bool = false, _ work: @escaping @MainActor () -> Void) {
+        if afterFrame[key] == nil, waitingForFile[key] == nil { busy += 1 }
         afterFrame[key]?.invalidate()
+        waitingForFile[key] = nil
         let t = Timer(timeInterval: 0, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                if waitingForFile && self.pane.isLoadingFile {
-                    self.afterFrame[key] = nil
-                    self.busy -= 1
-                    self.afterFrame(key, waitingForFile: true, work)
+                self.afterFrame[key] = nil
+                if waits && self.pane.isLoadingFile {
+                    self.waitingForFile[key] = work
                     return
                 }
-                self.afterFrame[key] = nil
                 self.busy -= 1
                 work()
             }
         }
         RunLoop.main.add(t, forMode: .common)
         afterFrame[key] = t
+    }
+
+    /// Runs the work waiting for the focused pane's file after the next frame, once the pane
+    /// isn't loading one.
+    private func runWorkWaitingForFile() {
+        guard !waitingForFile.isEmpty, panes.indices.contains(focusedPane), !pane.isLoadingFile else { return }
+        let waiting = waitingForFile
+        waitingForFile = [:]
+        for (key, work) in waiting { afterFrame(key, waitingForFile: true, work) }
+        busy -= waiting.count
     }
 
     /// Shows a file in the inspector once the reader's frame is on screen.

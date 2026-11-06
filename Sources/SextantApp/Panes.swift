@@ -43,8 +43,10 @@ final class Pane {
     var focus: Location.Place?
     /// Where to land once the session has loaded.
     var pendingLocation: Location?
-    var showGeneration = 0
-    var loadingGeneration: Int?
+    var showGeneration = 0 { didSet { loadingChanged() } }
+    var loadingGeneration: Int? { didSet { loadingChanged() } }
+    /// Called whenever `isLoadingFile` may have changed.
+    var loadingChanged: () -> Void = {}
     /// Whether search results open in this pane, as they do in the pane opened for the first.
     var showsResults = false
 
