@@ -319,6 +319,41 @@ struct TagsSample: Sendable, CustomTestStringConvertible {
             FROM ${BASE}
             COPY --from=builder /app /app
             """, definitions: ["variable BASE", "target builder", "variable CGO_ENABLED"]),
+        TagsSample(path: "math.c", text: """
+            struct point { int x; };
+            typedef struct point point_t;
+            enum color { RED };
+            int add(int a, int b);
+            static char *name(void) {
+              return "x";
+            }
+            int add(int a, int b) {
+              return a + b;
+            }
+            """, definitions: ["class point", "type point_t", "enum color", "function add", "function name", "function add"]),
+        TagsSample(path: "shape.cpp", text: """
+            namespace geo {
+            class Shape {
+             public:
+              Shape();
+              ~Shape();
+              virtual double area() const;
+              int sides() const { return 0; }
+              Shape &operator=(const Shape &other);
+            };
+            double Shape::area() const {
+              return 0;
+            }
+            }
+            geo::Shape::Shape() {}
+            const std::string &label(int n) {
+              return names[n];
+            }
+            template <typename T> T twice(T x) { return x + x; }
+            """, definitions: [
+                "module geo", "class Shape", "function Shape", "method ~Shape", "method area", "method sides",
+                "method operator=", "method area", "method Shape", "function label", "function twice",
+            ]),
     ]
 
     @Test(arguments: samples)
@@ -354,5 +389,9 @@ struct TagsSample: Sendable, CustomTestStringConvertible {
         #expect(kotlin.first?.lines == 0...2)
         let markdown = try definitions("a.md", "# Title\n\n## Install\n\nSteps.\n\n## Usage\n")
         #expect(markdown.map(\.lines) == [0...6, 2...5, 6...6])
+        let c = try definitions("a.c", "int add(int a, int b);\nstatic char *\nname(void) {\n  return \"x\";\n}\n")
+        #expect(c.map(\.lines) == [0...0, 1...4])
+        let cpp = try definitions("a.cpp", "double Shape::area() const {\n  return 0;\n}\n")
+        #expect(cpp.map(\.lines) == [0...2])
     }
 }
