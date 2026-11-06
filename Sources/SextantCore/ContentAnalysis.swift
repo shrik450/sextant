@@ -120,8 +120,11 @@ public actor ContentAnalysis {
 
     /// Forgets the saved definitions of other versions once they outnumber these threefold, so
     /// what's saved stays near the size of the repository.
+    ///
+    /// No versions keep everything, since a snapshot without any says nothing about what's
+    /// worth keeping.
     public func prune(keeping current: Set<ContentKey>) {
-        guard definitions.count > current.count * 3 else { return }
+        guard !current.isEmpty, definitions.count > current.count * 3 else { return }
         definitions = definitions.filter { current.contains($0.key) }
         unsaved = true
         saveSoon()
