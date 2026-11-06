@@ -26,7 +26,7 @@ inspect() {
   end=$(now_ns)
   echo "$start $end" >> "$OUT/pauses.txt"
   awk -v n="$1" -v fp="$(/usr/bin/footprint -p "$PID" 2>/dev/null | awk '/^ *phys_footprint:/ { print $2; exit }')" '
-    /PillRowView|ClassicRowView/ && $1 ~ /^[0-9]+$/ { rows += $1 }
+    $4 ~ /^(PillRowView|ClassicRowView)$/ { rows += $1 }
     / NSISEngine +ObjC/ { engines += $1 }
     /^All zones: [0-9]+ nodes \(/ { gsub(/[()]/, ""); bytes = $5 }
     END { printf "%s %d %d %.1f %s\n", n, rows, engines, bytes / 1048576, fp }' "$OUT/heap-$1.txt" >> "$OUT/checkpoints.txt"
