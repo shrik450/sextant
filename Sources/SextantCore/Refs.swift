@@ -73,20 +73,20 @@ public struct Branch: Sendable, Hashable {
 
 /// The `git for-each-ref` format that `parseBranches` reads, comparing against `base`.
 public func branchFormat(base: String?) -> String {
-    "%(refname)%00%(objectname)%00%(committerdate:unix)%00\(base.map { "%(ahead-behind:\($0))" } ?? "")%00%(subject)"
+    "%(refname)%00%(symref)%00%(objectname)%00%(committerdate:unix)%00\(base.map { "%(ahead-behind:\($0))" } ?? "")%00%(subject)"
 }
 
 /// Parses `git for-each-ref` output in `branchFormat`, leaving out symbolic refs like `origin/HEAD`.
 public func parseBranches(_ data: Data) -> [Branch] {
     data.split(separator: 0x0A).compactMap { line in
-        let f = line.split(separator: 0, maxSplits: 4, omittingEmptySubsequences: false).map { String(decoding: $0, as: UTF8.self) }
-        guard f.count == 5 else { return nil }
+        let f = line.split(separator: 0, maxSplits: 5, omittingEmptySubsequences: false).map { String(decoding: $0, as: UTF8.self) }
+        guard f.count == 6, f[1].isEmpty else { return nil }
         let ref = f[0]
         let isRemote = ref.hasPrefix("refs/remotes/")
+        guard ref.hasPrefix("refs/heads/") || isRemote else { return nil }
         let name = String(ref.dropFirst(isRemote ? 13 : 11))
-        guard ref.hasPrefix("refs/heads/") || isRemote, !name.hasSuffix("/HEAD") else { return nil }
-        let counts = f[3].split(separator: " ").compactMap { Int($0) }
-        return Branch(name: name, isRemote: isRemote, oid: f[1], date: Date(timeIntervalSince1970: TimeInterval(f[2]) ?? 0), subject: f[4],
+        let counts = f[4].split(separator: " ").compactMap { Int($0) }
+        return Branch(name: name, isRemote: isRemote, oid: f[2], date: Date(timeIntervalSince1970: TimeInterval(f[3]) ?? 0), subject: f[5],
                       ahead: counts.count == 2 ? counts[0] : nil, behind: counts.count == 2 ? counts[1] : nil)
     }
 }

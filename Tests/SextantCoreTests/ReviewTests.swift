@@ -27,21 +27,22 @@ private func fields(_ records: [[String]]) -> Data {
 }
 
 @Test func parsesBranchesWithDistanceFromBase() {
-    let line = { (ref: String, counts: String, subject: String) in
-        [ref, String(repeating: "c", count: 40), "1767225600", counts, subject].joined(separator: "\0")
+    let line = { (ref: String, symref: String, counts: String, subject: String) in
+        [ref, symref, String(repeating: "c", count: 40), "1767225600", counts, subject].joined(separator: "\0")
     }
     let data = Data([
-        line("refs/heads/feature/x", "2 5", "Add x"),
-        line("refs/remotes/origin/HEAD", "", "Tip"),
-        line("refs/remotes/origin/feature/y", "", "Subject with\0nul"),
-        line("refs/tags/v1", "0 0", "Tagged"),
+        line("refs/heads/feature/x", "", "2 5", "Add x"),
+        line("refs/heads/topic/HEAD", "", "", "A branch named HEAD"),
+        line("refs/remotes/origin/HEAD", "refs/remotes/origin/main", "", "Tip"),
+        line("refs/remotes/origin/feature/y", "", "", "Subject with\0nul"),
+        line("refs/tags/v1", "", "0 0", "Tagged"),
     ].joined(separator: "\n").utf8)
     let branches = parseBranches(data)
-    #expect(branches.map(\.name) == ["feature/x", "origin/feature/y"])
-    #expect(branches.map(\.isRemote) == [false, true])
+    #expect(branches.map(\.name) == ["feature/x", "topic/HEAD", "origin/feature/y"])
+    #expect(branches.map(\.isRemote) == [false, false, true])
     #expect(branches[0].ahead == 2 && branches[0].behind == 5)
-    #expect(branches[1].ahead == nil && branches[1].behind == nil)
-    #expect(branches[1].subject == "Subject with\0nul")
+    #expect(branches[2].ahead == nil && branches[2].behind == nil)
+    #expect(branches[2].subject == "Subject with\0nul")
     #expect(branches[0].date == Date(timeIntervalSince1970: 1767225600))
 }
 

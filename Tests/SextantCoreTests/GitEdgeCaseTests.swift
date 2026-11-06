@@ -276,3 +276,17 @@ extension GitEdgeCaseTests {
         #expect(found.allSatisfy { $0.line == 1 && $0.column == 1 && $0.text.hasPrefix("needle ") })
     }
 }
+
+extension GitEdgeCaseTests {
+    @Test func listsBranchesNamedHEADButNotSymbolicRefs() async throws {
+        let r = try ScratchRepo("branch-named-head")
+        try r.write("a.txt", "a\n")
+        try r.commitAll("A")
+        try r.git("branch", "feature/HEAD")
+        try r.git("update-ref", "refs/remotes/origin/main", "HEAD")
+        try r.git("update-ref", "refs/remotes/origin/topic/HEAD", "HEAD")
+        try r.git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+        let names = Set(await r.repo.branches(comparedWith: "main").map(\.name))
+        #expect(names == ["main", "feature/HEAD", "origin/main", "origin/topic/HEAD"])
+    }
+}
