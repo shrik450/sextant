@@ -215,6 +215,19 @@ private func describe(_ items: [OutlineItem], depth: Int = 0) -> [String] {
     #expect(changedDefinitions(in: items, lines: lines).map(\.name) == ["B"])
 }
 
+@Test func definitionsOnTheSameLinesAreSiblings() {
+    let lines = (1...4).map { DiffLine(kind: .context, oldNo: $0, newNo: $0, text: "") }
+    let new = [definition("Iterator", "struct", 0...3), definition("Direction", "enum", 1...1),
+               definition("forward", "field", 1...1), definition("reverse", "field", 1...1), definition("next", "method", 2...2)]
+    #expect(describe(outline(lines: lines, new: new, old: new)) == [
+        "Iterator none @0",
+        "  Direction none @1",
+        "  forward none @1",
+        "  reverse none @1",
+        "  next none @2",
+    ])
+}
+
 @Test func foldsEverythingWhenNothingChanged() {
     let tree = fileTree(paths: treePaths, changed: [], reviewed: [], showUnchanged: false, revealed: [])
     #expect(outline(tree) == ["⋯ 4 []"])

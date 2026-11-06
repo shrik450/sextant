@@ -26,10 +26,11 @@ public struct OutlineItem: Sendable, Equatable {
 
     /// Whether `other` sits inside this definition.
     ///
-    /// A deleted definition's span is the line now following where it was, so it only sits inside
-    /// definitions that started before that line.
+    /// A definition spanning exactly the same lines is a sibling, like the fields of an enum
+    /// written on one line. A deleted definition's span is the line now following where it was,
+    /// so it only sits inside definitions that started before that line.
     func contains(_ other: OutlineItem) -> Bool {
-        guard change != .deleted, other.span.upperBound <= span.upperBound else { return false }
+        guard change != .deleted, other.span != span, other.span.upperBound <= span.upperBound else { return false }
         return other.change == .deleted ? span.lowerBound < other.span.lowerBound : span.lowerBound <= other.span.lowerBound
     }
 }
@@ -78,12 +79,14 @@ public func outline(lines: [DiffLine], new: [Symbol], old: [Symbol]) -> [Outline
         let at = newLineOfOld(s.lines.lowerBound)
         items.append(OutlineItem(name: s.name, kind: s.kind, change: .deleted, line: s.nameLine, span: at...at, children: []))
     }
-    items.sort { a, b in
+    let sorted = items.enumerated().sorted { x, y in
+        let a = x.element, b = y.element
         if a.span.lowerBound != b.span.lowerBound { return a.span.lowerBound < b.span.lowerBound }
         if a.span.upperBound != b.span.upperBound { return a.span.upperBound > b.span.upperBound }
-        return a.change != .deleted && b.change == .deleted
+        if (a.change == .deleted) != (b.change == .deleted) { return b.change == .deleted }
+        return x.offset < y.offset
     }
-    return nest(items[...])
+    return nest(sorted.map(\.element)[...])
 }
 
 /// Returns the definitions a change touched directly, in the order the outline lists them.
