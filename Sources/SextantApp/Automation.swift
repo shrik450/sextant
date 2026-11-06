@@ -23,6 +23,8 @@ import SextantCore
 ///     defaults <key> <value>
 ///     menu <title>            perform a menu item by title
 ///     note <text>             add a note on the selected lines, as Add Note's editor saves it
+///     nowait <command>        start a command and go on without waiting for the window to
+///                             settle, so the next one runs while it works
 ///     log <text>
 ///     quit
 ///
@@ -301,6 +303,9 @@ final class Automation {
         case "watch":
             watching?.cancel()
             watching = arg == "stop" ? nil : watch(to: arg)
+        case "nowait":
+            Task { await run(arg) }
+            try? await Task.sleep(for: .milliseconds(20))
         case "log": log(arg)
         case "sh":
             let p = Process()
@@ -736,6 +741,7 @@ extension RepoWindowController {
             "navigatorTab": "\(navigator.tab)",
             "searchStatus": navigator.search.summary,
             "notes": reviewNotes.map { ["title": $0.title, "text": $0.text] },
+            "statusFailures": repository.statusFailures.keys.map(\.path).sorted(),
             "caretColumn": reader.caretColumn ?? -1,
             "caretWord": reader.wordAtCaret ?? "",
             "selectionRows": reader.selection?.lines.count ?? 0,
