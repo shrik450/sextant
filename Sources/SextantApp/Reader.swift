@@ -182,6 +182,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         self.files = files
         self.overview = overview
         usesWord = nil
+        boxed = nil
         cancelJump()
         reload(keepPosition: false)
         if let position { scroll(to: position, animated: false) } else { scrollToTop() }
@@ -225,6 +226,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         for c in columns { c.code.recolor(file: fi) }
         if reland, let r = caretRow { placeCaret(atRow: r) }
         updateHeader()
+        if boxed == nil, caret?.file == fi { updateOccurrences() }
     }
 
     /// Whether everything in view is drawn with its colors.
@@ -282,6 +284,8 @@ final class Reader: NSViewController, CodeViewDelegate {
             columns.forEach { $0.code.setSelectedRange(NSRange(location: 0, length: 0)) }
         }
         markUses()
+        boxed = nil
+        updateOccurrences()
         updateHeader()
     }
 
@@ -331,6 +335,86 @@ final class Reader: NSViewController, CodeViewDelegate {
         files[code.rows[nearest].file].unfolded.insert(range.lowerBound)
         reload(keepPosition: true)
         return true
+    }
+
+    /// The file and places of the names boxed, which name what the caret's name names.
+    private var boxed: (file: Int, places: [FileState.Occurrence])?
+    /// The update of the boxes waiting for the caret to settle.
+    private var pendingOccurrences: Task<Void, Never>?
+
+    /// How long the caret rests on a name before the names that name the same thing are boxed,
+    /// so holding a key down to move doesn't box every name on the way. A tenth of a second
+    /// still feels immediate, and outlasts the default key repeat.
+    private static let occurrenceDelay = Duration.milliseconds(100)
+
+    /// The name the caret is on, or the selection when it's exactly one name, as its file, line
+    /// and the caret's column in it.
+    private var nameAtCaret: (file: Int, line: Int, column: Int)? {
+        let code = activeCode
+        let sel = code.selectedRange()
+        guard let r = code.row(at: sel.location), code.rows.indices.contains(r), code.rows[r].kind == .line,
+              let word = code.identifier(at: sel.location), sel.length == 0 || word == sel else { return nil }
+        return (code.rows[r].file, code.rows[r].line, sel.location - code.rowStarts[r])
+    }
+
+    /// Unboxes the names as soon as the caret leaves them, and boxes the ones that name what the
+    /// caret's new name names once it rests there.
+    ///
+    /// Moving onto another boxed name keeps the boxes as they are, since they name the same
+    /// thing.
+    private func caretMovedAmongNames() {
+        pendingOccurrences?.cancel()
+        pendingOccurrences = nil
+        let at = nameAtCaret
+        if let at, let b = boxed, b.file == at.file, Self.contains(b.places, line: at.line, column: at.column) { return }
+        if boxed != nil { box(nil) }
+        guard at != nil else { return }
+        pendingOccurrences = Task { [weak self] in
+            try? await Task.sleep(for: Self.occurrenceDelay)
+            guard !Task.isCancelled else { return }
+            self?.updateOccurrences()
+        }
+    }
+
+    /// Whether the caret is on or just after one of some places in a line.
+    private static func contains(_ places: [FileState.Occurrence], line: Int, column: Int) -> Bool {
+        var lo = 0, hi = places.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if places[mid].line < line { lo = mid + 1 } else { hi = mid }
+        }
+        return places[lo...].prefix { $0.line == line }.contains { NSLocationInRange(column, $0.range) || NSMaxRange($0.range) == column }
+    }
+
+    /// Boxes the names that name what the caret's name names, indexing the file's names first if
+    /// they aren't yet.
+    private func updateOccurrences() {
+        pendingOccurrences?.cancel()
+        pendingOccurrences = nil
+        guard let at = nameAtCaret, files.indices.contains(at.file) else { return box(nil) }
+        let f = files[at.file]
+        guard let places = f.occurrences(atLine: at.line, column: at.column) else {
+            guard f.tokens != nil else { return }
+            Task(priority: .utility) { [weak self] in
+                await f.indexNames()
+                guard f.hasNames, let self, self.caret.map({ self.files[$0.file] === f }) == true else { return }
+                self.updateOccurrences()
+            }
+            return
+        }
+        box(places.isEmpty ? nil : (at.file, places))
+    }
+
+    private func box(_ new: (file: Int, places: [FileState.Occurrence])?) {
+        boxed = new
+        for c in columns { c.code.showOccurrences(new?.places ?? [], inFile: new?.file ?? 0) }
+    }
+
+    /// Boxes the names for where the caret is now, without waiting for it to rest, so a
+    /// measurement counts the work.
+    func settleOccurrences() {
+        guard pendingOccurrences != nil else { return }
+        updateOccurrences()
     }
 
     /// The name whose uses are highlighted.
@@ -915,6 +999,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         activeColumn = v
         markActiveColumn()
         updateHeader()
+        caretMovedAmongNames()
         delegate?.readerCaretMoved(self)
     }
 

@@ -124,6 +124,8 @@ final class FileState {
         definitions = nil
         outline = nil
         words = nil
+        names = nil
+        naming = nil
         runs = nil
         version += 1
         analysis = nil
@@ -255,6 +257,113 @@ final class FileState {
         return Analysis(tokens: tokens, definitions: new.definitions,
                         outline: wantSymbols ? SextantCore.outline(lines: lines, new: new.definitions, old: oldDefinitions) : [],
                         hasTags: language.hasTags)
+    }
+
+    /// The names in one side of the file, with where its lines are among the file's.
+    struct SideNames: Sendable {
+        var index: NameIndex
+        /// The index into the file's lines of each of the side's lines.
+        var lines: [Int]
+        /// The side's line for each of the file's lines, or -1 where the side doesn't have it.
+        var sideLines: [Int32]
+    }
+
+    /// The names in each side of the file, once indexed: the new side, and the old side if the
+    /// file has removed lines.
+    private var names: (new: SideNames, old: SideNames?)?
+    private var naming: (task: Task<Void, Never>, version: Int)?
+
+    /// Whether the file's names are indexed, so `occurrences(atLine:column:)` can find them.
+    var hasNames: Bool { names != nil }
+
+    /// A place a name is used: a line, by index into the file's lines, and its range in the line.
+    struct Occurrence: Comparable {
+        var line: Int
+        var range: NSRange
+
+        static func < (a: Occurrence, b: Occurrence) -> Bool {
+            a.line != b.line ? a.line < b.line : a.range.location < b.range.location
+        }
+    }
+
+    /// Indexes the names in each side of the file off the main thread, once its tokens have
+    /// arrived, since they tell names from keywords.
+    func indexNames() async {
+        guard hasLanguage, names == nil, let tokens else { return }
+        if let n = naming, n.version == version { return await n.task.value }
+        let lines = self.lines, v = version, path = self.path
+        let task = Task(priority: .utility) {
+            let found = await FileState.indexNames(lines, tokens: tokens, path: path)
+            guard v == version, let found else { return }
+            names = found
+        }
+        naming = (task, v)
+        await task.value
+    }
+
+    @concurrent nonisolated private static func indexNames(_ lines: [DiffLine], tokens: [[Token]], path: String) async -> (new: SideNames, old: SideNames?)? {
+        guard let language = SyntaxRuntime.shared?.language(forPath: path) else { return nil }
+        func side(_ old: Bool) -> SideNames {
+            let indices = lines.indices.filter { old ? lines[$0].kind != .added : lines[$0].kind != .deleted }
+            var sideLines = [Int32](repeating: -1, count: lines.count)
+            for (k, i) in indices.enumerated() { sideLines[i] = Int32(k) }
+            let index = language.names(of: indices.map { lines[$0].text }, tokens: indices.map { tokens[$0] })
+            return SideNames(index: index, lines: indices, sideLines: sideLines)
+        }
+        let hasOld = lines.contains { $0.kind == .deleted }
+        return (side(false), hasOld ? side(true) : nil)
+    }
+
+    /// Returns where the name at a place in the file is used, and the places of the names that
+    /// name the same thing, in order.
+    ///
+    /// A line both sides have finds the name in each. A line only one side has finds it in
+    /// that side, then in the other side through a line both have, so a local the change
+    /// rewrote is found on its removed and added lines alike. A name with no local scope is
+    /// found in the other side by its spelling.
+    ///
+    /// - Parameters:
+    ///   - line: The index into the file's lines.
+    ///   - column: The caret's UTF-16 offset in the line.
+    /// - Returns: The places, empty if there's no name there, or nil until the names are indexed.
+    func occurrences(atLine line: Int, column: Int) -> [Occurrence]? {
+        guard let names else { return nil }
+        guard lines.indices.contains(line) else { return [] }
+        let sides = [names.new] + (names.old.map { [$0] } ?? [])
+        var found: [(side: Int, binding: Int)] = []
+        var spelling: String?
+        for (s, side) in sides.enumerated() where side.sideLines[line] >= 0 {
+            guard let n = side.index.name(atLine: Int(side.sideLines[line]), column: column) else { continue }
+            found.append((s, n.binding))
+            spelling = (lines[line].text as NSString).substring(with: n.range)
+        }
+        guard let first = found.first, let spelling else { return [] }
+        if found.count == 1, sides.count == 2 {
+            let from = sides[first.side], other = sides[1 - first.side]
+            let across: Int? = if from.index.isLocal(first.binding) {
+                from.index.occurrences(of: first.binding).lazy.compactMap { o -> Int? in
+                    let l = from.lines[o.line]
+                    guard self.lines[l].kind == .context else { return nil }
+                    return other.index.name(atLine: Int(other.sideLines[l]), range: o.range)?.binding
+                }.first
+            } else {
+                other.index.binding(spelled: spelling)
+            }
+            if let across { found.append((1 - first.side, across)) }
+        }
+        let each = found.map { s, binding in sides[s].index.occurrences(of: binding).map { Occurrence(line: sides[s].lines[$0.line], range: $0.range) } }
+        guard each.count == 2 else { return each.first ?? [] }
+        let a = each[0], b = each[1]
+        var merged: [Occurrence] = []
+        merged.reserveCapacity(a.count + b.count)
+        var i = 0, j = 0
+        while i < a.count || j < b.count {
+            let next = j == b.count || (i < a.count && a[i] < b[j]) ? a[i] : b[j]
+            if i < a.count, a[i] == next { i += 1 }
+            if j < b.count, next == b[j] { j += 1 }
+            merged.append(next)
+        }
+        return merged
     }
 
     private var runs: [KeyedRun]?

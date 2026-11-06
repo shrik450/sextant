@@ -251,6 +251,8 @@ final class CodeView: NSTextView {
         rowStarts = r.rowStarts
         textStorage?.setAttributedString(r.string)
         colored = []
+        occurrences = []
+        lineRows = [:]
         backgroundColor = .clear
         selectedTextAttributes = [.backgroundColor: style.theme.color("selection")]
         linkTextAttributes = [:]
@@ -315,7 +317,8 @@ final class CodeView: NSTextView {
         return first...last
     }
 
-    /// Applies a row's syntax and changed-word colors.
+    /// Applies a row's syntax and changed-word colors, and keeps the text of its boxed names
+    /// readable on their boxes.
     ///
     /// - Returns: False if the row's file is still being analyzed.
     private func color(row r: Int, _ lm: NSLayoutManager) -> Bool {
@@ -331,15 +334,29 @@ final class CodeView: NSTextView {
             lm.addTemporaryAttribute(.foregroundColor, value: t.syntax(tok.kind), forCharacterRange: at)
         }
         let kind = f.lines[row.line].kind
+        let read = kind != .context && isReadLine(row.file, row.line)
+        var lineBackground = t.canvas.rgb
+        var words: [NSRange] = []
+        var wordColor = NSColor.clear
         if kind != .context {
-            let read = isReadLine(row.file, row.line)
             let tints = kind == .added ? (line: t.color("addLine"), word: t.color("addWord")) : (line: t.color("delLine"), word: t.color("delWord"))
-            let wordColor = read ? tints.word.asRead : tints.word
-            let highlight = wordColor.laid(over: (read ? tints.line.asRead : tints.line).laid(over: t.canvas.rgb))
-            for w in f.wordRanges(row.line) where NSMaxRange(w) <= range.length {
+            lineBackground = (read ? tints.line.asRead : tints.line).laid(over: lineBackground)
+            wordColor = read ? tints.word.asRead : tints.word
+            words = f.wordRanges(row.line).filter { NSMaxRange($0) <= range.length }
+            for w in words {
                 let at = NSRange(location: range.location + w.location, length: w.length)
                 lm.addTemporaryAttribute(.backgroundColor, value: wordColor, forCharacterRange: at)
-                makeReadable(at, on: highlight, lm)
+                makeReadable(at, on: wordColor.laid(over: lineBackground), lm)
+            }
+        }
+        let occurrence = t.color("occurrence")
+        for o in occurrences(onRow: r) where NSMaxRange(o.range) <= range.length {
+            let under = occurrence.laid(over: lineBackground)
+            makeReadable(NSRange(location: range.location + o.range.location, length: o.range.length), on: under, lm)
+            for w in words {
+                let both = NSIntersectionRange(w, o.range)
+                guard both.length > 0 else { continue }
+                makeReadable(NSRange(location: range.location + both.location, length: both.length), on: wordColor.laid(over: under), lm)
             }
         }
         return f.tokens != nil || !f.hasLanguage
@@ -464,6 +481,102 @@ final class CodeView: NSTextView {
     /// The uses of a name to highlight, as ranges of the text.
     var uses: [NSRange] = [] { didSet { needsDisplay = true } }
 
+    /// A name boxed in a row: the row, and the name's UTF-16 range in it.
+    private struct RowRange: Equatable {
+        var row: Int
+        var range: NSRange
+    }
+
+    /// The names that name what the caret's name names, in order, drawn boxed.
+    private var occurrences: [RowRange] = []
+
+    /// The row of each of a file's lines, or -1 for a line this column doesn't show, kept for
+    /// the files whose names were boxed since the text was last set.
+    private var lineRows: [Int: [Int32]] = [:]
+
+    private func rows(ofLinesIn file: Int) -> [Int32] {
+        if let known = lineRows[file] { return known }
+        var map = [Int32](repeating: -1, count: files[file].lines.count)
+        for r in rowRange(ofFile: file) where rows[r].kind == .line { map[rows[r].line] = Int32(r) }
+        lineRows[file] = map
+        return map
+    }
+
+    /// Boxes some places in one file's lines, the ones this column shows, and unboxes the rest.
+    ///
+    /// Only the rows whose boxes change are colored and drawn again, so moving between names
+    /// costs what changes rather than what's shown.
+    func showOccurrences(_ places: [FileState.Occurrence], inFile file: Int) {
+        let shown: [RowRange]
+        if places.isEmpty || !files.indices.contains(file) {
+            shown = []
+        } else {
+            let rowOfLine = rows(ofLinesIn: file)
+            shown = places.compactMap { p in rowOfLine[p.line] >= 0 ? RowRange(row: Int(rowOfLine[p.line]), range: p.range) : nil }
+        }
+        let changed = Self.changedRows(occurrences, shown)
+        occurrences = shown
+        guard !changed.isEmpty else { return }
+        let near = rowsNearView
+        for r in changed {
+            colored.remove(r)
+            guard near?.contains(r) == true, let rect = laidOutBounds(ofRow: r) else { continue }
+            setNeedsDisplay(NSRect(x: bounds.minX, y: rect.minY, width: bounds.width, height: rect.height))
+        }
+        colorVisibleRows()
+    }
+
+    /// Returns the rows whose boxes differ between two lists of boxes, each in order.
+    private static func changedRows(_ a: [RowRange], _ b: [RowRange]) -> [Int] {
+        var changed: [Int] = []
+        var i = 0, j = 0
+        while i < a.count || j < b.count {
+            let row = min(i < a.count ? a[i].row : .max, j < b.count ? b[j].row : .max)
+            let si = i, sj = j
+            while i < a.count, a[i].row == row { i += 1 }
+            while j < b.count, b[j].row == row { j += 1 }
+            if !a[si..<i].elementsEqual(b[sj..<j]) { changed.append(row) }
+        }
+        return changed
+    }
+
+    /// The boxed names in a row, found by bisecting.
+    private func occurrences(onRow r: Int) -> ArraySlice<RowRange> {
+        var lo = 0, hi = occurrences.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if occurrences[mid].row < r { lo = mid + 1 } else { hi = mid }
+        }
+        var end = lo
+        while end < occurrences.count, occurrences[end].row == r { end += 1 }
+        return occurrences[lo..<end]
+    }
+
+    /// The rect of all of a row's wrapped lines if it's laid out, without laying out any more
+    /// text.
+    private func laidOutBounds(ofRow r: Int) -> NSRect? {
+        guard let first = laidOutRect(ofRow: r), let lm = layoutManager, let tc = textContainer else { return nil }
+        let glyphs = lm.glyphRange(forCharacterRange: charRange(ofRow: r), actualCharacterRange: nil)
+        guard glyphs.length > 0 else { return first }
+        return lm.boundingRect(forGlyphRange: glyphs, in: tc).offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y).union(first)
+    }
+
+    /// Draws a box behind each boxed name in some rows, as the caret's own name is boxed.
+    private func drawOccurrences(onRows boxed: [Int]) {
+        guard !boxed.isEmpty, let lm = layoutManager, let tc = textContainer else { return }
+        style.theme.color("occurrence").setFill()
+        let origin = textContainerOrigin
+        for r in boxed {
+            for o in occurrences(onRow: r) {
+                let glyphs = lm.glyphRange(forCharacterRange: NSRange(location: rowStarts[r] + o.range.location, length: o.range.length), actualCharacterRange: nil)
+                lm.enumerateEnclosingRects(forGlyphRange: glyphs, withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0), in: tc) { rect, _ in
+                    let box = NSRect(x: rect.minX + origin.x - 2, y: rect.minY + origin.y + 1, width: rect.width + 4, height: min(rect.height, self.style.lineHeight) - 2)
+                    NSBezierPath(roundedRect: box, xRadius: 4, yRadius: 4).fill()
+                }
+            }
+        }
+    }
+
     /// Labels for the places a typed jump can land, as text offsets.
     var jumpLabels: [(index: Int, label: String)] = [] { didSet { needsDisplay = true } }
 
@@ -573,7 +686,9 @@ final class CodeView: NSTextView {
         let t = style.theme
         let current = showsCurrentLine ? caretRow : nil
         let focused = window?.firstResponder === self
+        var boxed: [Int] = []
         visibleRows(in: rect) { r, frag in
+            if !occurrences.isEmpty, !occurrences(onRow: r).isEmpty { boxed.append(r) }
             defer {
                 if r == current {
                     t.color("selection").withAlphaComponent(focused ? 0.16 : 0.07).setFill()
@@ -608,6 +723,7 @@ final class CodeView: NSTextView {
                 break
             }
         }
+        drawOccurrences(onRows: boxed)
         drawUses(in: rect)
         drawCaret()
     }
