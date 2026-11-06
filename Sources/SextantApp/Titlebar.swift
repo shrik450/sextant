@@ -53,8 +53,8 @@ final class SubjectControl: NSStackView {
 /// navigator and inspector, what's being reviewed, and Go to Anything.
 ///
 /// It's drawn under the system's transparent titlebar, which keeps the window's buttons, and it
-/// moves the window like a titlebar does. Its parts line up with the columns below: the subject
-/// starts where the code does, and Go to Anything spans the inspector.
+/// moves the window like a titlebar does. What's reviewed sits beside the navigator toggle,
+/// wherever the navigator ends, and Go to Anything spans the inspector below it.
 @MainActor
 final class Titlebar: FrameBar {
     let title = NSTextField(labelWithString: "")
@@ -62,7 +62,6 @@ final class Titlebar: FrameBar {
     private let inspectorButton = Titlebar.icon("sidebar.right", "Inspector", #selector(RepoWindowController.toggleInspectorColumn(_:)))
     let subject = SubjectControl()
     private let goToAnything = GoToAnythingField()
-    private var subjectLeading: NSLayoutConstraint!
     private var goToAnythingWidth: NSLayoutConstraint!
 
     /// The height of the row the title and the window's buttons share.
@@ -89,8 +88,6 @@ final class Titlebar: FrameBar {
             v.translatesAutoresizingMaskIntoConstraints = false
             addSubview(v)
         }
-        subjectLeading = subject.leadingAnchor.constraint(equalTo: leadingAnchor)
-        subjectLeading.priority = .defaultLow
         goToAnythingWidth = goToAnything.widthAnchor.constraint(equalToConstant: Self.preferredFieldWidth)
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: Self.height),
@@ -101,8 +98,7 @@ final class Titlebar: FrameBar {
             band.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -1),
             navigatorButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.margin + 2),
             navigatorButton.centerYAnchor.constraint(equalTo: band.centerYAnchor),
-            subjectLeading,
-            subject.leadingAnchor.constraint(greaterThanOrEqualTo: navigatorButton.trailingAnchor, constant: Self.margin),
+            subject.leadingAnchor.constraint(equalTo: navigatorButton.trailingAnchor, constant: Self.margin),
             subject.centerYAnchor.constraint(equalTo: band.centerYAnchor),
             subject.trailingAnchor.constraint(lessThanOrEqualTo: goToAnything.leadingAnchor, constant: -Self.margin),
             goToAnything.centerYAnchor.constraint(equalTo: band.centerYAnchor),
@@ -146,14 +142,10 @@ final class Titlebar: FrameBar {
         for b in [navigatorButton, inspectorButton] { b.contentTintColor = isActive ? .secondaryLabelColor : .tertiaryLabelColor }
     }
 
-    /// Lines the band up with the columns below it.
+    /// Lines Go to Anything up with the inspector below it.
     ///
-    /// - Parameters:
-    ///   - navigator: The navigator's width, or zero when it's hidden.
-    ///   - inspector: The inspector's width, or zero when it's hidden.
-    func align(navigator: CGFloat, inspector: CGFloat) {
-        subjectLeading.constant = navigator > 0 ? navigator + Self.margin : 0
-        subjectLeading.priority = navigator > 0 ? .defaultHigh : .defaultLow
+    /// - Parameter inspector: The inspector's width, or zero when it's hidden.
+    func align(inspector: CGFloat) {
         let spanned = inspector - Self.margin - 10 - inspectorButton.intrinsicContentSize.width - Self.margin - 2
         goToAnythingWidth.constant = inspector > 0 ? max(Self.preferredFieldWidth - 40, spanned) : Self.preferredFieldWidth
     }

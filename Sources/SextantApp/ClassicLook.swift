@@ -126,14 +126,11 @@ final class ClassicFrame: WindowFrame {
         statusBar.show(summary: summary.scope, reviewed: summary.reviewed, of: summary.total)
     }
 
-    /// Lines the title band up with the columns shown.
+    /// Lines the title band up with the inspector, as it shows, hides or resizes.
     func columnsChanged() {
         guard let controller else { return }
-        let items = controller.split.splitViewItems
-        func width(_ column: RepoWindowController.SideColumn) -> CGFloat {
-            controller.isShown(column) ? items[column.rawValue].viewController.view.frame.width : 0
-        }
-        titlebar.align(navigator: width(.navigator), inspector: width(.inspector))
+        let inspector = RepoWindowController.SideColumn.inspector
+        titlebar.align(inspector: controller.isShown(inspector) ? controller.split.splitViewItems[inspector.rawValue].viewController.view.frame.width : 0)
     }
 }
 
