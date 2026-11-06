@@ -426,7 +426,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         let previous = Dictionary(s.changes.map { ($0.path, $0) }, uniquingKeysWith: { a, _ in a })
         let conflicts = res.target.includesWorktree ? repository.conflicts[res.git.root.path] ?? [] : []
         s.changes = diffs.map { d in
-            let f = previous[d.path].flatMap { $0.diff == d ? $0 : nil } ?? FileState(diff: d)
+            let f = previous[d.path].flatMap { $0.diff == d ? $0 : nil } ?? FileState(diff: d, contentAnalysis: repository.analysis)
             f.reviewed = repository.reviews.isReviewed(d.change)
             f.conflicted = conflicts.contains(d.path)
             return f
@@ -590,7 +590,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         if let f = s.explored[path] { return f }
         guard let data = await git.contents(of: path, in: t.snapshot) else { return nil }
         let binary = data.prefix(8000).contains(0)
-        let f = FileState(path: path, contents: binary ? nil : splitLines(data))
+        let f = FileState(path: path, contents: binary ? nil : splitLines(data), oid: blobID(of: data), contentAnalysis: repository.analysis)
         if s.target == t { s.explored[path] = f }
         return f
     }

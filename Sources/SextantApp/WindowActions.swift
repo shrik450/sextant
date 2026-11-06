@@ -542,7 +542,7 @@ extension RepoWindowController: NSMenuItemValidation {
             guard let (_, definitions) = try? await lookUp(word, in: t), gen == searchGeneration else { return }
             let defs = nearest(definitions, to: from)
             let git = self.git
-            let peek = Peek(word: word, definitions: defs, snapshot: t.snapshot, git: git, style: reader.activeCode.style)
+            let peek = Peek(word: word, definitions: defs, snapshot: t.snapshot, git: git, analysis: repository.analysis, style: reader.activeCode.style)
             peek.onOpen = { [weak self] d in self?.openBeside(d.path, line: d.line) }
             peek.onKey = { [weak self] event in self?.reader.activeCode.keyDown(with: event) }
             peek.show(relativeTo: anchor.0, of: anchor.1)

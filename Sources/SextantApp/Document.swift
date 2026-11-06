@@ -38,10 +38,17 @@ final class FileState {
     private var analysis: (task: Task<Void, Never>, symbols: Bool, version: Int)?
     private var wholeLoad: Task<Void, Never>?
     private var preparedWhole: (lines: [DiffLine], analysis: Analysis?)?
+    /// Where each version of a file is analyzed once, for every reader.
+    private let contentAnalysis: ContentAnalysis?
+    /// Whether each side's lines are the whole of its blob, so its analysis can be shared by
+    /// the blob's ID.
+    private var sidesAreBlobs: Bool
 
-    init(diff: FileDiff, isChange: Bool = true) {
+    init(diff: FileDiff, isChange: Bool = true, contentAnalysis: ContentAnalysis?) {
         self.diff = diff
         self.isChange = isChange
+        self.contentAnalysis = contentAnalysis
+        sidesAreBlobs = (diff.change.isAdded || diff.change.isDeleted) && diff.hunks.count == 1 && diff.notes.isEmpty
         hasLanguage = SyntaxRuntime.shared?.hasLanguage(forPath: diff.path) ?? false
         var all: [DiffLine] = []
         var gaps: [Int: Int] = [:]
@@ -56,10 +63,12 @@ final class FileState {
 
     /// Creates a file opened for reading, outside the change being reviewed.
     ///
-    /// - Parameter contents: The file's lines, or nil for a binary file.
-    convenience init(path: String, contents: [String]?) {
-        let change = RawChange(status: "=", oldMode: "100644", newMode: "100644", oldOid: zeroOid, newOid: zeroOid, oldPath: path, path: path)
-        self.init(diff: FileDiff(change: change, isBinary: contents == nil), isChange: false)
+    /// - Parameters:
+    ///   - contents: The file's lines, or nil for a binary file.
+    ///   - oid: The blob ID of the file's contents.
+    convenience init(path: String, contents: [String]?, oid: String, contentAnalysis: ContentAnalysis?) {
+        let change = RawChange(status: "=", oldMode: "100644", newMode: "100644", oldOid: oid, newOid: oid, oldPath: path, path: path)
+        self.init(diff: FileDiff(change: change, isBinary: contents == nil), isChange: false, contentAnalysis: contentAnalysis)
         setWhole((contents ?? []).enumerated().map { DiffLine(kind: .context, oldNo: $0.offset + 1, newNo: $0.offset + 1, text: $0.element) })
     }
 
@@ -108,6 +117,7 @@ final class FileState {
     func setWhole(_ all: [DiffLine]) {
         lines = all
         isWhole = true
+        sidesAreBlobs = true
         gapsBefore = [:]
         unfolded = []
         tokens = nil
@@ -132,13 +142,14 @@ final class FileState {
     func prepareWhole(git: Git, analyzing: Bool) async {
         guard !hasWhole, !diff.isBinary else { return }
         if let wholeLoad { return await wholeLoad.value }
-        let diff = self.diff, isChange = self.isChange
+        let diff = self.diff, isChange = self.isChange, contentAnalysis = self.contentAnalysis
         let task = Task {
             guard let old = try? await git.oldLines(of: diff) else { return }
-            preparedWhole = await Task.detached(priority: .userInitiated) {
-                let all = wholeFile(diff.hunks, oldLines: old)
-                return (all, analyzing ? FileState.analyze(all, path: diff.path, isChange: isChange, symbols: true) : nil)
-            }.value
+            let all = await Task.detached(priority: .userInitiated) { wholeFile(diff.hunks, oldLines: old) }.value
+            let analysis = analyzing
+                ? await FileState.analyze(all, path: diff.path, isChange: isChange, symbols: true, blobs: FileState.blobs(of: diff.change), contentAnalysis: contentAnalysis)
+                : nil
+            preparedWhole = (all, analysis)
         }
         wholeLoad = task
         await task.value
@@ -175,9 +186,10 @@ final class FileState {
         guard hasLanguage else { return }
         if tokens != nil, !symbols || outline != nil { return }
         if let a = analysis, a.version == version, a.symbols || !symbols { return await a.task.value }
-        let snapshot = lines, v = version, isChange = self.isChange, path = self.path
+        let snapshot = lines, v = version, isChange = self.isChange, path = self.path, contentAnalysis = self.contentAnalysis
+        let blobs = sidesAreBlobs ? FileState.blobs(of: diff.change) : (old: nil, new: nil)
         let task = Task {
-            let a = await Task.detached(priority: .userInitiated) { FileState.analyze(snapshot, path: path, isChange: isChange, symbols: symbols) }.value
+            let a = await FileState.analyze(snapshot, path: path, isChange: isChange, symbols: symbols, blobs: blobs, contentAnalysis: contentAnalysis)
             guard v == version else { return }
             apply(a)
         }
@@ -192,29 +204,50 @@ final class FileState {
         hasTags = a.hasTags
     }
 
+    /// Returns the blob IDs of a change's sides, for the sides that are regular files.
+    ///
+    /// A symbolic link's lines are its target's path, but in the worktree git hashes the
+    /// target's contents instead, so its ID doesn't name its lines.
+    nonisolated private static func blobs(of change: RawChange) -> (old: String?, new: String?) {
+        func id(_ oid: String, _ mode: String) -> String? {
+            oid != zeroOid && (mode == "100644" || mode == "100755") ? oid : nil
+        }
+        return (id(change.oldOid, change.oldMode), id(change.newOid, change.newMode))
+    }
+
     /// Analyzes each side of some lines as a whole text, so constructs spanning lines come out
     /// right, parsing each side once.
     ///
-    /// Loads the file's grammar first, which takes a while the first time, so it runs off the
-    /// main thread. A grammar that won't load gives no tokens rather than none at all, so the
-    /// file doesn't wait for them.
-    nonisolated static func analyze(_ lines: [DiffLine], path: String, isChange: Bool, symbols: Bool) -> Analysis {
+    /// A side that is the whole of a blob is analyzed through the content analysis, so each
+    /// version of a file is parsed once for every reader. Loads the file's grammar first, which
+    /// takes a while the first time, so it runs off the main thread. A grammar that won't load
+    /// gives no tokens rather than none at all, so the file doesn't wait for them.
+    ///
+    /// - Parameter blobs: The blob IDs of the sides whose lines are the whole blob.
+    @concurrent nonisolated static func analyze(_ lines: [DiffLine], path: String, isChange: Bool, symbols: Bool,
+                                                blobs: (old: String?, new: String?), contentAnalysis: ContentAnalysis?) async -> Analysis {
         guard let language = SyntaxRuntime.shared?.language(forPath: path) else {
             return Analysis(tokens: [[Token]](repeating: [], count: lines.count), definitions: symbols ? [] : nil, outline: symbols ? [] : nil)
         }
         let wantSymbols = symbols && language.hasTags
-        func side(_ old: Bool) -> (indices: [Int], tokens: [[Token]], definitions: [Symbol]) {
+        @Sendable func side(_ old: Bool) async -> (indices: [Int], tokens: [[Token]], definitions: [Symbol]) {
             let idx = lines.indices.filter { old ? lines[$0].kind != .added : lines[$0].kind != .deleted }
             let text = idx.map { lines[$0].text }
-            let found = language.analyze(text.joined(separator: "\n"), symbols: wantSymbols)
-            return (idx, tokensPerLine(found.tokens, lines: text), outlineDefinitions(found.symbols.filter(\.isDefinition)))
+            let found = if let oid = old ? blobs.old : blobs.new, let contentAnalysis {
+                await contentAnalysis.analysis(of: text, oid: oid, language: language, definitions: wantSymbols)
+            } else {
+                language.analysis(of: text, definitions: wantSymbols)
+            }
+            return (idx, found.tokens, outlineDefinitions(found.definitions ?? []))
         }
+        let hasOldSide = lines.contains(where: { $0.kind == .deleted })
+        async let newSide = side(false)
+        async let oldSide = hasOldSide ? side(true) : nil
+        let new = await newSide
         var tokens = [[Token]](repeating: [], count: lines.count)
-        let new = side(false)
         for (k, i) in new.indices.enumerated() { tokens[i] = new.tokens[k] }
         var oldDefinitions = new.definitions
-        if lines.contains(where: { $0.kind == .deleted }) {
-            let old = side(true)
+        if let old = await oldSide {
             for (k, i) in old.indices.enumerated() where lines[i].kind == .deleted { tokens[i] = old.tokens[k] }
             if isChange { oldDefinitions = old.definitions }
         }

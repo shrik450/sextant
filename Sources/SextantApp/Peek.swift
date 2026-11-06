@@ -12,6 +12,7 @@ final class Peek: NSViewController {
     private let definitions: [GrepMatch]
     private let snapshot: Snapshot
     private let git: Git
+    private let analysis: ContentAnalysis
     private let style: Style
     private var index = 0
     private let header = NSTextField(labelWithString: "")
@@ -20,11 +21,12 @@ final class Peek: NSViewController {
     var onOpen: ((GrepMatch) -> Void)?
     var onKey: ((NSEvent) -> Void)?
 
-    init(word: String, definitions: [GrepMatch], snapshot: Snapshot, git: Git, style: Style) {
+    init(word: String, definitions: [GrepMatch], snapshot: Snapshot, git: Git, analysis: ContentAnalysis, style: Style) {
         self.word = word
         self.definitions = definitions
         self.snapshot = snapshot
         self.git = git
+        self.analysis = analysis
         self.style = style
         super.init(nibName: nil, bundle: nil)
     }
@@ -90,18 +92,24 @@ final class Peek: NSViewController {
         index = (i + definitions.count) % definitions.count
         let d = definitions[index]
         header.stringValue = "\(d.path):\(d.line)" + (definitions.count > 1 ? "   \(index + 1) of \(definitions.count) · Tab for the next" : "")
-        let snapshot = self.snapshot, git = self.git, style = self.style
+        let snapshot = self.snapshot, git = self.git, analysis = self.analysis, style = self.style
         Task {
             guard let data = await git.contents(of: d.path, in: snapshot) else { return }
             let all = splitLines(data)
-            let start = max(0, d.line - 4)
-            let slice = Array(all[min(start, all.count)..<min(all.count, start + 40)])
-            let lang = SyntaxRuntime.shared?.language(forPath: d.path)
-            let tokens = await Task.detached { lang.map { tokensPerLine($0.tokens(slice.joined(separator: "\n")), lines: slice) } }.value
+            let tokens = await Peek.tokens(all, oid: blobID(of: data), path: d.path, analysis: analysis)
+            let start = min(max(0, d.line - 4), all.count)
+            let shown = start..<min(all.count, start + 40)
             guard index < definitions.count, definitions[index] == d else { return }
-            text.textStorage?.setAttributedString(Peek.render(slice, tokens: tokens, focus: d.line - 1 - start, style: style))
+            text.textStorage?.setAttributedString(Peek.render(Array(all[shown]), tokens: tokens.map { Array($0[shown]) }, focus: d.line - 1 - start, style: style))
             text.scrollToBeginningOfDocument(nil)
         }
+    }
+
+    /// Returns the tokens of each line of a whole file, so code under a long comment is coloured
+    /// as the comment leaves it.
+    @concurrent nonisolated private static func tokens(_ lines: [String], oid: String, path: String, analysis: ContentAnalysis) async -> [[Token]]? {
+        guard let language = SyntaxRuntime.shared?.language(forPath: path) else { return nil }
+        return await analysis.analysis(of: lines, oid: oid, language: language, definitions: false).tokens
     }
 
     private static func render(_ lines: [String], tokens: [[Token]]?, focus: Int, style: Style) -> NSAttributedString {
