@@ -165,6 +165,7 @@ final class ChangesController: NSViewController {
     weak var delegate: NavigatorDelegate?
     weak var reviews: ReviewStore?
     private let look: any Look
+    private lazy var rowViews = RowViews(look: look)
     let commits = KeyTableView()
     let outline = KeyOutlineView()
     let filter = NSSearchField()
@@ -600,7 +601,9 @@ extension ChangesController: NSTableViewDataSource, NSTableViewDelegate {
 }
 
 extension ChangesController: NSOutlineViewDataSource, NSOutlineViewDelegate {
-    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { look.makeRowView() }
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { rowViews.next() }
+
+    func outlineView(_ outlineView: NSOutlineView, didRemove rowView: NSTableRowView, forRow row: Int) { rowViews.removed(rowView) }
 
     func outlineView(_ o: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
         (item as? Item)?.children.count ?? items.count
@@ -704,7 +707,9 @@ func statusLetter(_ status: Character) -> (String, NSColor) {
 /// Also lists definitions and usages.
 @MainActor
 final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSSearchFieldDelegate {
-    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { look.makeRowView() }
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { rowViews.next() }
+
+    func outlineView(_ outlineView: NSOutlineView, didRemove rowView: NSTableRowView, forRow row: Int) { rowViews.removed(rowView) }
 
     final class Group: NSObject {
         let path: String
@@ -724,6 +729,7 @@ final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutli
     private let status = NSTextField(labelWithString: "")
     private let footer = NSView()
     private let look: any Look
+    private lazy var rowViews = RowViews(look: look)
     private var suppressOpen = false
     private var groups: [Group] = []
     private var items: [ObjectIdentifier: [Item]] = [:]

@@ -63,6 +63,7 @@ final class Inspector: NSViewController, NSSplitViewDelegate {
     /// Says whether a run of changes has been read.
     var isRead: (FileState, FileState.KeyedRun) -> Bool = { _, _ in false }
     private let look: any Look
+    private lazy var rowViews = RowViews(look: look)
 
     init(look: any Look) {
         self.look = look
@@ -340,7 +341,9 @@ final class Inspector: NSViewController, NSSplitViewDelegate {
 }
 
 extension Inspector: NSOutlineViewDataSource, NSOutlineViewDelegate {
-    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { look.makeRowView() }
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { rowViews.next() }
+
+    func outlineView(_ outlineView: NSOutlineView, didRemove rowView: NSTableRowView, forRow row: Int) { rowViews.removed(rowView) }
 
     func outlineView(_ o: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
         ((item as? Entry) ?? root).children.count

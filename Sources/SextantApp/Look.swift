@@ -170,3 +170,26 @@ extension NSView {
         ])
     }
 }
+
+/// The row views of one side column's list, given out again once the list removes them.
+///
+/// A list that scrolls keeps the rows that leave its view in a set it empties only as it's given
+/// the same rows again, and its own reuse queue forgets them when it reloads or changes review,
+/// so rows left to its reuse stay alive for good. Giving the removed rows back first empties the
+/// set, and keeps the rows to the most the list has shown at once.
+@MainActor
+final class RowViews {
+    private let look: any Look
+    private var spare: [NSTableRowView] = []
+
+    init(look: any Look) { self.look = look }
+
+    /// Returns a row the list removed, or a new one.
+    func next() -> NSTableRowView { spare.popLast() ?? look.makeRowView() }
+
+    /// Keeps a row the list removed, to give it out again.
+    func removed(_ row: NSTableRowView) {
+        guard !spare.contains(where: { $0 === row }) else { return }
+        spare.append(row)
+    }
+}
