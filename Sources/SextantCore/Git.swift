@@ -278,11 +278,39 @@ public struct Git: Sendable {
         return perms & 0o100 != 0 ? "100755" : "100644"
     }
 
+    /// Reads a worktree path the way git stores it: a regular file's contents, or a symbolic
+    /// link's target path.
+    ///
+    /// The file is checked and read through one descriptor, so it can't be swapped for a link
+    /// or grow past the limit in between.
+    ///
+    /// - Parameter limit: The most bytes to read.
+    /// - Returns: Nil for a file larger than `limit`, or for a path that's neither a regular file
+    ///   nor a symbolic link.
     public func readWorktreeFile(_ path: String, limit: Int = 4 << 20) -> Data? {
-        let url = root.appendingPathComponent(path)
-        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-              let size = attrs[.size] as? Int, size <= limit else { return nil }
-        return try? Data(contentsOf: url)
+        let full = root.appendingPathComponent(path).path
+        let fd = open(full, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard fd >= 0 else { return errno == ELOOP ? readLink(full) : nil }
+        defer { close(fd) }
+        var st = stat()
+        guard fstat(fd, &st) == 0, st.st_mode & S_IFMT == S_IFREG, st.st_size <= limit else { return nil }
+        var data = Data(count: Int(st.st_size) + 1)
+        var count = 0
+        while true {
+            if count == data.count {
+                guard count <= limit else { return nil }
+                data.count = min(count + (64 << 10), limit + 1)
+            }
+            let n = data.withUnsafeMutableBytes { read(fd, $0.baseAddress! + count, $0.count - count) }
+            if n == 0 { break }
+            if n < 0 {
+                if errno == EINTR { continue }
+                return nil
+            }
+            count += n
+        }
+        data.count = count
+        return data
     }
 
     /// Old-side file lines, for expanding context around hunks.

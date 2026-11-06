@@ -211,3 +211,32 @@ extension GitEdgeCaseTests {
         #expect(committed.map(\.path) == ["b.txt"] && untracked.map(\.path) == ["untracked.txt"])
     }
 }
+
+extension GitEdgeCaseTests {
+    @Test func readsWorktreeFilesAsGitStoresThemWithinTheLimit() async throws {
+        let r = try ScratchRepo("worktree-reads")
+        try r.write("a.txt", "a\n")
+        try r.commitAll("A")
+        try Data(count: 64).write(to: r.root.appendingPathComponent("big.bin"))
+        try r.write("exact.txt", String(repeating: "x", count: 32))
+        try r.link("good", to: "a.txt")
+        try r.link("biglink", to: "big.bin")
+        try r.link("dangling", to: "nowhere")
+        try FileManager.default.createDirectory(at: r.root.appendingPathComponent("dir"), withIntermediateDirectories: true)
+        #expect(mkfifo(r.root.appendingPathComponent("fifo").path, 0o644) == 0)
+        let git = r.repo
+        #expect(git.readWorktreeFile("a.txt") == Data("a\n".utf8))
+        #expect(git.readWorktreeFile("exact.txt", limit: 32) == Data(String(repeating: "x", count: 32).utf8))
+        #expect(git.readWorktreeFile("big.bin", limit: 32) == nil)
+        #expect(git.readWorktreeFile("good") == Data("a.txt".utf8))
+        #expect(git.readWorktreeFile("biglink", limit: 32) == Data("big.bin".utf8))
+        #expect(git.readWorktreeFile("dangling") == Data("nowhere".utf8))
+        #expect(git.readWorktreeFile("dir") == nil)
+        #expect(git.readWorktreeFile("fifo") == nil)
+        #expect(git.readWorktreeFile("missing") == nil)
+
+        let good = try #require(try await git.diff(.worktree(since: nil)).first { $0.path == "good" })
+        #expect(good.hunks.flatMap(\.lines).map(\.text) == ["a.txt"])
+        #expect(good.hunks.last?.lines.last?.noNewline == true)
+    }
+}
