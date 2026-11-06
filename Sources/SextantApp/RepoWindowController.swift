@@ -80,7 +80,10 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     var commitDetail: CommitDetail? { session?.commitDetail }
     /// What the focused pane shows: the overview of every change, or one file.
     var focus: Location.Place? { pane.focus }
-    var searchGeneration = 0
+    /// The search the Find list waits for, which a newer one for the list replaces.
+    var findTask: Task<Void, Never>?
+    /// The lookup a jump to or peek at a definition waits for, which a newer one replaces.
+    var definitionTask: Task<Void, Never>?
     var blameOn = false
     /// The side columns folded away because the window got narrow.
     private var autoCollapsed: Set<SideColumn> = []
@@ -1016,19 +1019,18 @@ extension RepoWindowController: NavigatorDelegate {
 
     func navigatorSearch(_ query: String, word: Bool, caseSensitive: Bool) {
         guard let t = target else { return }
-        searchGeneration += 1
-        let gen = searchGeneration
         let git = self.git
+        findTask?.cancel()
         busy += 1
-        Task {
+        findTask = Task {
             defer { busy -= 1 }
             do {
                 let m = try await git.grep(query, in: t.snapshot, word: word, ignoreCase: !caseSensitive, maxPerFile: 100)
-                guard gen == searchGeneration else { return }
+                guard !Task.isCancelled else { return }
                 let limit = 5000
                 navigator.search.show(Array(m.prefix(limit)), title: query, capped: m.count > limit)
             } catch {
-                guard gen == searchGeneration else { return }
+                guard !Task.isCancelled else { return }
                 navigator.search.summary = error.localizedDescription
             }
         }

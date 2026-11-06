@@ -261,16 +261,16 @@ extension RepoWindowController: NSMenuItemValidation {
     /// listing every use in Find when there are none.
     func jumpToDefinition(_ word: String, from path: String?) {
         guard let t = target else { return }
-        searchGeneration += 1
-        let gen = searchGeneration
+        definitionTask?.cancel()
         busy += 1
-        Task {
+        definitionTask = Task {
             defer { busy -= 1 }
-            guard let (matches, definitions) = try? await lookUp(word, in: t), gen == searchGeneration else { return }
+            guard let (matches, definitions) = try? await lookUp(word, in: t), !Task.isCancelled else { return }
             let defs = nearest(definitions, to: path)
             if defs.count == 1 {
                 openBeside(defs[0].path, line: defs[0].line)
             } else if defs.isEmpty {
+                findTask?.cancel()
                 revealNavigator(.find)
                 navigator.search.begin(word, word: true)
                 navigator.search.show(Array(matches.prefix(5000)), title: word, capped: matches.count > 5000)
@@ -314,12 +314,11 @@ extension RepoWindowController: NSMenuItemValidation {
         guard let t = target else { return }
         revealNavigator(.find)
         navigator.search.begin(word, word: true)
-        searchGeneration += 1
-        let gen = searchGeneration
+        findTask?.cancel()
         busy += 1
-        Task {
+        findTask = Task {
             defer { busy -= 1 }
-            guard let (matches, definitions) = try? await lookUp(word, in: t), gen == searchGeneration else { return }
+            guard let (matches, definitions) = try? await lookUp(word, in: t), !Task.isCancelled else { return }
             let defLines = Dictionary(grouping: definitions, by: \.path).mapValues { Set($0.map(\.line)) }
             navigator.search.show(Array(matches.prefix(5000)), title: word, definitions: defLines, capped: matches.count > 5000)
             takeKeyboardToResults()
@@ -543,12 +542,11 @@ extension RepoWindowController: NSMenuItemValidation {
     @objc func peekDefinition(_ sender: Any?) {
         guard let t = target, let word = reader.wordAtCaret, let anchor = reader.caretAnchor else { beep(); return }
         let from = reader.selection.map { reader.files[$0.file].path }
-        searchGeneration += 1
-        let gen = searchGeneration
+        definitionTask?.cancel()
         busy += 1
-        Task {
+        definitionTask = Task {
             defer { busy -= 1 }
-            guard let (_, definitions) = try? await lookUp(word, in: t), gen == searchGeneration else { return }
+            guard let (_, definitions) = try? await lookUp(word, in: t), !Task.isCancelled else { return }
             let defs = nearest(definitions, to: from)
             let git = self.git
             let peek = Peek(word: word, definitions: defs, snapshot: t.snapshot, git: git, analysis: repository.analysis, style: reader.activeCode.style)
