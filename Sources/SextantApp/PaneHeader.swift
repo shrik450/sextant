@@ -327,7 +327,7 @@ final class PaneHeader: NSView, NSMenuDelegate {
 
     /// Opens the definitions menu, from the keyboard.
     func showSymbolMenu() {
-        guard !definitions.isEmpty else { NSSound.beep(); return }
+        guard !definitions.isEmpty else { beep(); return }
         let wasHidden = symbols.isHidden
         if wasHidden {
             symbols.menu?.item(at: 0)?.title = "Definitions"

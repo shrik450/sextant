@@ -174,7 +174,7 @@ final class SubjectPicker: NSViewController {
     private func move(_ dir: Int) {
         var r = table.selectedRow + dir
         while rows.indices.contains(r), rows[r].isSection { r += dir }
-        if rows.indices.contains(r) { select(r) } else { NSSound.beep() }
+        if rows.indices.contains(r) { select(r) } else { beep() }
     }
 
     private func searchCommits() {
@@ -193,10 +193,10 @@ final class SubjectPicker: NSViewController {
     }
 
     @objc func chooseSelected() {
-        guard rows.indices.contains(table.selectedRow) else { NSSound.beep(); return }
+        guard rows.indices.contains(table.selectedRow) else { beep(); return }
         let repo = repository
         switch rows[table.selectedRow] {
-        case .section: NSSound.beep()
+        case .section: beep()
         case .worktree(let w): onChoose(Review(subject: .worktree(w.root), base: repo.base(for: .worktree(w.root))))
         case .pullRequest(let p): onChoose(Review(subject: .pullRequest(p.number), base: repo.base(for: .pullRequest(p.number))))
         case .branch(let b): onChoose(Review(subject: .branch(b.name), base: repo.base(for: .branch(b.name))))

@@ -58,7 +58,11 @@ final class Automation {
     /// Keeps timers precise while the app runs behind others, so timings mean the same either way.
     private var activity: NSObjectProtocol?
 
+    /// The script driving the app, if one is.
+    private(set) static weak var running: Automation?
+
     func start() {
+        Self.running = self
         activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical], reason: "Automation")
         Task {
             for line in lines where !line.isEmpty && !line.hasPrefix("#") {

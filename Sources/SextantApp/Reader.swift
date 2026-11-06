@@ -521,7 +521,7 @@ final class Reader: NSViewController, CodeViewDelegate {
             guard query.count == 2 else { jump = .typing(query); return }
             let targets = jumpTargets(query)
             switch targets.count {
-            case 0: NSSound.beep(); jump = .typing(query)
+            case 0: beep(); jump = .typing(query)
             case 1: land(targets[0])
             default:
                 let labels = jumpLabels(targets.count)
@@ -532,7 +532,7 @@ final class Reader: NSViewController, CodeViewDelegate {
             if backspace { for col in columns { col.code.jumpLabels = [] }; jump = .typing(""); return }
             let t = typed + c
             if let i = labels.firstIndex(of: t) { land(targets[i]); return }
-            guard labels.contains(where: { $0.hasPrefix(t) }) else { NSSound.beep(); cancelJump(); return }
+            guard labels.contains(where: { $0.hasPrefix(t) }) else { beep(); cancelJump(); return }
             jump = .picking(targets: targets, labels: labels, typed: t)
         }
     }
@@ -561,7 +561,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         if let jump { handleJump(event, jump); return true }
         let plain = event.modifierFlags.intersection([.command, .option, .control]).isEmpty
         if plain, event.characters == "*" {
-            if !highlightUses() { NSSound.beep() }
+            if !highlightUses() { beep() }
             return true
         }
         if plain, event.keyCode == 36 || event.keyCode == 76, !event.modifierFlags.contains(.shift) {

@@ -645,7 +645,7 @@ extension ChangesController: NSSearchFieldDelegate {
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
         if sel == #selector(NSResponder.insertNewline(_:)) {
-            guard let first = items.first(where: { $0.kind == .file }) else { NSSound.beep(); return true }
+            guard let first = items.first(where: { $0.kind == .file }) else { beep(); return true }
             delegate?.navigatorOpen(path: first.path, line: nil)
             delegate?.navigatorFocusReader()
             return true

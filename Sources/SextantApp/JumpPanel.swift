@@ -43,7 +43,7 @@ final class JumpPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NSTa
 
     init(look: any Look) {
         super.init(contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 60), styleMask: [.borderless, .fullSizeContentView], backing: .buffered, defer: false)
-        isFloatingPanel = true
+        isFloatingPanel = !NSApp.runsBehind
         hidesOnDeactivate = true
         backgroundColor = .clear
         isOpaque = false
@@ -104,7 +104,7 @@ final class JumpPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NSTa
             self.parent?.removeChildWindow(self)
             parent.addChildWindow(self, ordered: .above)
         }
-        makeKeyAndOrderFront(nil)
+        raise()
         makeFirstResponder(field)
         field.currentEditor()?.selectedRange = NSRange(location: field.stringValue.utf16.count, length: 0)
         search()
@@ -203,7 +203,7 @@ final class JumpPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NSTa
 
     /// Goes to the selected result.
     func choose(beside: Bool) {
-        guard items.indices.contains(table.selectedRow) else { NSSound.beep(); return }
+        guard items.indices.contains(table.selectedRow) else { beep(); return }
         let item = items[table.selectedRow]
         dismiss()
         onChoose?(item, beside)

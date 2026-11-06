@@ -651,7 +651,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     /// - Parameter p: The pane, or the focused one.
     func showOverview(in p: Pane? = nil, at path: String? = nil, top: SideLine? = nil, caret: Location.Caret? = nil) {
         let p = p ?? pane
-        guard let s = p.session, !s.changes.isEmpty else { NSSound.beep(); return }
+        guard let s = p.session, !s.changes.isEmpty else { beep(); return }
         p.showGeneration += 1
         p.focus = .overview(path: nil)
         UserDefaults.standard.set("overview", forKey: "readerMode")
@@ -742,7 +742,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     ///
     /// - Parameter takeKeyboard: Whether its code takes the keyboard.
     func focusPane(_ i: Int, takeKeyboard: Bool = true) {
-        guard panes.indices.contains(i) else { NSSound.beep(); return }
+        guard panes.indices.contains(i) else { beep(); return }
         let changed = i != focusedPane
         focusedPane = i
         if takeKeyboard { reader.focus() }
@@ -764,7 +764,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
 
     /// Closes every pane but the focused one.
     @objc func closeOtherPanes(_ sender: Any?) {
-        guard panes.count > 1 else { NSSound.beep(); return }
+        guard panes.count > 1 else { beep(); return }
         let kept = pane
         let closing = panes.filter { $0 !== kept }
         panes = [kept]
@@ -791,7 +791,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     /// The zoom holds while moving between panes, each filling the strip in turn, and ends when a
     /// pane opens beside the focused one or only one is left.
     @objc func toggleZoomPane(_ sender: Any?) {
-        guard panes.count > 1 else { NSSound.beep(); return }
+        guard panes.count > 1 else { beep(); return }
         strip.isZoomed.toggle()
         showPanes(animated: false)
     }
@@ -1112,7 +1112,7 @@ extension RepoWindowController: NotesPaneDelegate {
 
     func notesPaneCopy(_ selection: [Note]?) {
         let list = selection ?? reviewNotes
-        guard !list.isEmpty else { NSSound.beep(); return }
+        guard !list.isEmpty else { beep(); return }
         copy(markdown(list))
     }
 

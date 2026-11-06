@@ -211,15 +211,15 @@ extension RepoWindowController: NSMenuItemValidation {
         if FileManager.default.fileExists(atPath: url.path) {
             NSWorkspace.shared.activateFileViewerSelecting([url])
         } else {
-            NSSound.beep()
+            beep()
         }
     }
 
     /// Opens a file of the checkout in the user's editor, which may differ from the revision read.
     func openInEditor(path: String, line: Int) {
-        guard let root = checkout else { NSSound.beep(); return }
+        guard let root = checkout else { beep(); return }
         let url = root.appendingPathComponent(path)
-        guard FileManager.default.fileExists(atPath: url.path) else { NSSound.beep(); return }
+        guard FileManager.default.fileExists(atPath: url.path) else { beep(); return }
         if let cmd = UserDefaults.standard.string(forKey: "editorCommand"), !cmd.trimmingCharacters(in: .whitespaces).isEmpty {
             let full = cmd.replacingOccurrences(of: "{file}", with: shellQuote(url.path)).replacingOccurrences(of: "{line}", with: String(max(1, line)))
             let p = Process()
@@ -370,7 +370,7 @@ extension RepoWindowController: NSMenuItemValidation {
     ///
     /// Choosing one reads the file at that commit.
     @objc func showFileHistory(_ sender: Any?) {
-        guard let f = focusedFile, let t = target else { NSSound.beep(); return }
+        guard let f = focusedFile, let t = target else { beep(); return }
         let from: String = switch t.snapshot {
         case .commit(let c): c
         default: "HEAD"
@@ -441,12 +441,12 @@ extension RepoWindowController: NSMenuItemValidation {
     }
 
     @objc func copyReference(_ sender: Any?) {
-        guard let r = selectedReference else { NSSound.beep(); return }
+        guard let r = selectedReference else { beep(); return }
         copy(lineReference(path: r.path, lines: r.lines, old: r.old))
     }
 
     @objc func copyReferenceWithCode(_ sender: Any?) {
-        guard let r = selectedReference else { NSSound.beep(); return }
+        guard let r = selectedReference else { beep(); return }
         let lang = SyntaxRuntime.shared?.language(forPath: r.path)?.name ?? ""
         copy("`\(lineReference(path: r.path, lines: r.lines, old: r.old))`\n```\(lang)\n\(r.code.joined(separator: "\n"))\n```\n")
     }
@@ -462,18 +462,18 @@ extension RepoWindowController: NSMenuItemValidation {
 
     /// Copies the name of the symbol at the caret, or of the definition around it.
     @objc func copySymbol(_ sender: Any?) {
-        guard let s = symbolAtCaret else { NSSound.beep(); return }
+        guard let s = symbolAtCaret else { beep(); return }
         copy(s)
     }
 
     /// Copies the symbol at the caret with where it is, as `` `name` (path:line) ``.
     @objc func copySymbolWithReference(_ sender: Any?) {
-        guard let s = symbolAtCaret, let r = selectedReference else { NSSound.beep(); return }
+        guard let s = symbolAtCaret, let r = selectedReference else { beep(); return }
         copy("`\(s)` (\(lineReference(path: r.path, lines: r.lines, old: r.old)))")
     }
 
     @objc func addNote(_ sender: Any?) {
-        guard let save = noteOnSelection(), let r = selectedReference, let (rect, view) = reader.rect(file: r.file, line: r.line) else { NSSound.beep(); return }
+        guard let save = noteOnSelection(), let r = selectedReference, let (rect, view) = reader.rect(file: r.file, line: r.line) else { beep(); return }
         let editor = NoteEditor(place: .lines(path: r.path, range: r.lines, old: r.old), text: "", canDelete: false, onSave: save)
         editor.show(relativeTo: rect, of: view)
     }
@@ -489,7 +489,7 @@ extension RepoWindowController: NSMenuItemValidation {
 
     /// Writes a note on the whole review, which heads the notes when they're copied.
     @objc func addReviewNote(_ sender: Any?) {
-        guard let subject = review?.subject else { NSSound.beep(); return }
+        guard let subject = review?.subject else { beep(); return }
         setShown(.inspector, true, animated: false)
         let pane = inspector.notes.view
         let editor = NoteEditor(place: .review(subjectLabel.title), text: "", canDelete: false) { [weak self] text in
@@ -513,11 +513,11 @@ extension RepoWindowController: NSMenuItemValidation {
 
     /// Moves to the next change in the file, stopping at its end.
     @objc func nextChange(_ sender: Any?) {
-        if !reader.nextChange(1) { NSSound.beep() }
+        if !reader.nextChange(1) { beep() }
     }
 
     @objc func previousChange(_ sender: Any?) {
-        if !reader.nextChange(-1) { NSSound.beep() }
+        if !reader.nextChange(-1) { beep() }
     }
 
     /// Marks the run of changes at the caret read, then moves to the next unread one in the file,
@@ -525,7 +525,7 @@ extension RepoWindowController: NSMenuItemValidation {
     ///
     /// Reading the last unread run marks the file reviewed.
     @objc func toggleChangeRead(_ sender: Any?) {
-        guard let (f, run) = reader.caretRun else { NSSound.beep(); return }
+        guard let (f, run) = reader.caretRun else { beep(); return }
         let reviews = repository.reviews
         let read = !reviews.isRead(run.key, in: f.diff.change)
         reviews.setRead(run.key, in: f.diff.change, all: f.keyedRuns.map(\.key), to: read)
@@ -538,7 +538,7 @@ extension RepoWindowController: NSMenuItemValidation {
 
     /// Shows the definition of the name at the caret in a popover, without leaving the file.
     @objc func peekDefinition(_ sender: Any?) {
-        guard let t = target, let word = reader.wordAtCaret, let anchor = reader.caretAnchor else { NSSound.beep(); return }
+        guard let t = target, let word = reader.wordAtCaret, let anchor = reader.caretAnchor else { beep(); return }
         let from = reader.selection.map { reader.files[$0.file].path }
         searchGeneration += 1
         let gen = searchGeneration
@@ -556,39 +556,39 @@ extension RepoWindowController: NSMenuItemValidation {
     }
 
     @objc func jumpToText(_ sender: Any?) {
-        guard !reader.files.isEmpty else { NSSound.beep(); return }
+        guard !reader.files.isEmpty else { beep(); return }
         reader.startJump()
     }
 
-    @objc func highlightUses(_ sender: Any?) { if !reader.highlightUses() { NSSound.beep() } }
-    @objc func nextUse(_ sender: Any?) { if !reader.stepUse(1) { NSSound.beep() } }
-    @objc func previousUse(_ sender: Any?) { if !reader.stepUse(-1) { NSSound.beep() } }
+    @objc func highlightUses(_ sender: Any?) { if !reader.highlightUses() { beep() } }
+    @objc func nextUse(_ sender: Any?) { if !reader.stepUse(1) { beep() } }
+    @objc func previousUse(_ sender: Any?) { if !reader.stepUse(-1) { beep() } }
 
-    @objc func showNearbyUnchanged(_ sender: Any?) { if !reader.unfoldNearest() { NSSound.beep() } }
+    @objc func showNearbyUnchanged(_ sender: Any?) { if !reader.unfoldNearest() { beep() } }
 
     @objc func nextFile(_ sender: Any?) {
-        if case .overview? = focus { if !reader.nextFile(1) { NSSound.beep() }; return }
+        if case .overview? = focus { if !reader.nextFile(1) { beep() }; return }
         stepFile(1, anchor: .firstChange)
     }
 
     @objc func previousFile(_ sender: Any?) {
-        if case .overview? = focus { if !reader.nextFile(-1) { NSSound.beep() }; return }
+        if case .overview? = focus { if !reader.nextFile(-1) { beep() }; return }
         stepFile(-1, anchor: .firstChange)
     }
 
     private func stepFile(_ dir: Int, anchor: Anchor) {
-        guard case .file(let p)? = focus else { NSSound.beep(); return }
+        guard case .file(let p)? = focus else { beep(); return }
         let cur = changes.firstIndex { $0.path == p }
         let next: Int? = if let cur { cur + dir } else { dir > 0 ? 0 : changes.count - 1 }
-        guard let next, changes.indices.contains(next) else { NSSound.beep(); return }
+        guard let next, changes.indices.contains(next) else { beep(); return }
         open(changes[next].path, at: anchor)
     }
 
-    @objc func nextDefinition(_ sender: Any?) { if !reader.stepDefinition(1, changedOnly: inspector.changedOnly) { NSSound.beep() } }
-    @objc func previousDefinition(_ sender: Any?) { if !reader.stepDefinition(-1, changedOnly: inspector.changedOnly) { NSSound.beep() } }
+    @objc func nextDefinition(_ sender: Any?) { if !reader.stepDefinition(1, changedOnly: inspector.changedOnly) { beep() } }
+    @objc func previousDefinition(_ sender: Any?) { if !reader.stepDefinition(-1, changedOnly: inspector.changedOnly) { beep() } }
 
-    @objc func olderCommit(_ sender: Any?) { if !navigator.changes.stepCommit(1) { NSSound.beep() } }
-    @objc func newerCommit(_ sender: Any?) { if !navigator.changes.stepCommit(-1) { NSSound.beep() } }
+    @objc func olderCommit(_ sender: Any?) { if !navigator.changes.stepCommit(1) { beep() } }
+    @objc func newerCommit(_ sender: Any?) { if !navigator.changes.stepCommit(-1) { beep() } }
     @objc func showWholeReview(_ sender: Any?) { navigatorSelectScope(.everything) }
     @objc func showUncommitted(_ sender: Any?) { navigatorSelectScope(.uncommitted) }
 
@@ -606,7 +606,7 @@ extension RepoWindowController: NSMenuItemValidation {
 
     @objc func toggleReviewedAction(_ sender: Any?) {
         let paths = actionPaths
-        guard !paths.isEmpty else { NSSound.beep(); return }
+        guard !paths.isEmpty else { beep(); return }
         toggleReviewed(paths, advance: window?.firstResponder !== navigator.changes.outline)
     }
 
@@ -623,7 +623,7 @@ extension RepoWindowController: NSMenuItemValidation {
     @objc func nextUnreviewed(_ sender: Any?) {
         let cur = currentChange ?? -1
         guard let next = changes.indices.first(where: { $0 > cur && !changes[$0].reviewed }) ?? changes.indices.first(where: { !changes[$0].reviewed }) else {
-            NSSound.beep()
+            beep()
             return
         }
         if case .overview? = focus { reader.scrollToFile(next) } else { open(changes[next].path) }
@@ -674,12 +674,12 @@ extension RepoWindowController: NSMenuItemValidation {
     }
 
     @objc func jumpToDefinitionAction(_ sender: Any?) {
-        guard let w = reader.wordAtCaret else { NSSound.beep(); return }
+        guard let w = reader.wordAtCaret else { beep(); return }
         jumpToDefinition(w, from: reader.selection.map { reader.files[$0.file].path })
     }
 
     @objc func findReferencesAction(_ sender: Any?) {
-        guard let w = reader.wordAtCaret else { NSSound.beep(); return }
+        guard let w = reader.wordAtCaret else { beep(); return }
         findReferences(w)
     }
 
@@ -707,19 +707,19 @@ extension RepoWindowController: NSMenuItemValidation {
     }
 
     @objc func openCurrentInEditor(_ sender: Any?) {
-        guard let path = focusedFile?.path ?? actionPaths.first else { NSSound.beep(); return }
+        guard let path = focusedFile?.path ?? actionPaths.first else { beep(); return }
         let line = selectedReference.map { $0.old ? 0 : $0.lines.lowerBound } ?? 0
         openInEditor(path: path, line: line)
     }
 
     @objc func copyCurrentPath(_ sender: Any?) {
         let paths = focusedFile.map { [$0.path] } ?? actionPaths
-        guard !paths.isEmpty else { NSSound.beep(); return }
+        guard !paths.isEmpty else { beep(); return }
         copy(paths.joined(separator: "\n"))
     }
 
     @objc func goToLine(_ sender: Any?) {
-        guard let window, sheet == nil, let f = focusedFile, !f.lines.isEmpty else { NSSound.beep(); return }
+        guard let window, sheet == nil, let f = focusedFile, !f.lines.isEmpty else { beep(); return }
         let last = f.lines.last.map { max($0.newNo, $0.oldNo) } ?? 1
         let s = RevisionSheet(title: "Go to Line", placeholder: "1–\(last)", suggestions: [], initial: "") { [weak self] text in
             guard let self, let n = Int(text.trimmingCharacters(in: .whitespaces)), n >= 1 else { return "Enter a line number" }

@@ -83,8 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             do {
                 let loc = try await Git.locate(url.hasDirectoryPath || isDirectory(url) ? url : url.deletingLastPathComponent(), executable: gitPath)
                 if let existing = controllers.first(where: { $0.repository.commonDir.standardizedFileURL == loc.commonDir.standardizedFileURL }) {
-                    existing.showWindow(nil)
-                    existing.window?.makeKeyAndOrderFront(nil)
+                    existing.window?.raise()
                     if let spec { await existing.open(spec: spec, in: loc.root) } else { existing.openWork(in: loc.root) }
                     if !inBackground { NSApp.activate() }
                     completion?(existing)
@@ -95,10 +94,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 let opening = Task.detached { await Repository.open(spec, in: loc.root, git: git, commonDir: loc.commonDir) }
                 let wc = RepoWindowController(repository: repository, home: loc.root)
                 controllers.append(wc)
-                wc.showWindow(nil)
-                wc.window?.makeKeyAndOrderFront(nil)
+                wc.window?.raise()
                 wc.reader.focus()
-                if inBackground { wc.window?.orderBack(nil) } else { NSApp.activate() }
+                if !inBackground { NSApp.activate() }
                 wc.start(spec: spec, opening: opening)
                 NSDocumentController.shared.noteNewRecentDocumentURL(loc.root)
                 saveOpenRepos()
@@ -363,3 +361,26 @@ let delegate = AppDelegate()
 app.delegate = delegate
 app.setActivationPolicy(.regular)
 app.run()
+
+extension NSApplication {
+    /// Whether the app was started behind the windows in use (`--background`), as benchmarks
+    /// start it, so it must never bring a window forward or sound the alert.
+    var runsBehind: Bool { (delegate as? AppDelegate)?.inBackground == true }
+}
+
+extension NSWindow {
+    /// Makes the window key and brings it forward, or, when the app runs behind, makes it key
+    /// where it is, putting it behind the windows in use if it isn't shown yet.
+    func raise() {
+        guard NSApp.runsBehind else { return makeKeyAndOrderFront(nil) }
+        if !isVisible { orderBack(nil) }
+        makeKey()
+    }
+}
+
+/// Sounds the alert for a command that can't be done, or, while a script drives the app behind
+/// the windows in use, logs it instead.
+@MainActor
+func beep() {
+    if NSApp.runsBehind, let automation = Automation.running { automation.log("! beep") } else { NSSound.beep() }
+}

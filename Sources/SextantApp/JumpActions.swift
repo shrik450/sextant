@@ -110,7 +110,7 @@ extension RepoWindowController {
 
     /// Goes to a jump result in the focused pane, or in a new pane beside it.
     func jump(to item: JumpItem, beside: Bool) {
-        window?.makeKeyAndOrderFront(nil)
+        window?.raise()
         switch item.target {
         case .file(let path):
             if beside { branch() }

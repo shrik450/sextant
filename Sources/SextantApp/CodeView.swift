@@ -848,7 +848,7 @@ final class CodeView: NSTextView {
     /// Starts or stops selecting whole lines from the caret's line.
     private func toggleLineSelection() {
         if lineSelectionStart != nil { collapseSelection(); return }
-        guard let r = row(at: head), rows[r].kind == .line else { NSSound.beep(); return }
+        guard let r = row(at: head), rows[r].kind == .line else { beep(); return }
         selectLines(from: r, to: r)
         lineSelectionStart = r
     }
@@ -882,7 +882,7 @@ final class CodeView: NSTextView {
     /// Moves to the next or previous line, landing on its first changed name, or extends a
     /// selection of whole lines.
     private func readLine(_ dir: Int) {
-        guard let r = row(at: head), let n = lineRow(from: r, dir) else { NSSound.beep(); return }
+        guard let r = row(at: head), let n = lineRow(from: r, dir) else { beep(); return }
         if let start = lineSelectionStart {
             selectLines(from: start, to: n)
             lineSelectionStart = start
@@ -907,7 +907,7 @@ final class CodeView: NSTextView {
                 if let pick { moveCaret(to: pick, extend: false); return }
             }
             first = false
-            guard let n = lineRow(from: r, dir) else { NSSound.beep(); return }
+            guard let n = lineRow(from: r, dir) else { beep(); return }
             r = n
         }
     }
@@ -987,7 +987,7 @@ final class CodeView: NSTextView {
 
     private func moveVertically(_ dir: Int, extend: Bool) {
         let h = head
-        guard let r = row(at: h), let n = lineRow(from: r, dir) else { NSSound.beep(); return }
+        guard let r = row(at: h), let n = lineRow(from: r, dir) else { beep(); return }
         let col = goalColumn ?? (h - rowStarts[r])
         let range = charRange(ofRow: n)
         movingVertically = true
