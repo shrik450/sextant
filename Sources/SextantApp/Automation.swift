@@ -213,6 +213,7 @@ final class Automation {
                         NSApp.sendAction(action, to: item.target, from: item)
                     }
                 }
+                window?.reader.settleOccurrences()
                 window?.window?.displayIfNeeded()
                 frame.append((CACurrentMediaTime() - t0) * 1000)
                 while !(window.map { $0.busy == 0 && $0.reader.isSettled } ?? true), CACurrentMediaTime() - t0 < 10 {

@@ -5,8 +5,10 @@
 #
 # Builds a release app and a repository with a 400-file change, including a 30,000-line file,
 # then drives the app through its automation script behind the windows in use, so it doesn't
-# take focus. Times are the app's own work for each step: "frame" is handling it, laying out and
-# drawing it, and "settled" adds the sidebars that follow a turn of the run loop later.
+# take focus. It moves the caret from name to name in the large file, where some names are used
+# thousands of times, then from file to file. Times are the app's own work for each step: "frame"
+# is handling it, boxing the names that name the same thing as the caret's, laying out and drawing
+# it, and "settled" adds the sidebars that follow a turn of the run loop later.
 #
 # Usage: Tests/perf.sh (inside `nix develop`)
 
@@ -75,6 +77,7 @@ measure() {
   cat > "$work/script.txt" <<EOF
 timeopen $repo HEAD~1..HEAD
 sleep 300
+measure 40 key w
 measure 30 menu Next File
 measure 10 menu Previous File
 measure 1 menu All Changes
@@ -123,6 +126,7 @@ measure
 echo
 failed=0
 check "First file on screen" "OPEN" content 400 || failed=1
+check "Caret to next name" "key w" frame 8 || failed=1
 check "Next file" "menu Next File" frame 8 || failed=1
 check "Previous file" "menu Previous File" frame 8 || failed=1
 check "Next file, sidebars too" "menu Next File" settled 16 || failed=1
