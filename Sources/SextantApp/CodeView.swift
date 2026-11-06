@@ -873,10 +873,10 @@ final class CodeView: NSTextView {
     /// name, else its first character that isn't a space.
     func landingIndex(ofRow r: Int) -> Int {
         let range = charRange(ofRow: r)
-        guard rows[r].kind == .line, let text = textStorage?.attributedSubstring(from: range).string else { return range.location }
+        guard rows[r].kind == .line, let text = textStorage?.string as NSString? else { return range.location }
         let f = files[rows[r].file]
         let line = rows[r].line
-        return range.location + min(range.length, landingColumn(in: text, tokens: f.tokens?[line] ?? [], changed: f.wordRanges(line)))
+        return range.location + min(range.length, landingColumn(in: text, range: range, tokens: f.tokens?[line] ?? [], changed: f.wordRanges(line)))
     }
 
     /// Moves to the next or previous line, landing on its first changed name, or extends a
@@ -897,13 +897,22 @@ final class CodeView: NSTextView {
         let h = head
         guard var r = row(at: h) else { return }
         var first = true
+        let before = identifierStart(h)
         while true {
-            if rows[r].kind == .line {
+            if rows[r].kind == .line, let text = textStorage?.string as NSString? {
                 let range = charRange(ofRow: r)
-                let f = files[rows[r].file]
-                let text = textStorage?.attributedSubstring(from: range).string ?? ""
-                let names = identifiers(in: text, tokens: f.tokens?[rows[r].line] ?? []).map { $0.location + range.location }
-                let pick = dir > 0 ? names.first { !first || $0 > h } : names.last { !first || $0 < identifierStart(h) }
+                let tokens = files[rows[r].file].tokens?[rows[r].line] ?? []
+                var pick: Int?
+                forEachIdentifier(in: text, range: range, tokens: tokens) { name in
+                    let at = name.location + range.location
+                    if dir > 0 {
+                        guard first, at <= h else { pick = at; return false }
+                        return true
+                    }
+                    guard !first || at < before else { return false }
+                    pick = at
+                    return true
+                }
                 if let pick { moveCaret(to: pick, extend: false); return }
             }
             first = false
@@ -1052,18 +1061,8 @@ final class CodeView: NSTextView {
     /// Returns the range of the identifier (letters, digits, `_`, `$`) at or just before a
     /// character index.
     func identifier(at index: Int) -> NSRange? {
-        guard let s = textStorage?.string as NSString?, s.length > 0 else { return nil }
-        func isIdent(_ i: Int) -> Bool {
-            guard i >= 0, i < s.length, let u = UnicodeScalar(s.character(at: i)) else { return false }
-            return CharacterSet.alphanumerics.contains(u) || u == "_" || u == "$"
-        }
-        var i = min(index, s.length - 1)
-        if !isIdent(i) { i -= 1 }
-        guard isIdent(i) else { return nil }
-        var lo = i, hi = i
-        while isIdent(lo - 1) { lo -= 1 }
-        while isIdent(hi + 1) { hi += 1 }
-        return NSRange(location: lo, length: hi - lo + 1)
+        guard let s = textStorage?.string as NSString? else { return nil }
+        return SextantCore.identifier(at: index, in: s)
     }
 
     /// Copies only source text, leaving out fillers, folds, headers and notes.

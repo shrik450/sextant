@@ -1,11 +1,123 @@
 import Foundation
 
-private func isIdentifierUnit(_ u: unichar) -> Bool {
+private let alphanumerics = CharacterSet.alphanumerics
+
+/// Returns whether a UTF-16 unit can be part of an identifier: a letter, mark or digit, `_` or
+/// `$`.
+///
+/// A surrogate is never part of one, since it's half a character.
+public func isIdentifierUnit(_ u: unichar) -> Bool {
+    if u < 0x80 {
+        let lower = u | 0x20
+        return (u >= 0x30 && u <= 0x39) || (lower >= 0x61 && lower <= 0x7A) || u == 0x5F || u == 0x24
+    }
     guard let s = UnicodeScalar(u) else { return false }
-    return CharacterSet.alphanumerics.contains(s) || s == "_" || s == "$"
+    return alphanumerics.contains(s)
 }
 
 private func isDigit(_ u: unichar) -> Bool { u >= 0x30 && u <= 0x39 }
+
+/// Reads a range of a string's UTF-16 units from front to back, a chunk at a time, so reading
+/// a unit costs neither a message send nor an allocation.
+///
+/// - Parameters:
+///   - string: The string.
+///   - range: The UTF-16 range to read.
+///   - body: Takes each chunk in turn, and returns whether to go on.
+private func forEachChunk(of string: NSString, range: NSRange, _ body: (UnsafeBufferPointer<unichar>) -> Bool) {
+    guard range.length > 0 else { return }
+    let size = min(range.length, 4096)
+    withUnsafeTemporaryAllocation(of: unichar.self, capacity: size) { buffer in
+        var start = range.location
+        let end = NSMaxRange(range)
+        while start < end {
+            let count = min(size, end - start)
+            string.getCharacters(buffer.baseAddress!, range: NSRange(location: start, length: count))
+            guard body(UnsafeBufferPointer(rebasing: buffer[..<count])) else { return }
+            start += count
+        }
+    }
+}
+
+/// Tells whether any of some ranges intersects a range, for ranges asked about in order: each
+/// starting no earlier, and ending no earlier, than the one before.
+///
+/// Asking costs nothing beyond one pass over the ranges, whatever the number of questions.
+struct OrderedIntersections {
+    private let ranges: [NSRange]
+    private var next = 0
+    /// The furthest end of the ranges that start before the end of the range asked about last.
+    private var reach = Int.min
+
+    init(_ ranges: some Sequence<NSRange>) {
+        let nonEmpty = ranges.filter { $0.length > 0 }
+        self.ranges = nonEmpty.indices.dropFirst().allSatisfy { nonEmpty[$0 - 1].location <= nonEmpty[$0].location }
+            ? nonEmpty
+            : nonEmpty.sorted { $0.location < $1.location }
+    }
+
+    /// Returns whether any range shares a unit with `r`, which must not be empty.
+    mutating func intersect(_ r: NSRange) -> Bool {
+        let end = NSMaxRange(r)
+        while next < ranges.count, ranges[next].location < end {
+            reach = max(reach, NSMaxRange(ranges[next]))
+            next += 1
+        }
+        return reach > r.location
+    }
+
+    /// Returns whether no range shares a unit with `r` or anything after it.
+    func isPassed(by r: NSRange) -> Bool { next == ranges.count && reach <= r.location }
+}
+
+/// Calls `body` with the identifiers in a line of code that name something, in order, until it
+/// returns false.
+///
+/// Keywords, comments, strings and numbers are left out, so stepping through a line goes from
+/// name to name. Costs one pass over the line and its tokens.
+///
+/// - Parameters:
+///   - text: The text the line is in.
+///   - range: The line's UTF-16 range in `text`.
+///   - tokens: The line's syntax tokens, with UTF-16 ranges from the start of the line.
+///   - body: Takes each identifier's UTF-16 range from the start of the line, and returns
+///     whether to go on.
+public func forEachIdentifier(in text: NSString, range: NSRange, tokens: [Token], _ body: (NSRange) -> Bool) {
+    var skipped = OrderedIntersections(tokens.lazy.filter(\.kind.isSkippedByNames).map(\.range))
+    var start: Int?
+    var startsWithDigit = false
+    var offset = 0
+    var goOn = true
+    func found(_ start: Int, _ end: Int) -> Bool {
+        let r = NSRange(location: start, length: end - start)
+        return skipped.intersect(r) || body(r)
+    }
+    forEachChunk(of: text, range: range) { chunk in
+        var at = offset
+        var current = start
+        defer {
+            offset = at
+            start = current
+        }
+        for u in chunk {
+            if isIdentifierUnit(u) {
+                if current == nil {
+                    current = at
+                    startsWithDigit = isDigit(u)
+                }
+            } else if let s = current {
+                current = nil
+                if !startsWithDigit, !found(s, at) {
+                    goOn = false
+                    return false
+                }
+            }
+            at += 1
+        }
+        return true
+    }
+    if goOn, let s = start, !startsWithDigit { _ = found(s, offset) }
+}
 
 /// Returns the identifiers in a line of code that name something.
 ///
@@ -18,37 +130,73 @@ private func isDigit(_ u: unichar) -> Bool { u >= 0x30 && u <= 0x39 }
 /// - Returns: The identifiers' UTF-16 ranges, in order.
 public func identifiers(in text: String, tokens: [Token]) -> [NSRange] {
     let s = text as NSString
-    let skipped = tokens.filter { [.keyword, .comment, .string, .number].contains($0.kind) }.map(\.range)
     var out: [NSRange] = []
-    var i = 0
-    while i < s.length {
-        guard isIdentifierUnit(s.character(at: i)) else { i += 1; continue }
-        let start = i
-        while i < s.length, isIdentifierUnit(s.character(at: i)) { i += 1 }
-        let r = NSRange(location: start, length: i - start)
-        if !isDigit(s.character(at: start)), !skipped.contains(where: { NSIntersectionRange($0, r).length > 0 }) { out.append(r) }
-    }
+    forEachIdentifier(in: s, range: NSRange(location: 0, length: s.length), tokens: tokens) { out.append($0); return true }
     return out
 }
 
 /// Returns the column where the caret lands on a line.
 ///
 /// That's the first identifier the change touched, else the first identifier, else the first
-/// character that isn't a space.
+/// character that isn't a space. Reads the line only as far as it needs to.
 ///
 /// - Parameters:
-///   - text: The line.
-///   - tokens: The line's syntax tokens.
-///   - changed: The ranges of the line's changed words.
-/// - Returns: A UTF-16 offset into `text`.
-public func landingColumn(in text: String, tokens: [Token], changed: [NSRange]) -> Int {
-    let names = identifiers(in: text, tokens: tokens)
-    if let touched = names.first(where: { n in changed.contains { NSIntersectionRange($0, n).length > 0 } }) { return touched.location }
-    if let first = names.first { return first.location }
-    let s = text as NSString
+///   - text: The text the line is in.
+///   - range: The line's UTF-16 range in `text`.
+///   - tokens: The line's syntax tokens, with UTF-16 ranges from the start of the line.
+///   - changed: The ranges of the line's changed words, from the start of the line.
+/// - Returns: A UTF-16 offset from the start of the line.
+public func landingColumn(in text: NSString, range: NSRange, tokens: [Token], changed: [NSRange]) -> Int {
+    var touched = OrderedIntersections(changed)
+    var first: Int?
+    var landing: Int?
+    forEachIdentifier(in: text, range: range, tokens: tokens) { r in
+        if first == nil { first = r.location }
+        if touched.intersect(r) {
+            landing = r.location
+            return false
+        }
+        return !touched.isPassed(by: r)
+    }
+    if let column = landing ?? first { return column }
     var i = 0
-    while i < s.length, s.character(at: i) == 0x20 || s.character(at: i) == 0x09 { i += 1 }
-    return i == s.length ? 0 : i
+    var column = 0
+    forEachChunk(of: text, range: range) { chunk in
+        for u in chunk {
+            guard u == 0x20 || u == 0x09 else {
+                column = i
+                return false
+            }
+            i += 1
+        }
+        return true
+    }
+    return column
+}
+
+/// Returns the range of the identifier at or just before a UTF-16 offset in a text: a run of
+/// letters, marks, digits, `_` and `$`.
+public func identifier(at index: Int, in text: NSString) -> NSRange? {
+    guard text.length > 0 else { return nil }
+    func isIdentifier(_ i: Int) -> Bool { i >= 0 && i < text.length && isIdentifierUnit(text.character(at: i)) }
+    var i = min(index, text.length - 1)
+    if !isIdentifier(i) { i -= 1 }
+    guard isIdentifier(i) else { return nil }
+    var lo = i, hi = i
+    while isIdentifier(lo - 1) { lo -= 1 }
+    while isIdentifier(hi + 1) { hi += 1 }
+    return NSRange(location: lo, length: hi - lo + 1)
+}
+
+extension TokenKind {
+    /// Whether names leave out what a token of this kind covers: keywords, comments, strings and
+    /// numbers.
+    var isSkippedByNames: Bool {
+        switch self {
+        case .keyword, .comment, .string, .number: true
+        default: false
+        }
+    }
 }
 
 /// Returns where a word appears on its own in a text, not as part of a longer identifier.
