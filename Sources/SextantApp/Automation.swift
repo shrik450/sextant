@@ -67,7 +67,8 @@ final class Automation {
         let selector = #selector(NSResponder.noResponder(for:))
         guard let method = class_getInstanceMethod(NSWindow.self, selector) else { return }
         let log: @convention(block) (NSWindow, Selector) -> Void = { _, event in
-            MainActor.assumeIsolated { Automation.running?.log("! beep: nothing handled \(NSStringFromSelector(event))") }
+            guard event == #selector(NSResponder.keyDown(with:)) else { return }
+            MainActor.assumeIsolated { Automation.running?.log("! beep: nothing handled a key") }
         }
         class_replaceMethod(NSWindow.self, selector, imp_implementationWithBlock(log), method_getTypeEncoding(method))
     }
