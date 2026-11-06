@@ -191,6 +191,12 @@ final class Reader: NSViewController, CodeViewDelegate {
 
     private var analysis: Task<Void, Never>?
 
+    /// Stops analyzing the files shown and boxing names, for a reader that's going away.
+    func stopWork() {
+        analysis?.cancel()
+        pendingOccurrences?.cancel()
+    }
+
     /// Analyzes the files shown, nearest the view first, coloring each as it arrives.
     ///
     /// The overview only needs colors; one file needs its definitions and outline too.

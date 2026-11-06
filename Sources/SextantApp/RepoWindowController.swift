@@ -826,6 +826,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     private func discard(_ closed: [Pane]) {
         for p in closed {
             p.reader.delegate = nil
+            p.reader.stopWork()
             p.surface.removeFromSuperview()
         }
     }
@@ -1009,7 +1010,25 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         watcher = nil
         picker?.close()
+        stopWork()
         (NSApp.delegate as? AppDelegate)?.windowClosed(self)
+    }
+
+    /// Stops what the window started, so none of it runs on, or keeps the window, once it's
+    /// closed.
+    private func stopWork() {
+        refreshTask?.cancel()
+        findTask?.cancel()
+        definitionTask?.cancel()
+        for s in sessions {
+            s.loadGeneration += 1
+            s.indexTask?.cancel()
+            s.indexTask = nil
+        }
+        for t in afterFrame.values { t.invalidate() }
+        afterFrame = [:]
+        waitingForFile = [:]
+        for p in panes { p.reader.stopWork() }
     }
 }
 
