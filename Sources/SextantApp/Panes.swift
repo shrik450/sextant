@@ -35,9 +35,9 @@ final class Session {
 /// One reader in the window's strip, showing a place in a review.
 @MainActor
 final class Pane {
-    let reader = Reader()
-    /// The card the reader shows in, in the strip.
-    private(set) lazy var card = PaneCard(content: reader.view, header: reader.header)
+    let reader: Reader
+    /// The surface the reader shows on, in the strip.
+    let surface: PaneSurface
     var session: Session?
     /// What the reader shows: the overview of every change, or one file.
     var focus: Location.Place?
@@ -47,6 +47,11 @@ final class Pane {
     var loadingGeneration: Int?
     /// Whether search results open in this pane, as they do in the pane opened for the first.
     var showsResults = false
+
+    init(look: any Look) {
+        reader = Reader(look: look)
+        surface = look.makePaneSurface(content: reader.view, header: reader.header)
+    }
 
     /// Whether a file is loading to show.
     var isLoadingFile: Bool { loadingGeneration == showGeneration }
@@ -65,35 +70,31 @@ final class Pane {
 /// keeps its width, and the strip slides so the focused one is in view, with its neighbour
 /// showing at the edge.
 ///
-/// Each pane is a card inset from the strip's edges, and says where it is in its own header,
-/// so the strip only places them.
+/// Each pane says where it is in its own header, so the strip only places them, as its look
+/// lays them out.
 @MainActor
 final class PaneStrip: NSView {
     private let viewport = FlippedView()
     private let track = FlippedView()
-    private var cards: [PaneCard] = []
+    private var surfaces: [PaneSurface] = []
     private var offset: CGFloat = 0
     private(set) var focused = 0
-    /// The window-space frames of the titlebar controls that can sit over the cards' headers.
+    private let arrangement: StripLayout
+    private let headerHeight: CGFloat
+    /// The window-space frames of the titlebar controls that can sit over the panes' headers.
     var titlebarControls: () -> [NSRect] = { [] }
 
     /// The narrowest a pane gets beside others, below which each pane takes the whole strip.
     static let minimumPaneWidth: CGFloat = 480
-    /// The space between neighbouring cards.
-    static let gap: CGFloat = 8
-    /// How long the strip takes to slide to a newly focused card, and the cards to change emphasis.
+    /// How long the strip takes to slide to a newly focused pane, and the panes to change emphasis.
     static let slideDuration: TimeInterval = 0.18
-    /// The space between the cards and the strip's edges, the same as the sidebar's glass keeps
-    /// from the window's edges.
-    static let margins = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
-    /// The corner radius of a macOS 26 window with a toolbar, measured from a capture, since
-    /// AppKit doesn't publish it. The cards' corners are concentric with it.
-    static let windowCornerRadius: CGFloat = 26
     /// The space kept between a titlebar control and the header content beside it.
     static let controlClearance: CGFloat = 10
 
-    override init(frame: NSRect) {
-        super.init(frame: frame)
+    init(look: any Look) {
+        arrangement = look.strip
+        headerHeight = look.paneHeader.height
+        super.init(frame: .zero)
         wantsLayer = true
         viewport.wantsLayer = true
         viewport.layer?.masksToBounds = true
@@ -105,29 +106,36 @@ final class PaneStrip: NSView {
 
     override var isFlipped: Bool { true }
 
-    /// Shows panes' cards in order, with one focused.
-    func show(_ panes: [PaneCard], focused index: Int, animated: Bool) {
-        if panes != cards {
-            for c in cards where !panes.contains(c) { c.removeFromSuperview() }
-            for c in panes where c.superview !== track {
-                c.translatesAutoresizingMaskIntoConstraints = true
-                c.autoresizingMask = []
-                track.addSubview(c)
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        layer?.backgroundColor = arrangement.seam?.cgColor
+    }
+
+    /// Shows panes in order, with one focused.
+    func show(_ panes: [PaneSurface], focused index: Int, animated: Bool) {
+        if !panes.elementsEqual(surfaces, by: ===) {
+            for s in surfaces where !panes.contains(where: { $0 === s }) { s.removeFromSuperview() }
+            for s in panes where s.superview !== track {
+                s.translatesAutoresizingMaskIntoConstraints = true
+                s.autoresizingMask = []
+                track.addSubview(s)
             }
-            cards = panes
+            surfaces = panes
         }
         focused = index
-        for (i, c) in cards.enumerated() { c.setFocused(i == index, animated: animated) }
+        for (i, s) in surfaces.enumerated() { s.setFocused(i == index, animated: animated) }
         layoutPanes(animated: animated)
     }
 
-    /// The part of the strip the cards fill when they're all in view.
+    /// The part of the strip the panes fill when they're all in view.
     ///
-    /// The strip reaches under the sidebar, which the safe area at its leading side keeps the
-    /// cards clear of. The top ignores the safe area, so the cards' headers share the row with
-    /// the traffic lights and toolbar buttons, which each header keeps its content clear of.
-    private var cardArea: NSRect {
-        let m = Self.margins, safe = safeAreaInsets
+    /// The strip can reach under a floating sidebar, which the safe area at its leading side
+    /// keeps the panes clear of. The top ignores the safe area, so the panes' headers can share
+    /// the row with the traffic lights and toolbar buttons, which each header keeps its content
+    /// clear of.
+    private var paneArea: NSRect {
+        let m = arrangement.margins, safe = safeAreaInsets
         let left = safe.left + m.left, right = safe.right + m.right
         return NSRect(x: left, y: m.top, width: max(0, bounds.width - left - right), height: max(0, bounds.height - m.top - m.bottom))
     }
@@ -146,8 +154,8 @@ final class PaneStrip: NSView {
     /// The width every pane takes: the whole strip for one pane or while zoomed, else two thirds
     /// of it, so the pane beside the focused one shows.
     var paneWidth: CGFloat {
-        let w = cardArea.width
-        guard cards.count > 1, !isZoomed else { return w }
+        let w = paneArea.width
+        guard surfaces.count > 1, !isZoomed else { return w }
         let part = (w * 2 / 3).rounded()
         return part < Self.minimumPaneWidth ? w : part
     }
@@ -155,23 +163,23 @@ final class PaneStrip: NSView {
     private func layoutPanes(animated: Bool) {
         let safe = safeAreaInsets
         viewport.frame = NSRect(x: safe.left, y: 0, width: max(0, bounds.width - safe.left - safe.right), height: bounds.height)
-        let area = cardArea
-        let w = paneWidth, h = area.height, gap = Self.gap
-        for (i, c) in cards.enumerated() {
+        let area = paneArea
+        let w = paneWidth, h = area.height, gap = arrangement.gap
+        for (i, s) in surfaces.enumerated() {
             let frame = NSRect(x: CGFloat(i) * (w + gap), y: 0, width: w, height: h)
-            if c.frame != frame { c.frame = frame }
+            if s.frame != frame { s.frame = frame }
         }
-        let total = cards.isEmpty ? 0 : CGFloat(cards.count) * (w + gap) - gap
+        let total = surfaces.isEmpty ? 0 : CGFloat(surfaces.count) * (w + gap) - gap
         offset = stripOffset(showing: focused, from: offset, paneWidth: w, gap: gap, viewport: area.width, total: total)
         let trackFrame = NSRect(x: area.minX - viewport.frame.minX - offset, y: area.minY, width: max(total, area.width), height: h)
         let controls = titlebarControls()
         let place = {
-            for c in self.cards {
-                let x = self.viewport.frame.minX + trackFrame.minX + c.frame.minX
+            for s in self.surfaces {
+                let x = self.viewport.frame.minX + trackFrame.minX + s.frame.minX
                 let from = max(0, area.minX - x), to = min(w, area.maxX - x)
-                c.show(part: NSRect(x: from, y: 0, width: max(0, to - from), height: h))
-                let header = NSRect(x: x, y: area.minY, width: w, height: PaneHeader.height)
-                c.headerClearance = self.clearance(ofHeader: header, shownFrom: x + from, controls: controls)
+                s.show(part: NSRect(x: from, y: 0, width: max(0, to - from), height: h))
+                let header = NSRect(x: x, y: area.minY, width: w, height: self.headerHeight)
+                s.headerClearance = self.clearance(ofHeader: header, shownFrom: x + from, controls: controls)
             }
         }
         if animated, track.frame.size == trackFrame.size {
@@ -187,12 +195,12 @@ final class PaneStrip: NSView {
         }
     }
 
-    /// How far a card's header keeps its content in from each end, clear of the titlebar
+    /// How far a pane's header keeps its content in from each end, clear of the titlebar
     /// controls over it.
     ///
     /// - Parameters:
     ///   - header: The header's frame in the strip.
-    ///   - shownFrom: Where the card starts showing, after any part cut off at the strip's edge.
+    ///   - shownFrom: Where the pane starts showing, after any part cut off at the strip's edge.
     ///   - controls: The window-space frames of the titlebar controls.
     private func clearance(ofHeader header: NSRect, shownFrom: CGFloat, controls: [NSRect]) -> NSEdgeInsets {
         guard window != nil else { return NSEdgeInsetsZero }
@@ -207,206 +215,6 @@ final class PaneStrip: NSView {
             }
         }
         return NSEdgeInsets(top: 0, left: leading, bottom: 0, right: trailing)
-    }
-}
-
-/// A pane as a card: its reader, clipped to rounded corners, raised off the frost by a shadow and
-/// edged with a one-pixel rim, as the system's glass panels are.
-///
-/// The focused card in the main window stands out with a full shadow and a brighter rim, and the
-/// others recede: their shadow halves, and what's drawn on them dims to 70% in the main window and
-/// to 50% in an inactive one. The card's fill, which the content view paints as its own
-/// background, keeps the theme's card opacity, so a dimmed card lets no more of the backdrop
-/// through than a focused one; only its text, line tints and controls fade. The shadow falls only
-/// outside the card, so it doesn't darken the card's fill through its translucency.
-///
-/// The window stays main while a panel or popover of its own, such as Go to Anything or a note,
-/// takes the keyboard, so the cards don't change then. A card cut off at the strip's edge shows as
-/// a narrower card, with its own rounded corners and rim on the cut side.
-@MainActor
-final class PaneCard: NSView {
-    private let clip = NSView()
-    private let cardShadow = CALayer()
-    private let shadowCutout = CAShapeLayer()
-    private let content: NSView
-    private let header: PaneHeader
-    /// The part of the card in view, in its own coordinates.
-    private var part = NSRect.zero
-    private var mainObservers: [NSObjectProtocol] = []
-
-    /// Concentric with the window's corners, at the strip's margin from them.
-    static let cornerRadius: CGFloat = PaneStrip.windowCornerRadius - PaneStrip.margins.top
-    private static let shadowOffset = CGSize(width: 0, height: -2)
-
-    private(set) var isFocused = true
-
-    /// Focuses the card or lets it recede, fading its content and shadow in step with the strip
-    /// when animated.
-    ///
-    /// - Parameters:
-    ///   - focused: Whether the card is the focused one.
-    ///   - animated: Whether to fade, as when the strip slides to the newly focused card.
-    func setFocused(_ focused: Bool, animated: Bool) {
-        guard focused != isFocused else { return }
-        isFocused = focused
-        applyEmphasis(animated: animated)
-    }
-
-    /// How far the header keeps its content in from each end, clear of titlebar controls.
-    var headerClearance = NSEdgeInsetsZero {
-        didSet { header.clearance = headerClearance }
-    }
-
-    init(content: NSView, header: PaneHeader) {
-        self.content = content
-        self.header = header
-        super.init(frame: .zero)
-        wantsLayer = true
-        cardShadow.shadowOpacity = 0
-        shadowCutout.fillRule = .evenOdd
-        cardShadow.mask = shadowCutout
-        layer?.addSublayer(cardShadow)
-        clip.wantsLayer = true
-        clip.layer?.cornerRadius = Self.cornerRadius
-        clip.layer?.cornerCurve = .continuous
-        clip.layer?.masksToBounds = true
-        addSubview(clip)
-        content.translatesAutoresizingMaskIntoConstraints = true
-        content.autoresizingMask = []
-        clip.addSubview(content)
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    override var wantsUpdateLayer: Bool { true }
-
-    private var isEmphasized: Bool { isFocused && (window?.isMainWindow ?? true) }
-
-    override func updateLayer() {
-        guard let clipLayer = clip.layer else { return }
-        let theme = Appearance.shared.theme(for: effectiveAppearance)
-        cardShadow.shadowColor = theme.color("cardShadow").cgColor
-        if cardShadow.shadowRadius != theme.cardShadowRadius {
-            cardShadow.shadowRadius = theme.cardShadowRadius
-            placeParts()
-        }
-        cardShadow.shadowOffset = Self.shadowOffset
-        clipLayer.borderWidth = 1 / (window?.backingScaleFactor ?? 2)
-        clipLayer.borderColor = theme.color(isEmphasized ? "cardRimFocused" : "cardRim").cgColor
-    }
-
-    override func viewDidChangeBackingProperties() {
-        super.viewDidChangeBackingProperties()
-        needsDisplay = true
-    }
-
-    private func applyEmphasis(animated: Bool) {
-        let alpha: CGFloat = isFocused ? 1 : window?.isMainWindow ?? true ? 0.7 : 0.5
-        let opacity: Float = isEmphasized ? 1 : 0.5
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = animated ? PaneStrip.slideDuration : 0
-            for v in content.subviews { v.animator().alphaValue = alpha }
-        }
-        if cardShadow.shadowOpacity != opacity {
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            if animated {
-                let fade = CABasicAnimation(keyPath: "shadowOpacity")
-                fade.fromValue = cardShadow.presentation()?.shadowOpacity ?? cardShadow.shadowOpacity
-                fade.duration = PaneStrip.slideDuration
-                cardShadow.add(fade, forKey: "shadowOpacity")
-            }
-            cardShadow.shadowOpacity = opacity
-            CATransaction.commit()
-        }
-        needsDisplay = true
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        mainObservers.forEach(NotificationCenter.default.removeObserver)
-        mainObservers = []
-        guard let window else { return }
-        applyEmphasis(animated: false)
-        for name in [NSWindow.didBecomeMainNotification, NSWindow.didResignMainNotification] {
-            mainObservers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.applyEmphasis(animated: false) }
-            })
-        }
-    }
-
-    /// Shows only part of the card, as when the strip's edge cuts it off.
-    ///
-    /// Call it inside an animation group to move the cut with the strip.
-    func show(part: NSRect) {
-        self.part = part
-        placeParts()
-    }
-
-    override func layout() {
-        super.layout()
-        placeParts()
-    }
-
-    private func placeParts() {
-        isHidden = part.width < 1
-        clip.frame = part
-        content.frame = NSRect(x: -part.minX, y: -part.minY, width: bounds.width, height: bounds.height)
-        let r = Self.cornerRadius
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        let card = NSRect(origin: .zero, size: part.size)
-        cardShadow.frame = part
-        cardShadow.shadowPath = CGPath(roundedRect: card, cornerWidth: r, cornerHeight: r, transform: nil)
-        let reach = cardShadow.shadowRadius * 3 + abs(Self.shadowOffset.height)
-        let cutout = CGMutablePath()
-        cutout.addRect(card.insetBy(dx: -reach, dy: -reach))
-        cutout.addRoundedRect(in: card, cornerWidth: r, cornerHeight: r)
-        shadowCutout.frame = card
-        shadowCutout.path = cutout
-        CATransaction.commit()
-    }
-}
-
-/// The window's surface behind all three columns and the seams between the cards: the system's
-/// sidebar material, blended with what lies behind the window, under a wash of the theme's
-/// `frostTint`.
-///
-/// The material frosts the desktop and other windows so that none of their shapes come through,
-/// and the wash keeps the surface close to the theme's canvas, so the wallpaper only tints it, as
-/// light refracted through glass would. It goes flat when the window is inactive, as the system's
-/// own sidebars do.
-@MainActor
-final class BackdropView: NSVisualEffectView {
-    private let wash = FrostWash()
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        material = .sidebar
-        blendingMode = .behindWindow
-        state = .followsWindowActiveState
-        wash.frame = bounds
-        wash.autoresizingMask = [.width, .height]
-        addSubview(wash)
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-}
-
-/// The theme's `frostTint`, filling the frost it lies over.
-@MainActor
-private final class FrostWash: NSView {
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        wantsLayer = true
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    override var wantsUpdateLayer: Bool { true }
-
-    override func updateLayer() {
-        layer?.backgroundColor = Appearance.shared.theme(for: effectiveAppearance).color("frostTint").cgColor
     }
 }
 

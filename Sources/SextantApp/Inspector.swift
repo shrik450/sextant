@@ -62,6 +62,14 @@ final class Inspector: NSViewController, NSSplitViewDelegate {
     private var folded: Set<String> = []
     /// Says whether a run of changes has been read.
     var isRead: (FileState, FileState.KeyedRun) -> Bool = { _, _ in false }
+    private let look: any Look
+
+    init(look: any Look) {
+        self.look = look
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
 
     var changedOnly: Bool {
         get { UserDefaults.standard.bool(forKey: "outlineChangedOnly") }
@@ -332,7 +340,7 @@ final class Inspector: NSViewController, NSSplitViewDelegate {
 }
 
 extension Inspector: NSOutlineViewDataSource, NSOutlineViewDelegate {
-    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { PillRowView() }
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { look.makeRowView() }
 
     func outlineView(_ o: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
         ((item as? Entry) ?? root).children.count

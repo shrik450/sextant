@@ -38,20 +38,15 @@ final class JumpPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NSTa
     static let width: CGFloat = 640
     static let rowHeight: CGFloat = 30
     static let visibleRows = 12
-    /// The bar's corner radius, as round as a window's on macOS 26.
-    static let cornerRadius: CGFloat = 20
 
-    init() {
+    init(look: any Look) {
         super.init(contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 60), styleMask: [.borderless, .fullSizeContentView], backing: .buffered, defer: false)
         isFloatingPanel = true
         hidesOnDeactivate = true
         backgroundColor = .clear
         isOpaque = false
         hasShadow = true
-        let glass = NSGlassEffectView()
-        glass.cornerRadius = Self.cornerRadius
         let back = NSView()
-        glass.contentView = back
         field.font = .systemFont(ofSize: 20, weight: .light)
         field.placeholderString = "Go to a file or definition, > for commands, : for a line, @ in this file"
         field.isBordered = false
@@ -93,15 +88,7 @@ final class JumpPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NSTa
             status.trailingAnchor.constraint(equalTo: back.trailingAnchor, constant: -16),
             status.bottomAnchor.constraint(equalTo: back.bottomAnchor, constant: -8),
         ])
-        let shape = NSView()
-        shape.wantsLayer = true
-        shape.layer?.cornerRadius = Self.cornerRadius
-        shape.layer?.cornerCurve = .continuous
-        shape.layer?.masksToBounds = true
-        glass.autoresizingMask = [.width, .height]
-        shape.addSubview(glass)
-        contentView = shape
-        glass.frame = shape.bounds
+        contentView = look.panel(back)
     }
 
     override var canBecomeKey: Bool { true }

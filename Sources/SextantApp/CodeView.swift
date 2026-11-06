@@ -22,10 +22,12 @@ struct Style {
     var lineHeight: CGFloat
     var tabInterval: CGFloat
     var digitWidth: CGFloat
+    /// How opaque the pane's canvas is, as its look sets it.
+    var canvasOpacity: CGFloat = 1
 
-    /// The card's fill: the canvas at the theme's card opacity, so the backdrop's frost shows
-    /// through the card. Each part of the card is filled with it once.
-    var cardFill: NSColor { theme.canvas.withAlphaComponent(theme.cardOpacity) }
+    /// The pane's fill: the canvas at its opacity, so what's behind the strip can show through
+    /// the pane. Each part of the pane is filled with it once.
+    var canvasFill: NSColor { theme.canvas.withAlphaComponent(canvasOpacity) }
 
     static func current(for appearance: NSAppearance) -> Style {
         let a = Appearance.shared
@@ -658,7 +660,7 @@ final class CodeView: NSTextView {
         let height = min(frag.height - 4, ceil(s.pillFont.pointSize * 1.6))
         let shape = NSRect(x: text.minX - lead, y: frag.midY - height / 2, width: lead + text.width + s.pillPadding, height: height)
         let capsule = NSBezierPath(roundedRect: shape, xRadius: height / 2, yRadius: height / 2)
-        s.cardFill.setFill(); capsule.fill()
+        s.canvasFill.setFill(); capsule.fill()
         if hoveredPill == r { t.color("hover").setFill(); capsule.fill() }
         capsule.lineWidth = 0.75
         (hoveredPill == r ? t.color("pillStrokeFocused") : t.color("pillStroke")).setStroke(); capsule.stroke()

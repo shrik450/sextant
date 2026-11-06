@@ -264,7 +264,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             item(m, "Blame", #selector(W.toggleBlame(_:)), "b", [.shift], symbol: "person.text.rectangle")
             alternate(m, "b", [.command, .option])
             m.addItem(.separator())
-            item(m, "Show Navigator", #selector(NSSplitViewController.toggleSidebar(_:)), "0", symbol: "sidebar.left")
+            item(m, "Show Navigator", #selector(W.toggleNavigatorColumn(_:)), "0", symbol: "sidebar.left")
             item(m, "Show Inspector", #selector(W.toggleInspectorColumn(_:)), "0", [.command, .option], symbol: "sidebar.right")
             item(m, "Zoom Pane", #selector(W.toggleZoomPane(_:)), "\r", [.command, .shift], symbol: "arrow.up.left.and.arrow.down.right")
             m.addItem(.separator())

@@ -21,33 +21,3 @@ extension NSFont {
     /// Hashes and line numbers beside a row's text, in the code's style.
     static var detailCode: NSFont { .monospacedSystemFont(ofSize: detail.pointSize, weight: .regular) }
 }
-
-/// A side column's row, whose selection is a raised capsule of the theme's selection pill, with
-/// a hairline and, in light, a soft shadow. Selected text keeps its colour.
-final class PillRowView: NSTableRowView {
-    /// How far the capsule keeps in from the column's edges.
-    static let inset: CGFloat = 7
-
-    override var interiorBackgroundStyle: NSView.BackgroundStyle { .normal }
-
-    override func drawSelection(in dirtyRect: NSRect) {
-        let theme = Appearance.shared.theme(for: effectiveAppearance)
-        let pill = bounds.insetBy(dx: Self.inset, dy: 1)
-        let shape = NSBezierPath(roundedRect: pill, xRadius: pill.height / 2, yRadius: pill.height / 2)
-        NSGraphicsContext.saveGraphicsState()
-        if !theme.isDark {
-            let shadow = NSShadow()
-            shadow.shadowColor = NSColor.themed("fg").withAlphaComponent(0.08)
-            shadow.shadowBlurRadius = 3.5
-            shadow.shadowOffset = NSSize(width: 0, height: -1.5)
-            shadow.set()
-        }
-        theme.color("selectionPill").setFill()
-        shape.fill()
-        NSGraphicsContext.restoreGraphicsState()
-        theme.color("selectionPillStroke").setStroke()
-        let edge = NSBezierPath(roundedRect: pill.insetBy(dx: 0.25, dy: 0.25), xRadius: pill.height / 2, yRadius: pill.height / 2)
-        edge.lineWidth = 0.5
-        edge.stroke()
-    }
-}

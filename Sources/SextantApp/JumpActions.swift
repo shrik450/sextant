@@ -13,7 +13,7 @@ extension RepoWindowController {
     }
 
     private func makeJumpPanel() -> JumpPanel {
-        let panel = JumpPanel()
+        let panel = JumpPanel(look: look)
         panel.find = { [weak self] text in await self?.jumpItems(for: text) ?? [] }
         panel.progress = { [weak self] in
             guard let (done, total) = self?.session?.indexing else { return nil }

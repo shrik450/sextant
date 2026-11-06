@@ -44,11 +44,28 @@ final class Reader: NSViewController, CodeViewDelegate {
     }
     private var columns: [Column] = []
     private let stack = NSStackView()
-    let header = PaneHeader()
+    let header: PaneHeader
     private let emptyState = EmptyState(symbolSize: 40, font: .preferredFont(forTextStyle: .title3))
-    private let changeCounter = ChangeCounter()
+    private let changeCounter: ChangeCounter
+    private let look: any Look
     private var layout = Layout(left: [], right: nil)
     private var syncing = false
+
+    init(look: any Look) {
+        self.look = look
+        header = PaneHeader(style: look.paneHeader)
+        changeCounter = ChangeCounter(look: look)
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// The style the code draws in, for the appearance the reader shows in and its look.
+    private func currentStyle() -> Style {
+        var style = Style.current(for: view.effectiveAppearance)
+        style.canvasOpacity = look.canvasOpacity(of: style.theme)
+        return style
+    }
 
     override func loadView() {
         let v = NSView()
@@ -98,7 +115,7 @@ final class Reader: NSViewController, CodeViewDelegate {
 
     @objc private func appearanceChanged() {
         guard !files.isEmpty else {
-            paintCanvas(Style.current(for: view.effectiveAppearance))
+            paintCanvas(currentStyle())
             return
         }
         reload(keepPosition: true)
@@ -106,7 +123,7 @@ final class Reader: NSViewController, CodeViewDelegate {
 
     /// Fills the pane behind its header and code with the theme's canvas, so they read as one.
     private func paintCanvas(_ style: Style) {
-        view.layer?.backgroundColor = style.cardFill.cgColor
+        view.layer?.backgroundColor = style.canvasFill.cgColor
     }
 
     private func setColumnCount(_ n: Int) {
@@ -227,7 +244,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         stack.isHidden = true
         changeStops = []
         updateChangeCounter()
-        let style = Style.current(for: view.effectiveAppearance)
+        let style = currentStyle()
         paintCanvas(style)
         header.update(path: nil, files: [], current: nil, style: style)
     }
@@ -241,7 +258,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         stack.isHidden = false
         layout = layoutRows(files: files, overview: overview, split: split, showAll: showAll, notes: notes)
         setColumnCount(layout.right == nil ? 1 : 2)
-        let style = Style.current(for: view.effectiveAppearance)
+        let style = currentStyle()
         paintCanvas(style)
         let byID = Dictionary(notes.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let sides = layout.right.map { [layout.left, $0] } ?? [layout.left]
@@ -370,7 +387,7 @@ final class Reader: NSViewController, CodeViewDelegate {
 
     private var jump: Jump? { didSet { showJumpPrompt() } }
     private lazy var jumpPrompt: JumpPrompt = {
-        let p = JumpPrompt()
+        let p = JumpPrompt(look: look)
         p.translatesAutoresizingMaskIntoConstraints = false
         p.isHidden = true
         view.addSubview(p)
@@ -907,14 +924,13 @@ final class Reader: NSViewController, CodeViewDelegate {
     }
 }
 
-/// The glass capsule a jump shows over the code: what to type, then what's been typed.
+/// The capsule a jump shows over the code: what to type, then what's been typed.
 @MainActor
-final class JumpPrompt: NSGlassEffectView {
+final class JumpPrompt: NSView {
     private let text = NSTextField(labelWithString: "")
 
-    init() {
+    init(look: any Look) {
         super.init(frame: .zero)
-        cornerRadius = 16
         let content = NSView()
         text.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(text)
@@ -924,7 +940,7 @@ final class JumpPrompt: NSGlassEffectView {
             text.topAnchor.constraint(equalTo: content.topAnchor, constant: 8),
             text.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -8),
         ])
-        contentView = content
+        pin(look.floating(content, cornerRadius: 16))
     }
 
     required init?(coder: NSCoder) { fatalError() }

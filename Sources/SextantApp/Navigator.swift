@@ -29,13 +29,26 @@ final class Navigator: NSViewController {
             search.delegate = delegate
         }
     }
-    let changes = ChangesController()
-    let search = SearchController()
-    let reviewHeader = ReviewHeader()
+    let changes: ChangesController
+    let search: SearchController
+    /// What heads the column above its tabs, if anything.
+    private let heading: NSView?
     private let tabs = NSSegmentedControl()
     private let container = NSView()
     private(set) var tab: Tab = .changes
     var onTabChanged: (() -> Void)?
+
+    /// - Parameters:
+    ///   - look: The window's look, for the lists' rows and what floats over them.
+    ///   - heading: What heads the column above its tabs, if anything.
+    init(look: any Look, heading: NSView?) {
+        changes = ChangesController(look: look)
+        search = SearchController(look: look)
+        self.heading = heading
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
         let v = NSView()
@@ -50,17 +63,23 @@ final class Navigator: NSViewController {
         tabs.selectedSegment = 0
         tabs.target = self
         tabs.action = #selector(tabChanged)
-        reviewHeader.translatesAutoresizingMaskIntoConstraints = false
         tabs.translatesAutoresizingMaskIntoConstraints = false
         container.translatesAutoresizingMaskIntoConstraints = false
-        v.addSubview(reviewHeader)
         v.addSubview(tabs)
         v.addSubview(container)
+        if let heading {
+            heading.translatesAutoresizingMaskIntoConstraints = false
+            v.addSubview(heading)
+            NSLayoutConstraint.activate([
+                heading.topAnchor.constraint(equalTo: v.safeAreaLayoutGuide.topAnchor, constant: 6),
+                heading.leadingAnchor.constraint(equalTo: v.leadingAnchor, constant: 18),
+                heading.trailingAnchor.constraint(equalTo: v.trailingAnchor, constant: -14),
+                tabs.topAnchor.constraint(equalTo: heading.bottomAnchor, constant: 12),
+            ])
+        } else {
+            tabs.topAnchor.constraint(equalTo: v.safeAreaLayoutGuide.topAnchor, constant: 10).isActive = true
+        }
         NSLayoutConstraint.activate([
-            reviewHeader.topAnchor.constraint(equalTo: v.safeAreaLayoutGuide.topAnchor, constant: 6),
-            reviewHeader.leadingAnchor.constraint(equalTo: v.leadingAnchor, constant: 18),
-            reviewHeader.trailingAnchor.constraint(equalTo: v.trailingAnchor, constant: -14),
-            tabs.topAnchor.constraint(equalTo: reviewHeader.bottomAnchor, constant: 12),
             tabs.leadingAnchor.constraint(equalTo: v.leadingAnchor, constant: 12),
             tabs.trailingAnchor.constraint(equalTo: v.trailingAnchor, constant: -12),
             container.topAnchor.constraint(equalTo: tabs.bottomAnchor, constant: 8),
@@ -145,6 +164,7 @@ final class ChangesController: NSViewController {
 
     weak var delegate: NavigatorDelegate?
     weak var reviews: ReviewStore?
+    private let look: any Look
     let commits = KeyTableView()
     let outline = KeyOutlineView()
     let filter = NSSearchField()
@@ -174,6 +194,13 @@ final class ChangesController: NSViewController {
         }
     }
 
+    init(look: any Look) {
+        self.look = look
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
     override func loadView() {
         let v = NSView()
         let commitColumn = NSTableColumn(identifier: .init("commit"))
@@ -181,6 +208,7 @@ final class ChangesController: NSViewController {
         commits.addTableColumn(commitColumn)
         commits.headerView = nil
         commits.style = .sourceList
+        commits.backgroundColor = .clear
         commits.allowsMultipleSelection = true
         commits.dataSource = self
         commits.delegate = self
@@ -197,6 +225,7 @@ final class ChangesController: NSViewController {
         outline.outlineTableColumn = column
         outline.headerView = nil
         outline.style = .sourceList
+        outline.backgroundColor = .clear
         outline.rowHeight = 24
         outline.indentationPerLevel = 12
         outline.allowsMultipleSelection = true
@@ -571,7 +600,7 @@ extension ChangesController: NSTableViewDataSource, NSTableViewDelegate {
 }
 
 extension ChangesController: NSOutlineViewDataSource, NSOutlineViewDelegate {
-    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { PillRowView() }
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { look.makeRowView() }
 
     func outlineView(_ o: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
         (item as? Item)?.children.count ?? items.count
@@ -675,7 +704,7 @@ func statusLetter(_ status: Character) -> (String, NSColor) {
 /// Also lists definitions and usages.
 @MainActor
 final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSSearchFieldDelegate {
-    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { PillRowView() }
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { look.makeRowView() }
 
     final class Group: NSObject {
         let path: String
@@ -693,13 +722,21 @@ final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutli
     let field = NSSearchField()
     let outline = KeyOutlineView()
     private let status = NSTextField(labelWithString: "")
-    private let footer = NSGlassEffectView()
+    private let footer = NSView()
+    private let look: any Look
     private var suppressOpen = false
     private var groups: [Group] = []
     private var items: [ObjectIdentifier: [Item]] = [:]
     private var query = ""
     var wholeWord = false
     var caseSensitive = false
+
+    init(look: any Look) {
+        self.look = look
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
         let v = NSView()
@@ -721,6 +758,7 @@ final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutli
         outline.outlineTableColumn = col
         outline.headerView = nil
         outline.style = .sourceList
+        outline.backgroundColor = .clear
         outline.rowHeight = 24
         outline.dataSource = self
         outline.delegate = self
@@ -743,8 +781,7 @@ final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutli
         status.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         let padded = NSStackView(views: [status])
         padded.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
-        footer.contentView = padded
-        footer.cornerRadius = Self.footerHeight / 2
+        footer.pin(look.floating(padded, cornerRadius: Self.footerHeight / 2))
         footer.isHidden = true
         footer.translatesAutoresizingMaskIntoConstraints = false
         v.addSubview(field)

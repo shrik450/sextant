@@ -73,107 +73,15 @@ final class ReviewHeader: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func setSubject(title: String, symbol: String, tooltip: String) {
-        subject.title = title
-        subject.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-        subject.toolTip = tooltip
-    }
-
-    /// Shows the base and the branches it can change to, or hides it for subjects without one.
-    func setBase(_ current: String?, usual: [String], local: [String], remote: [String]) {
-        baseRow.isHidden = current == nil
-        guard let current else { return }
-        let menu = NSMenu()
-        func header(_ t: String) {
-            if !menu.items.isEmpty { menu.addItem(.separator()) }
-            menu.addItem(withTitle: t, action: nil, keyEquivalent: "").isEnabled = false
-        }
-        func items(_ names: [String]) {
-            for n in names {
-                let item = menu.addItem(withTitle: n, action: nil, keyEquivalent: "")
-                item.representedObject = n
-            }
-        }
-        let all = Set(usual + local + remote)
-        items(usual + (all.contains(current) ? [] : [current]))
-        if !local.isEmpty { header("Local Branches"); items(local) }
-        if !remote.isEmpty { header("Remote Branches"); items(remote) }
-        base.menu = menu
-        base.select(menu.items.first { ($0.representedObject as? String) == current })
-    }
-
-    /// Whether the base shows, which it does for subjects compared with a branch.
-    var showsBase: Bool { !baseRow.isHidden }
-
-    /// The base the user picked.
-    var chosenBase: String? { base.selectedItem?.representedObject as? String }
-}
-
-extension RepoWindowController {
-    var reviewHeader: ReviewHeader { navigator.reviewHeader }
-
-    /// Connects the review header's controls to the window.
-    func connectReviewHeader() {
-        reviewHeader.subject.target = self
-        reviewHeader.subject.action = #selector(chooseSubject(_:))
-        reviewHeader.base.target = self
-        reviewHeader.base.action = #selector(baseChosen(_:))
-    }
-
-    /// The base a subject gets unless the user picks another.
-    private var usualBase: String? {
-        if let p = resolved?.pullRequest { return "origin/" + p.baseRefName }
-        return repository.defaultBase
-    }
-
-    /// Shows the repository, the focused pane's review and the part of it being read.
-    func updateReviewHeader() {
-        let h = reviewHeader
-        h.repository.stringValue = repository.name
-        h.scope.stringValue = review == nil ? "" : scopeLabel + (changes.isEmpty ? "" : "  ·  \(changes.count) file\(changes.count == 1 ? "" : "s")")
-        h.scope.isHidden = h.scope.stringValue.isEmpty
-        let label = subjectLabel
-        h.setSubject(title: label.title, symbol: label.symbol, tooltip: label.tooltip + "  (⇧⌘R)")
-        guard let r = review, r.subject.hasBase else {
-            h.setBase(nil, usual: [], local: [], remote: [])
-            return
-        }
-        var own: String?
-        if case .branch(let b) = r.subject { own = b }
-        if case .worktree(let root) = r.subject { own = repository.worktree(at: root)?.branch }
-        let names = repository.branches.filter { $0.name != own }
-        h.setBase(r.base ?? usualBase ?? "", usual: [usualBase].compactMap { $0 },
-                  local: names.filter { !$0.isRemote }.map(\.name), remote: names.filter(\.isRemote).map(\.name))
-    }
-
-    @objc func baseChosen(_ sender: Any?) {
-        guard let base = reviewHeader.chosenBase, var r = review, r.base != base else { return }
-        repository.remember(base: base, for: r.subject, usual: usualBase)
-        r.base = base
-        r.scope = .everything
-        select(r)
-    }
-
-    @objc func chooseSubject(_ sender: Any?) { showPicker(sender) }
-
-    /// Shows the picker under the review's subject, or over the code when the navigator is
-    /// hidden, or closes it if it's showing.
-    func showPicker(_ sender: Any?) {
-        if let p = picker, p.isShown { p.close(); return }
-        let vc = SubjectPicker(repository: repository, current: review, here: home) { [weak self] r in
-            self?.picker?.close()
-            self?.select(r)
-        }
-        let p = NSPopover()
-        p.behavior = .transient
-        p.contentViewController = vc
-        picker = p
-        let button = reviewHeader.subject
-        if button.window != nil, !split.splitViewItems[0].isCollapsed {
-            p.show(relativeTo: button.bounds, of: button, preferredEdge: .maxY)
-        } else {
-            let v = reader.view
-            p.show(relativeTo: NSRect(x: v.bounds.midX, y: v.bounds.maxY - 40, width: 1, height: 1), of: v, preferredEdge: .minY)
-        }
+    /// Shows the repository, what's reviewed, the part of it being read and its base.
+    func show(_ summary: ReviewSummary) {
+        repository.stringValue = summary.repository
+        subject.title = summary.subject.title
+        subject.image = NSImage(systemSymbolName: summary.subject.symbol, accessibilityDescription: nil)
+        subject.toolTip = summary.subject.tooltip
+        scope.stringValue = summary.scope
+        scope.isHidden = summary.scope.isEmpty
+        baseRow.isHidden = summary.base == nil
+        summary.base?.fill(base)
     }
 }

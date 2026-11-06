@@ -260,7 +260,7 @@ final class Automation {
     }
 
     /// Finds a menu item by its title, or by its action's selector name, such as
-    /// `toggleSidebar:`, for items whose titles the system changes.
+    /// `toggleNavigatorColumn:`, for items whose titles change with what they toggle.
     private func findMenuItem(_ name: String, in menu: NSMenu?) -> NSMenuItem? {
         for item in menu?.items ?? [] {
             if item.title == name || item.action.map(NSStringFromSelector) == name { return item }
@@ -521,6 +521,7 @@ extension RepoWindowController {
         case nil: ""
         }
         let loc = currentLocation()
+        let summary = reviewSummary
         let tree = rows(of: navigator.changes.outline) { item in
             guard let i = item as? ChangesController.Item else { return "?" }
             switch i.kind {
@@ -582,10 +583,10 @@ extension RepoWindowController {
             "base": review?.base ?? "",
             "scope": describe(review?.scope),
             "target": describe(target),
-            "subjectTitle": reviewHeader.subject.title,
-            "baseShown": reviewHeader.showsBase,
-            "baseTitle": reviewHeader.base.titleOfSelectedItem ?? "",
-            "subtitle": reviewHeader.scope.stringValue,
+            "subjectTitle": summary.subject.title,
+            "baseShown": summary.base != nil,
+            "baseTitle": summary.base?.current ?? "",
+            "subtitle": summary.scope,
             "title": window?.title ?? "",
             "error": lastError ?? "",
             "split": reader.split,
@@ -600,8 +601,8 @@ extension RepoWindowController {
             "firstResponder": focusName,
             "windowFrame": NSStringFromRect(window?.frame ?? .zero),
             "isKey": window?.isKeyWindow ?? false,
-            "navigatorCollapsed": split.splitViewItems[0].isCollapsed,
-            "inspectorCollapsed": split.splitViewItems[2].isCollapsed,
+            "navigatorCollapsed": !isShown(.navigator),
+            "inspectorCollapsed": !isShown(.inspector),
             "files": changes.map { ["path": $0.path, "status": String($0.diff.change.status), "reviewed": $0.reviewed, "add": $0.diff.additions, "del": $0.diff.deletions] },
             "scopes": scopes,
             "tree": tree,

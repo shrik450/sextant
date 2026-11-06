@@ -1,6 +1,6 @@
 import AppKit
 
-/// A glass capsule at the foot of the focused card that says which change the reader is at, with
+/// A capsule at the foot of the focused pane that says which change the reader is at, with
 /// buttons for the previous and next change.
 ///
 /// The buttons send the Previous Change and Next Change commands, so they behave exactly like
@@ -8,18 +8,17 @@ import AppKit
 @MainActor
 final class ChangeCounter: NSView {
     static let height: CGFloat = 28
-    /// How far the capsule floats above the foot of the card.
+    /// How far the capsule floats above the foot of the pane.
     static let margin: CGFloat = 12
     /// How much room the code leaves below its last line, so the capsule never covers it.
     static let clearance: CGFloat = height + margin * 2
 
-    private let glass = NSGlassEffectView()
     private let label = NSTextField(labelWithString: "")
     private let previous = ChangeCounter.button("chevron.up", "Previous Change (⇧K)", #selector(RepoWindowController.previousChange(_:)))
     private let next = ChangeCounter.button("chevron.down", "Next Change (⇧J)", #selector(RepoWindowController.nextChange(_:)))
 
-    override init(frame: NSRect) {
-        super.init(frame: frame)
+    init(look: any Look) {
+        super.init(frame: .zero)
         label.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
         label.textColor = .themed("fgMuted")
         label.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -27,17 +26,8 @@ final class ChangeCounter: NSView {
         row.orientation = .horizontal
         row.spacing = 4
         row.edgeInsets = NSEdgeInsets(top: 0, left: 6, bottom: 0, right: 6)
-        glass.cornerRadius = Self.height / 2
-        glass.contentView = row
-        glass.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(glass)
-        NSLayoutConstraint.activate([
-            glass.topAnchor.constraint(equalTo: topAnchor),
-            glass.bottomAnchor.constraint(equalTo: bottomAnchor),
-            glass.leadingAnchor.constraint(equalTo: leadingAnchor),
-            glass.trailingAnchor.constraint(equalTo: trailingAnchor),
-            heightAnchor.constraint(equalToConstant: Self.height),
-        ])
+        pin(look.floating(row, cornerRadius: Self.height / 2))
+        heightAnchor.constraint(equalToConstant: Self.height).isActive = true
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
     }

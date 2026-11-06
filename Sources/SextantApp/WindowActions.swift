@@ -3,7 +3,7 @@ import SextantCore
 
 /// What the window says about its review: titles, labels and the inspector's card.
 extension RepoWindowController {
-    /// What’s being reviewed, as the review header names it.
+    /// What’s being reviewed, as the window names it.
     var subjectLabel: (title: String, symbol: String, tooltip: String) {
         switch review?.subject {
         case .worktree(let root)?:
@@ -56,7 +56,7 @@ extension RepoWindowController {
     func updateTitle() {
         guard let window else { return }
         window.title = repository.name
-        updateReviewHeader()
+        frame.show(reviewSummary)
     }
 
     /// What the inspector says about the review: its commit, pull request, branch or worktree,
@@ -343,8 +343,7 @@ extension RepoWindowController: NSMenuItemValidation {
     }
 
     func revealNavigator(_ tab: Navigator.Tab, focus: Bool = false) {
-        let item = split.splitViewItems[0]
-        if item.isCollapsed { item.animator().isCollapsed = false }
+        setShown(.navigator, true)
         navigator.show(tab, focus: focus)
     }
 
@@ -484,7 +483,7 @@ extension RepoWindowController: NSMenuItemValidation {
     /// Writes a note on the whole review, which heads the notes when they're copied.
     @objc func addReviewNote(_ sender: Any?) {
         guard let subject = review?.subject else { NSSound.beep(); return }
-        if split.splitViewItems[2].isCollapsed { split.splitViewItems[2].isCollapsed = false }
+        setShown(.inspector, true, animated: false)
         let pane = inspector.notes.view
         let editor = NoteEditor(place: .review(subjectLabel.title), text: "", canDelete: false) { [weak self] text in
             self?.notes.add(Note(subject: subject.key, lines: nil, text: text))
@@ -680,14 +679,14 @@ extension RepoWindowController: NSMenuItemValidation {
     @objc func showSymbols(_ sender: Any?) { reader.header.showSymbolMenu() }
 
     @objc func focusNavigator(_ sender: Any?) {
-        if split.splitViewItems[0].isCollapsed { split.splitViewItems[0].isCollapsed = false }
+        setShown(.navigator, true, animated: false)
         window?.makeFirstResponder(navigator.focusView)
     }
 
     @objc func focusReader(_ sender: Any?) { reader.focus() }
 
     @objc func focusInspector(_ sender: Any?) {
-        if split.splitViewItems[2].isCollapsed { split.splitViewItems[2].isCollapsed = false }
+        setShown(.inspector, true, animated: false)
         window?.makeFirstResponder(inspector.outline)
     }
 
@@ -742,7 +741,8 @@ extension RepoWindowController: NSMenuItemValidation {
         switch item.action {
         case #selector(showUnified(_:)): item.state = reader.split ? .off : .on
         case #selector(showSideBySide(_:)): item.state = reader.split ? .on : .off
-        case #selector(toggleInspectorColumn(_:)): item.title = split.splitViewItems[2].isCollapsed ? "Show Inspector" : "Hide Inspector"
+        case #selector(toggleNavigatorColumn(_:)): item.title = isShown(.navigator) ? "Hide Navigator" : "Show Navigator"
+        case #selector(toggleInspectorColumn(_:)): item.title = isShown(.inspector) ? "Hide Inspector" : "Show Inspector"
         case #selector(toggleWrap(_:)): item.state = reader.wraps ? .on : .off
         case #selector(toggleShowAll(_:)): item.state = reader.showAll ? .on : .off
         case #selector(toggleUnchangedFiles(_:)): item.state = navigator.changes.showsUnchanged ? .on : .off

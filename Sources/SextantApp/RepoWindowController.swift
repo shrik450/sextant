@@ -49,9 +49,13 @@ enum Anchor {
 final class RepoWindowController: NSWindowController, NSWindowDelegate {
     let repository: Repository
     let split = NSSplitViewController()
-    let navigator = Navigator()
-    let strip = PaneStrip()
-    let inspector = Inspector()
+    /// How the window looks, which it keeps from when it opens.
+    let look: any Look
+    /// The frame the columns sit in, which shows what the window reviews.
+    let frame: WindowFrame
+    let navigator: Navigator
+    let strip: PaneStrip
+    let inspector: Inspector
     var notes: NotesStore { repository.notes }
     private var watcher: FileWatcher?
     private var watchedPaths: [String] = []
@@ -78,8 +82,8 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     var focus: Location.Place? { pane.focus }
     var searchGeneration = 0
     var blameOn = false
-    /// The panes folded away because the window got narrow, by split item index.
-    private var autoCollapsed: Set<Int> = []
+    /// The side columns folded away because the window got narrow.
+    private var autoCollapsed: Set<SideColumn> = []
     /// The number of loads in flight.
     ///
     /// Automation waits for this to reach zero.
@@ -95,65 +99,30 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     init(repository: Repository, home: URL?) {
         self.repository = repository
         self.home = home
+        look = LookChoice.chosen.look
+        frame = look.makeFrame()
+        navigator = Navigator(look: look, heading: frame.navigatorHeading)
+        strip = PaneStrip(look: look)
+        inspector = Inspector(look: look)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1440, height: 900),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                               backing: .buffered, defer: false)
         window.minSize = NSSize(width: 760, height: 420)
         window.title = repository.name
         window.tabbingMode = .automatic
-        window.toolbarStyle = .unified
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.titlebarSeparatorStyle = .none
         super.init(window: window)
         window.delegate = self
 
         navigator.delegate = self
-        connectReviewHeader()
         navigator.changes.reviews = repository.reviews
         inspector.delegate = self
         inspector.notes.delegate = self
         inspector.isRead = { [weak repository] f, r in repository?.reviews.isRead(r.key, in: f.diff.change) ?? false }
         panes = [makePane()]
 
-        let navItem = NSSplitViewItem(sidebarWithViewController: navigator)
-        navItem.minimumThickness = 220
-        navItem.maximumThickness = 440
-        navItem.preferredThicknessFraction = 0.18
-        navItem.canCollapse = true
-        navItem.canCollapseFromWindowResize = true
-        let stripController = NSViewController()
-        stripController.view = strip
-        let readerItem = NSSplitViewItem(viewController: stripController)
-        readerItem.minimumThickness = 420
-        readerItem.automaticallyAdjustsSafeAreaInsets = true
-        let inspectorItem = NSSplitViewItem(viewController: inspector)
-        inspectorItem.holdingPriority = .init(260)
-        inspectorItem.minimumThickness = 220
-        inspectorItem.maximumThickness = 420
-        inspectorItem.preferredThicknessFraction = 0.18
-        inspectorItem.canCollapse = true
-        inspectorItem.canCollapseFromWindowResize = true
-        let columns = SeamlessSplitView()
-        columns.isVertical = true
-        columns.dividerStyle = .thin
-        columns.arrangesAllSubviews = false
-        split.splitView = columns
-        split.splitViewItems = [navItem, readerItem, inspectorItem]
-        split.splitView.autosaveName = "SextantSplit3"
-        window.contentViewController = split
-        let backdrop = BackdropView(frame: split.splitView.bounds)
-        backdrop.autoresizingMask = [.width, .height]
-        split.splitView.addSubview(backdrop, positioned: .below, relativeTo: nil)
+        frame.install(in: self)
         window.setContentSize(NSSize(width: 1440, height: 900))
         showPanes(animated: false)
-
-        let toolbar = NSToolbar(identifier: "SextantToolbar3")
-        toolbar.delegate = self
-        toolbar.displayMode = .iconOnly
-        toolbar.allowsUserCustomization = false
-        window.toolbar = toolbar
-        strip.titlebarControls = { [weak self] in self?.titlebarControlFrames ?? [] }
         NotificationCenter.default.addObserver(self, selector: #selector(columnsResized(_:)), name: NSSplitView.didResizeSubviewsNotification, object: split.splitView)
 
         window.autorecalculatesKeyViewLoop = false
@@ -176,7 +145,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
 
     /// Makes a pane's reader, set up like the others.
     private func makePane() -> Pane {
-        let p = Pane()
+        let p = Pane(look: look)
         let r = p.reader
         r.delegate = self
         r.split = UserDefaults.standard.string(forKey: "diffMode") == "split"
@@ -810,7 +779,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     private func discard(_ closed: [Pane]) {
         for p in closed {
             p.reader.delegate = nil
-            p.card.removeFromSuperview()
+            p.surface.removeFromSuperview()
         }
     }
 
@@ -830,7 +799,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     /// Lays out the strip, sliding the focused pane into view.
     func showPanes(animated: Bool) {
         if panes.count < 2 { strip.isZoomed = false }
-        strip.show(panes.map(\.card), focused: focusedPane, animated: animated)
+        strip.show(panes.map(\.surface), focused: focusedPane, animated: animated)
         for (i, p) in panes.enumerated() {
             p.reader.isFocusedPane = i == focusedPane || panes.count == 1
             p.reader.header.setPane(split: p.reader.split, beside: panes.count > 1, zoomed: strip.isZoomed)
@@ -912,11 +881,12 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         for p in panes where !p.reader.files.isEmpty { p.reader.reload(keepPosition: true) }
     }
 
-    /// Lays the strip out again when a side column shows, hides or resizes. The strip reaches
-    /// under the side columns, so only its safe area and the titlebar controls over it change,
-    /// which doesn't lay it out by itself.
+    /// Lays the strip out again when a side column shows, hides or resizes, and lets the frame
+    /// follow the columns. The strip can reach under the side columns, so only its safe area and
+    /// the titlebar controls over it change, which doesn't lay it out by itself.
     @objc private func columnsResized(_ n: Notification) {
         strip.needsLayout = true
+        frame.columnsChanged()
     }
 
     @objc private func appearanceChanged(_ n: Notification) {
@@ -962,17 +932,37 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     /// keeps its room, and brings back what it folded once there's space again.
     func windowDidResize(_ notification: Notification) {
         guard let width = window?.frame.width else { return }
-        for (index, threshold) in [(2, 1180.0), (0, 900.0)] {
-            let item = split.splitViewItems[index]
+        for (column, threshold) in [(SideColumn.inspector, 1180.0), (.navigator, 900.0)] {
+            let item = split.splitViewItems[column.rawValue]
             if width < threshold, !item.isCollapsed {
                 item.isCollapsed = true
-                autoCollapsed.insert(index)
-            } else if width >= threshold, autoCollapsed.contains(index) {
-                autoCollapsed.remove(index)
+                autoCollapsed.insert(column)
+            } else if width >= threshold, autoCollapsed.contains(column) {
+                autoCollapsed.remove(column)
                 if item.isCollapsed { item.isCollapsed = false }
             }
         }
     }
+
+    /// A column beside the panes, by its index among the split items.
+    enum SideColumn: Int {
+        case navigator = 0
+        case inspector = 2
+    }
+
+    func isShown(_ column: SideColumn) -> Bool { !split.splitViewItems[column.rawValue].isCollapsed }
+
+    /// Shows or hides a side column, which the window then leaves as the user set it whatever
+    /// its width.
+    func setShown(_ column: SideColumn, _ shown: Bool, animated: Bool = true) {
+        autoCollapsed.remove(column)
+        let item = split.splitViewItems[column.rawValue]
+        guard item.isCollapsed == shown else { return }
+        if animated { item.animator().isCollapsed = !shown } else { item.isCollapsed = !shown }
+    }
+
+    @objc func toggleNavigatorColumn(_ sender: Any?) { setShown(.navigator, !isShown(.navigator)) }
+    @objc func toggleInspectorColumn(_ sender: Any?) { setShown(.inspector, !isShown(.inspector)) }
 
     func windowWillClose(_ notification: Notification) {
         watcher = nil
