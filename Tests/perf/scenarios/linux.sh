@@ -5,7 +5,7 @@
 
 #######################################
 # Opens Linux's last 30 commits and reads them, then reviews its uncommitted changes while one
-# file is edited every 5 seconds.
+# file is edited every 10 seconds, long enough for one refresh to finish.
 # Globals:
 #   SCENARIO_DIR, FIX
 #######################################
@@ -33,7 +33,12 @@ measure 1 menu All Commits
 mark reading-end
 sleep 2000
 mark refresh-start
-measure 3 menu Refresh
+menu Refresh
+sleep 8000
+menu Refresh
+sleep 8000
+menu Refresh
+sleep 8000
 mark refresh-end
 sleep 1000
 quit
@@ -51,10 +56,11 @@ EOF
   emit_measured "$run" overview_side_by_side "menu Side by Side" 2 frame:max settled:max
   emit_measured "$run" older_commit "menu Older Commit" 1 settled:median settled:max
   emit_measured "$run" all_commits "menu All Commits" 1 settled:max
-  emit_measured "$run" refresh "menu Refresh" 1 settled:median
   emit_main_thread "$run" reading-start reading-end
   c=$(cost_between "$run" refresh-start refresh-end)
-  emit_cost refresh "$c" gits git_cpu_ms cpu_ms
+  emit refresh_gits "$(awk -v n="$(pick "$c" gits)" 'BEGIN { print n / 3 }')"
+  emit refresh_git_cpu_ms "$(awk -v n="$(pick "$c" git_cpu_ms)" 'BEGIN { printf "%.0f", n / 3 }')"
+  emit refresh_cpu_ms "$(awk -v n="$(pick "$c" cpu_ms)" 'BEGIN { printf "%.0f", n / 3 }')"
 
   run="$SCENARIO_DIR/edits"
   mkdir -p "$run"
@@ -65,7 +71,7 @@ sleep 5000
 mark edits-start
 sleep 600000
 EOF
-  launch "$run" --probe --timeout 300 --driver "bash \"\$PERF_TESTS/drivers/edits.sh\" \"$FIX/linux\" kernel/fork.c 4 5"
+  launch "$run" --probe --timeout 300 --driver "bash \"\$PERF_TESTS/drivers/edits.sh\" \"$FIX/linux\" kernel/fork.c 4 10"
   emit worktree_open_content_ms "$(opened "$run" content)"
   phase_costs "$run"
   emit_over_phases "$run" edit_converge_ms converge_ms

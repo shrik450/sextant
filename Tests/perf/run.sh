@@ -51,16 +51,16 @@ report() {
     BEGIN { n = split(ran, r, " "); for (i = 1; i <= n; i++) ran_[r[i]] = 1 }
     FNR == NR { if ($3 != "") V[$1 "\t" $2] = $3; seen[$1 "\t" $2] = 1; next }
     /^#/ || NF < 5 { next }
-    {
-      if (!($1 in ran_)) next
-      k = $1 "\t" $2
-      v = V[k]
+    $1 == "*" { for (i = 1; i <= n; i++) check(r[i], $2, $3, $4, $5); next }
+    $1 in ran_ { check($1, $2, $3, $4, $5) }
+    function check(scenario, metric, op, budget, unit,   v, verdict) {
+      v = V[scenario "\t" metric]
       if (v == "") verdict = "MISSING"
-      else if ($3 == "<=") verdict = (v + 0 <= $4 + 0) ? "PASS" : "FAIL"
-      else if ($3 == ">=") verdict = (v + 0 >= $4 + 0) ? "PASS" : "FAIL"
+      else if (op == "<=") verdict = (v + 0 <= budget + 0) ? "PASS" : "FAIL"
+      else if (op == ">=") verdict = (v + 0 >= budget + 0) ? "PASS" : "FAIL"
       else verdict = "?"
       count[verdict]++
-      printf "%-11s %-34s %12s %2s %-10s %-6s %s\n", $1, $2, (v == "" ? "-" : v), $3, $4, $5, verdict
+      printf "%-11s %-34s %12s %2s %-10s %-6s %s\n", scenario, metric, (v == "" ? "-" : v), op, budget, unit, verdict
     }
     END {
       printf "\n%d pass, %d fail, %d missing\n", count["PASS"], count["FAIL"], count["MISSING"]
@@ -85,6 +85,8 @@ run_scenario() {
   "scenario_${SCENARIO//-/_}" > "$SCENARIO_DIR/scenario.log" 2>&1
   echo "   $((SECONDS - t0)) s" >&2
   emit scenario_s $((SECONDS - t0))
+  emit beeps "$(cat "$SCENARIO_DIR"/*/run.log 2>/dev/null | grep -c '^! beep')"
+  emit came_forward "$(cat "$SCENARIO_DIR"/*/meta.txt 2>/dev/null | grep -c '^KILLED came in front')"
 }
 
 out="" build=1 targets=()

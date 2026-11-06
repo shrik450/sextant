@@ -4,8 +4,9 @@
 # the footprint at fixed checkpoints, to show whether memory reaches a plateau.
 
 #######################################
-# Prints the soak's automation script: 100 cycles of navigation, with checkpoints after cycles
-# 1, 25, 50, 75 and 100 that leave the app alone long enough for heap.
+# Prints the soak's automation script: 100 cycles of navigation, each from the first changed
+# file, with checkpoints after cycles 1, 25, 50, 75 and 100 that leave the app alone long
+# enough for heap.
 # Arguments:
 #   The checkout.
 #######################################
@@ -16,6 +17,8 @@ soak_script() {
   echo "mark soak-start"
   for i in $(seq 1 100); do
     echo "mark cycle-$i"
+    echo "menu Find File…"
+    echo "key return"
     echo "measure 5 menu Next File"
     echo "measure 5 menu Previous File"
     echo "measure 20 scroll 40"

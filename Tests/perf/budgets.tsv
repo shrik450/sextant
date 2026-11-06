@@ -4,6 +4,8 @@
 # Sources: audit = the second performance audit's budgets; astra and argon = the two reviews
 # of it, which correct some budgets. A frame at 120 Hz is 8.3 ms; 100 ms feels instant.
 # "max" over 100 scroll steps stands in for p99, and p90 over 10 to 20 steps for p95.
+*	came_forward	<=	0	runs	the app never comes in front of the windows in use
+*	beeps	<=	0	beeps	a script never asks for something the app refuses
 probe	selftest_short_stall_ms	>=	290	ms	a 300 ms sleep on the main queue is seen
 probe	selftest_stall_ms	>=	1950	ms	a 2 s sleep on the main queue is seen whole
 probe	selftest_stall_ms	<=	2300	ms	and not inflated

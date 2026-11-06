@@ -32,7 +32,7 @@ build_suite() {
   mkdir -p "$PERF_WORK"
   local cc=(clang -O2 -Wall -I "$PERF_TESTS/tools")
   "${cc[@]}" -o "$PERF_WORK/gitwrap" "$PERF_TESTS/tools/gitwrap.c"
-  "${cc[@]}" -o "$PERF_WORK/psample" "$PERF_TESTS/tools/psample.c"
+  "${cc[@]}" -framework CoreGraphics -framework CoreFoundation -o "$PERF_WORK/psample" "$PERF_TESTS/tools/psample.c"
   "${cc[@]}" -o "$PERF_WORK/stall" "$PERF_TESTS/tools/stall.c"
   "${cc[@]}" -dynamiclib -o "$PERF_WORK/libprobe.dylib" "$PERF_TESTS/tools/probe.c"
   codesign --force --sign - "$PERF_WORK/libprobe.dylib" 2>/dev/null
@@ -153,6 +153,11 @@ launch() {
     fi
     if tail -n 3 "$run/samples.txt" | awk -v max="$max_mb" '!/^#/ && NF >= 30 { fp = $6 } END { exit !(fp > max) }'; then
       echo "KILLED footprint over $max_mb MB" >> "$run/meta.txt"
+      kill -9 "$pid" 2>/dev/null || true
+      break
+    fi
+    if [[ -n $background ]] && tail -n 3 "$run/samples.txt" | awk '!/^#/ && NF >= 31 && $31 == 1 { found = 1 } END { exit !found }'; then
+      echo "KILLED came in front of the windows in use" >> "$run/meta.txt"
       kill -9 "$pid" 2>/dev/null || true
       break
     fi

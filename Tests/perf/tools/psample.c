@@ -4,7 +4,7 @@
  *
  * Usage: psample <pid> <interval-ms> [automation-log] [probe-prefix]
  *
- * Prints one line per tick to stdout, 30 fields:
+ * Prints one line per tick to stdout, 31 fields:
  *    1 t_ms                 milliseconds since the sampler started
  *    2 cpu_user_ms          the process's own CPU
  *    3 cpu_sys_ms
@@ -25,6 +25,7 @@
  *   18-29                   main-thread wait buckets: <2, <4, <8.3, <16.7, <33, <50, <100, <250,
  *                           <500, <1000, <2000, >=2000 ms
  *   30 bytes_read_mb        the process's disk reads
+ *   31 came_forward         1 if one of its windows came in front of the windows in use
  * and, for each new automation log line, "# <t_ms> <line>". After the process exits, it prints
  * "# probe-final <max_wait_ms> <inflight_ms> <inflight_start_ns>" from the probe's shared file,
  * which records a stall the app died in.
@@ -32,6 +33,7 @@
  * Counters are cumulative since the process started; subtract two lines to get what happened
  * between them.
  */
+#include <CoreGraphics/CoreGraphics.h>
 #include <fcntl.h>
 #include <libproc.h>
 #include <mach/mach_time.h>
@@ -64,6 +66,34 @@ static struct probe_counters *map_probe(const char *prefix) {
     void *m = mmap(NULL, sizeof(struct probe_counters), PROT_READ, MAP_SHARED, fd, 0);
     close(fd);
     return m == MAP_FAILED ? NULL : m;
+}
+
+/*
+ * Says whether a process has brought a window forward: one of its windows is on screen above
+ * the normal level, or its window became the frontmost normal one in front of another app's.
+ * Remembers the frontmost owner between calls, so a process alone on an empty screen doesn't
+ * count.
+ */
+static int came_forward(pid_t pid) {
+    static pid_t last_front = -1;
+    CFArrayRef list = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
+    if (!list) return 0;
+    int raised = 0;
+    pid_t front = -1;
+    for (CFIndex i = 0; i < CFArrayGetCount(list); i++) {
+        CFDictionaryRef w = CFArrayGetValueAtIndex(list, i);
+        int owner = 0, layer = 0;
+        CFNumberRef n = CFDictionaryGetValue(w, kCGWindowOwnerPID);
+        if (n) CFNumberGetValue(n, kCFNumberIntType, &owner);
+        n = CFDictionaryGetValue(w, kCGWindowLayer);
+        if (n) CFNumberGetValue(n, kCFNumberIntType, &layer);
+        if (owner == pid && layer > 0 && layer < 20) raised = 1;
+        if (layer == 0 && front == -1) front = owner;
+    }
+    CFRelease(list);
+    int covered = front == pid && last_front != -1 && last_front != pid;
+    last_front = front;
+    return raised || covered;
 }
 
 static void copy_log(FILE *log, double t) {
@@ -123,7 +153,7 @@ int main(int argc, char **argv) {
         } else {
             for (int f = 12; f <= 29; f++) printf(" -");
         }
-        printf(" %.1f\n", ri.ri_diskio_bytesread / 1048576.0);
+        printf(" %.1f %d\n", ri.ri_diskio_bytesread / 1048576.0, came_forward(pid));
         usleep(interval * 1000);
     }
     if (log) copy_log(log, (mono_ns() - start) / 1e6);
