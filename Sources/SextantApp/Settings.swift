@@ -1,4 +1,5 @@
 import AppKit
+import SextantCore
 import SwiftUI
 
 struct SettingsView: View {
@@ -10,10 +11,14 @@ struct SettingsView: View {
     @AppStorage("tabWidth") private var tabWidth = 4
     @AppStorage("editorCommand") private var editorCommand = ""
     @State private var themes: [String] = Appearance.shared.themes.map(\.name)
+    @State private var monospaced: [String] = []
 
-    private static let monospacedFamilies: [String] = NSFontManager.shared.availableFontFamilies.filter { fam in
-        guard let f = NSFont(name: fam, size: 12) else { return false }
-        return f.isFixedPitch || fam.localizedCaseInsensitiveContains("mono") || fam.localizedCaseInsensitiveContains("code")
+    /// The fixed-pitch font families, listed once, off the main actor.
+    private static let monospacedFamilies = Task.detached(priority: .userInitiated) { monospacedFontFamilies() }
+
+    /// The fonts to offer: the fixed-pitch families, and the chosen font if it isn't one of them.
+    private var fonts: [String] {
+        fontName.isEmpty || monospaced.contains(fontName) ? monospaced : [fontName] + monospaced
     }
 
     var body: some View {
@@ -46,8 +51,9 @@ struct SettingsView: View {
                 Picker("Font", selection: $fontName) {
                     Text("System Monospaced").tag("")
                     Divider()
-                    ForEach(Self.monospacedFamilies, id: \.self) { Text($0).tag($0) }
+                    ForEach(fonts, id: \.self) { Text($0).tag($0) }
                 }
+                .task { monospaced = await Self.monospacedFamilies.value }
                 Stepper(value: $fontSize, in: 8...32, step: 1) {
                     LabeledContent("Size", value: "\(Int(fontSize)) pt")
                 }
