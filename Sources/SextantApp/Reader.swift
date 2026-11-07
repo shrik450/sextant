@@ -282,7 +282,7 @@ final class Reader: NSViewController, CodeViewDelegate {
             c.gutter.updateThickness()
         }
         changeStops = changeStarts(changedRows(layout))
-        if let pos { scroll(to: pos, animated: false, offset: topOffset) }
+        if let pos { scroll(to: pos, animated: false, offset: topOffset, unfolding: false) }
         if let kept {
             restore(kept)
             if kept == landedSelection, let r = caretRow { placeCaret(atRow: r) }
@@ -605,14 +605,33 @@ final class Reader: NSViewController, CodeViewDelegate {
                              column: sel.location - code.rowStarts[r], length: sel.length)
     }
 
+    /// Puts a kept selection back, or the caret on the nearest line shown when a fold now hides
+    /// the selection's line.
     private func restore(_ k: KeptSelection) {
         let code = columns.indices.contains(k.side) ? columns[k.side].code : primary
-        guard let r = code.rows.firstIndex(where: { $0.file == k.position.file && $0.kind == .line && $0.line == k.position.line }) else { return }
-        let range = code.charRange(ofRow: r)
-        let start = range.location + min(k.column, range.length)
-        code.setSelectedRange(NSRange(location: start, length: min(k.length, (code.textStorage?.length ?? start) - start)))
+        if let r = code.rows.firstIndex(where: { $0.file == k.position.file && $0.kind == .line && $0.line == k.position.line }) {
+            let range = code.charRange(ofRow: r)
+            let start = range.location + min(k.column, range.length)
+            code.setSelectedRange(NSRange(location: start, length: min(k.length, (code.textStorage?.length ?? start) - start)))
+        } else if let r = nearestLineRow(toHidden: k.position, in: code) {
+            code.setSelectedRange(NSRange(location: code.landingIndex(ofRow: r), length: 0))
+        } else {
+            return
+        }
         activeColumn = code
         markActiveColumn()
+    }
+
+    /// Returns the line row beside the fold that hides a line, on the side nearer the line.
+    private func nearestLineRow(toHidden p: ReaderPosition, in code: CodeView) -> Int? {
+        let rows = code.rows
+        guard let fold = rows.firstIndex(where: { r in
+            if case .fold(let range) = r.kind { return r.file == p.file && range.contains(p.line) }
+            return false
+        }) else { return nil }
+        func lineRow(_ r: Int) -> Int? { rows.indices.contains(r) && rows[r].file == p.file && rows[r].kind == .line ? r : nil }
+        let candidates = [lineRow(fold - 1), lineRow(fold + 1)].compactMap { $0 }
+        return candidates.min { abs(rows[$0].line - p.line) < abs(rows[$1].line - p.line) }
     }
     /// The new side, or the only column.
     var primary: CodeView { columns.last!.code }
@@ -686,13 +705,18 @@ final class Reader: NSViewController, CodeViewDelegate {
         return code.rows[min(r + 1, code.rows.count - 1)].file
     }
 
-    func row(for p: ReaderPosition, in code: CodeView) -> Int? {
+    /// Returns the row showing a line.
+    ///
+    /// - Parameter unfolding: Whether to open the fold hiding the line, as going to a line does,
+    ///   rather than return the fold's row, as keeping the view in place does.
+    func row(for p: ReaderPosition, in code: CodeView, unfolding: Bool = true) -> Int? {
         let rows = code.rows
         if let exact = rows.firstIndex(where: { $0.file == p.file && $0.kind == .line && $0.line == p.line }) { return exact }
         if let fold = rows.firstIndex(where: { r in
             if case .fold(let range) = r.kind { return r.file == p.file && range.contains(p.line) }
             return false
         }), case .fold(let range) = rows[fold].kind {
+            guard unfolding else { return fold }
             files[p.file].unfolded.insert(range.lowerBound)
             reload(keepPosition: false)
             return code.rows.firstIndex { $0.file == p.file && $0.kind == .line && $0.line == p.line }
@@ -702,9 +726,11 @@ final class Reader: NSViewController, CodeViewDelegate {
 
     /// Scrolls to a line, putting it a quarter of the way down unless `offset` places it.
     ///
-    /// - Parameter select: Whether to put the caret on the line too.
-    func scroll(to p: ReaderPosition, animated: Bool, offset: CGFloat? = nil, select: Bool = false) {
-        guard let r = row(for: p, in: primary) else { return }
+    /// - Parameters:
+    ///   - select: Whether to put the caret on the line too.
+    ///   - unfolding: Whether to open the fold hiding the line, rather than scroll to the fold.
+    func scroll(to p: ReaderPosition, animated: Bool, offset: CGFloat? = nil, select: Bool = false, unfolding: Bool = true) {
+        guard let r = row(for: p, in: primary, unfolding: unfolding) else { return }
         let code = primary
         let rect = code.rect(ofRow: r)
         scrollColumns(toY: offset.map { rect.minY + $0 } ?? max(0, rect.minY - code.visibleRect.height * 0.25), animated: animated)
