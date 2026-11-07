@@ -131,7 +131,7 @@ extension Git {
     /// - Throws: When git can't give the status, such as for a damaged index, so a worktree
     ///   it can't read isn't taken for a clean one.
     public func status() async throws -> WorktreeStatus {
-        let data = try await run(["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames", "--ignore-submodules=dirty"], priority: .utility)
+        let data = try await run(["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames", "--ignore-submodules=dirty"], priority: .utility, limit: Limit.listing)
         var s = WorktreeStatus()
         for entry in data.split(separator: 0) where entry.count >= 3 {
             s.count += 1
@@ -144,25 +144,25 @@ extension Git {
     }
 
     public func worktrees() async -> [Worktree] {
-        guard let data = try? await run(["worktree", "list", "--porcelain", "-z"]) else { return [] }
+        guard let data = try? await run(["worktree", "list", "--porcelain", "-z"], limit: Limit.listing) else { return [] }
         return parseWorktreeList(data)
     }
 
     /// Local and remote-tracking branches, most recently committed first, with their distance
     /// from `base`.
     public func branches(comparedWith base: String?) async -> [Branch] {
-        guard let data = try? await run(["for-each-ref", "--sort=-committerdate", "--format=" + branchFormat(base: base), "refs/heads", "refs/remotes"]) else { return [] }
+        guard let data = try? await run(["for-each-ref", "--sort=-committerdate", "--format=" + branchFormat(base: base), "refs/heads", "refs/remotes"], limit: Limit.listing) else { return [] }
         return parseBranches(data)
     }
 
     /// Whether a commit is in the object database.
     public func hasCommit(_ oid: String) async -> Bool {
-        (try? await run(["cat-file", "-e", oid + "^{commit}"])) != nil
+        (try? await run(["cat-file", "-e", oid + "^{commit}"], limit: Limit.value)) != nil
     }
 
     /// Fetches a pull request's head commit from `remote` without creating or moving any ref.
     public func fetchPullRequest(_ number: Int, remote: String = "origin") async throws {
-        try await run(["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", remote, "refs/pull/\(number)/head"])
+        try await run(["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", remote, "refs/pull/\(number)/head"], limit: Limit.value)
     }
 
     /// Commits reachable from any branch or tag whose subject, author or hash matches `query`,
@@ -171,11 +171,11 @@ extension Git {
         let q = query.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return [] }
         async let byText = try? run(["log", "--format=" + logFormat, "--branches", "--remotes", "--tags", "-i", "--fixed-strings",
-                                     "--grep=" + q, "-n", "\(limit)"])
+                                     "--grep=" + q, "-n", "\(limit)"], limit: Limit.listing)
         async let byAuthor = try? run(["log", "--format=" + logFormat, "--branches", "--remotes", "--tags", "-i", "--fixed-strings",
-                                       "--author=" + q, "-n", "\(limit / 2)"])
+                                       "--author=" + q, "-n", "\(limit / 2)"], limit: Limit.listing)
         var out: [Commit] = []
-        if q.count >= 4, q.allSatisfy(\.isHexDigit), let oid = await resolve(q), let d = try? await run(["log", "--format=" + logFormat, "-n", "1", oid]) {
+        if q.count >= 4, q.allSatisfy(\.isHexDigit), let oid = await resolve(q), let d = try? await run(["log", "--format=" + logFormat, "-n", "1", oid], limit: Limit.value) {
             out += parseLog(d)
         }
         out += parseLog(await byText ?? Data()) + parseLog(await byAuthor ?? Data())
@@ -192,27 +192,12 @@ extension Git {
 ///   - path: The PATH to run it with, so it can find git and its credential helpers.
 /// - Throws: When `gh` is missing, signed out, or the repository isn't on GitHub.
 public func listPullRequests(in root: URL, gh: String, path: String) async throws -> [PullRequest] {
-    try await withCheckedThrowingContinuation { cont in
-        DispatchQueue.global(qos: .utility).async {
-            let p = Process()
-            p.executableURL = URL(fileURLWithPath: gh)
-            p.arguments = ["pr", "list", "--state", "open", "--limit", "200", "--json", PullRequest.fields]
-            p.qualityOfService = .utility
-            p.currentDirectoryURL = root
-            var env = ProcessInfo.processInfo.environment
-            env["PATH"] = path
-            env["GH_PROMPT_DISABLED"] = "1"
-            env["NO_COLOR"] = "1"
-            p.environment = env
-            let out = Pipe()
-            p.standardOutput = out
-            p.standardError = FileHandle.nullDevice
-            p.standardInput = FileHandle.nullDevice
-            do { try p.run() } catch { cont.resume(throwing: error); return }
-            let data = out.fileHandleForReading.readDataToEndOfFile()
-            p.waitUntilExit()
-            guard p.terminationStatus == 0 else { cont.resume(throwing: GitError(message: "gh pr list failed")); return }
-            do { cont.resume(returning: try parsePullRequests(data)) } catch { cont.resume(throwing: error) }
-        }
-    }
+    var env = ProcessInfo.processInfo.environment
+    env["PATH"] = path
+    env["GH_PROMPT_DISABLED"] = "1"
+    env["NO_COLOR"] = "1"
+    let ran = try await runProcess(gh, ["pr", "list", "--state", "open", "--limit", "200", "--json", PullRequest.fields],
+                                   in: root, environment: env, input: nil, outputLimit: Git.Limit.listing, qos: .utility)
+    guard ran.status == 0 else { throw GitError(message: "gh pr list failed") }
+    return try parsePullRequests(ran.output)
 }

@@ -1,8 +1,22 @@
 import Foundation
 
 public struct GitError: Error, LocalizedError, Sendable {
+    /// Why git didn't give an answer.
+    public enum Reason: Sendable, Equatable {
+        /// It failed, couldn't run, or printed something that couldn't be read.
+        case failed
+        /// It printed more than the caller can use, so it was stopped.
+        case outputTooLarge(limit: Int)
+    }
+
     public var message: String
-    public init(message: String) { self.message = message }
+    public var reason: Reason
+
+    public init(message: String, reason: Reason = .failed) {
+        self.message = message
+        self.reason = reason
+    }
+
     public var errorDescription: String? { message }
 }
 
@@ -19,69 +33,66 @@ public struct Git: Sendable {
         self.executable = executable
     }
 
+    /// How much a git command may print, by what its caller does with the output.
+    ///
+    /// A command that prints more is stopped, and its run throws a `GitError` whose reason is
+    /// `.outputTooLarge`.
+    public enum Limit {
+        /// One value, such as an object ID, a ref, or one commit's message.
+        public static let value = 1 << 20
+        /// A list over the repository, such as its files, refs, commits, status or search results.
+        public static let listing = 256 << 20
+        /// A diff with its patches.
+        public static let patch = 512 << 20
+        /// One file's contents.
+        public static let blob = 256 << 20
+    }
+
     /// Runs git in a directory and returns what it prints.
     ///
-    /// - Parameter priority: The quality of service git runs at. Work nobody is waiting on runs
-    ///   at `.utility`, so it doesn't slow down what someone is.
-    public static func run(_ executable: String, in dir: URL, _ args: [String], stdin: Data? = nil, allowedStatuses: Set<Int32> = [0], priority: QualityOfService = .userInitiated) async throws -> Data {
-        try await withCheckedThrowingContinuation { cont in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let p = Process()
-                p.executableURL = URL(fileURLWithPath: executable)
-                p.arguments = ["-c", "core.quotePath=false", "-c", "color.ui=false", "-c", "log.showSignature=false"] + args
-                p.qualityOfService = priority
-                p.currentDirectoryURL = dir
-                var env = ProcessInfo.processInfo.environment
-                env["GIT_OPTIONAL_LOCKS"] = "0"
-                env["GIT_PAGER"] = "cat"
-                env["GIT_TERMINAL_PROMPT"] = "0"
-                env.removeValue(forKey: "GIT_DIR")
-                env.removeValue(forKey: "GIT_WORK_TREE")
-                p.environment = env
-                let out = Pipe(), err = Pipe()
-                p.standardOutput = out
-                p.standardError = err
-                let inPipe = stdin.map { _ in Pipe() }
-                p.standardInput = inPipe ?? FileHandle.nullDevice
-                do {
-                    try p.run()
-                } catch {
-                    cont.resume(throwing: GitError(message: "Couldn't run git at \(executable): \(error.localizedDescription)"))
-                    return
-                }
-                if let stdin, let inPipe {
-                    DispatchQueue.global().async {
-                        try? inPipe.fileHandleForWriting.write(contentsOf: stdin)
-                        try? inPipe.fileHandleForWriting.close()
-                    }
-                }
-                let errData = LockedData()
-                let g = DispatchGroup()
-                g.enter()
-                DispatchQueue.global().async {
-                    errData.set(err.fileHandleForReading.readDataToEndOfFile())
-                    g.leave()
-                }
-                let data = out.fileHandleForReading.readDataToEndOfFile()
-                p.waitUntilExit()
-                g.wait()
-                if !allowedStatuses.contains(p.terminationStatus) {
-                    let msg = String(decoding: errData.get(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-                    cont.resume(throwing: GitError(message: msg.isEmpty ? "git \(args.first ?? "") failed" : msg))
-                } else {
-                    cont.resume(returning: data)
-                }
-            }
+    /// Cancelling the task stops git, and whatever it started, before the run throws
+    /// `CancellationError`.
+    ///
+    /// - Parameters:
+    ///   - priority: The quality of service git runs at. Work nobody is waiting on runs at
+    ///     `.utility`, so it doesn't slow down what someone is.
+    ///   - limit: The most bytes of output the caller can use (see `Limit`).
+    /// - Throws: `GitError` when git fails or prints more than `limit`, and `CancellationError`
+    ///   when the task is cancelled.
+    public static func run(_ executable: String, in dir: URL, _ args: [String], stdin: Data? = nil, allowedStatuses: Set<Int32> = [0],
+                           priority: QualityOfService = .userInitiated, limit: Int) async throws -> Data {
+        var env = ProcessInfo.processInfo.environment
+        env["GIT_OPTIONAL_LOCKS"] = "0"
+        env["GIT_PAGER"] = "cat"
+        env["GIT_TERMINAL_PROMPT"] = "0"
+        env.removeValue(forKey: "GIT_DIR")
+        env.removeValue(forKey: "GIT_WORK_TREE")
+        let ran: ProcessOutput
+        do {
+            ran = try await runProcess(executable, ["-c", "core.quotePath=false", "-c", "color.ui=false", "-c", "log.showSignature=false"] + args,
+                                       in: dir, environment: env, input: stdin, outputLimit: limit, qos: priority)
+        } catch ProcessFailure.couldNotStart(let code) {
+            throw GitError(message: "Couldn't run git at \(executable): \(String(cString: strerror(code)))")
+        } catch ProcessFailure.outputTooLarge(let limit) {
+            throw GitError(message: "git \(args.first ?? "") printed more than \(ByteCountFormatter.string(fromByteCount: Int64(limit), countStyle: .binary))",
+                           reason: .outputTooLarge(limit: limit))
         }
+        guard allowedStatuses.contains(ran.status) else {
+            let msg = String(decoding: ran.errors, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            throw GitError(message: msg.isEmpty ? "git \(args.first ?? "") failed" : msg)
+        }
+        return ran.output
     }
 
+    /// Runs git in the checkout and returns what it prints (see `run(_:in:_:stdin:allowedStatuses:priority:limit:)`).
     @discardableResult
-    public func run(_ args: [String], stdin: Data? = nil, priority: QualityOfService = .userInitiated) async throws -> Data {
-        try await Git.run(executable, in: root, args, stdin: stdin, priority: priority)
+    public func run(_ args: [String], stdin: Data? = nil, priority: QualityOfService = .userInitiated, limit: Int) async throws -> Data {
+        try await Git.run(executable, in: root, args, stdin: stdin, priority: priority, limit: limit)
     }
 
+    /// Runs git for one value, such as an object ID or a ref, and returns it trimmed.
     public func string(_ args: [String]) async throws -> String {
-        String(decoding: try await run(args), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        String(decoding: try await run(args, limit: Limit.value), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     public func optionalString(_ args: [String]) async -> String? {
@@ -98,7 +109,7 @@ public struct Git: Sendable {
 
     /// Finds the checkout and repository a path is in.
     public static func locate(_ path: URL, executable: String) async throws -> Location {
-        let out = String(decoding: try await run(executable, in: path, ["rev-parse", "--show-toplevel", "--git-common-dir"]), as: UTF8.self)
+        let out = String(decoding: try await run(executable, in: path, ["rev-parse", "--show-toplevel", "--git-common-dir"], limit: Limit.value), as: UTF8.self)
         let lines = out.split(separator: "\n").map(String.init)
         guard lines.count >= 2 else { throw GitError(message: "\(path.path) is not inside a git work tree") }
         let common = lines[1].hasPrefix("/") ? URL(fileURLWithPath: lines[1]) : URL(fileURLWithPath: path.path).appendingPathComponent(lines[1])
@@ -127,12 +138,12 @@ public struct Git: Sendable {
     }
 
     public func log(_ ref: String, skip: Int, count: Int) async throws -> [Commit] {
-        let data = try await run(["log", "--format=" + logFormat, "--raw", "--no-abbrev", "-M", "--diff-merges=first-parent", "--skip=\(skip)", "-n", "\(count)", ref, "--"])
+        let data = try await run(["log", "--format=" + logFormat, "--raw", "--no-abbrev", "-M", "--diff-merges=first-parent", "--skip=\(skip)", "-n", "\(count)", ref, "--"], limit: Limit.listing)
         return parseLog(data)
     }
 
     public func stashes() async -> [Stash] {
-        guard let data = try? await run(["log", "--walk-reflogs", "--format=%x1e%H%x1f%P%x1f%gd%x1f%at%x1f%s", "refs/stash", "--"]) else { return [] }
+        guard let data = try? await run(["log", "--walk-reflogs", "--format=%x1e%H%x1f%P%x1f%gd%x1f%at%x1f%s", "refs/stash", "--"], limit: Limit.listing) else { return [] }
         return String(decoding: data, as: UTF8.self).split(separator: "\u{1e}").compactMap { r in
             let f = r.trimmingCharacters(in: .newlines).split(separator: "\u{1f}", omittingEmptySubsequences: false)
             guard f.count >= 5 else { return nil }
@@ -141,7 +152,7 @@ public struct Git: Sendable {
     }
 
     public func commitDetail(_ oid: String) async throws -> CommitDetail {
-        let s = String(decoding: try await run(["show", "-s", "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%cn%x1f%ct%x1f%B", oid]), as: UTF8.self)
+        let s = String(decoding: try await run(["show", "-s", "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%cn%x1f%ct%x1f%B", oid], limit: Limit.value), as: UTF8.self)
         let f = s.split(separator: "\u{1f}", maxSplits: 7, omittingEmptySubsequences: false).map(String.init)
         guard f.count == 8 else { throw GitError(message: "Unexpected output for \(oid)") }
         return CommitDetail(oid: f[0], parents: f[1].split(separator: " ").map(String.init), author: f[2], email: f[3],
@@ -185,7 +196,7 @@ public struct Git: Sendable {
     }
 
     private func loadDiff(_ target: Target, args: [String]) async throws -> [FileDiff] {
-        async let patchData = run(["diff"] + Git.diffFlags + args + ["--"])
+        async let patchData = run(["diff"] + Git.diffFlags + args + ["--"], limit: Limit.patch)
         async let untracked = target.includesWorktree ? untrackedFiles() : []
         var files = parseRawPatchZ(try await patchData)
 
@@ -212,7 +223,7 @@ public struct Git: Sendable {
     /// Lists untracked files that aren't ignored, and repositories nested in the worktree, as
     /// their folder's path with a trailing `/`.
     public func untrackedFiles() async throws -> [String] {
-        let data = try await run(["ls-files", "--others", "--exclude-standard", "-z"])
+        let data = try await run(["ls-files", "--others", "--exclude-standard", "-z"], limit: Limit.listing)
         return data.split(separator: 0).map { String(decoding: $0, as: UTF8.self) }
     }
 
@@ -237,7 +248,7 @@ public struct Git: Sendable {
         while !files.isEmpty {
             do {
                 let input = Data(files.flatMap { stdinPathLine(paths[$0]) })
-                let out = try await run(["hash-object", "--stdin-paths"], stdin: input)
+                let out = try await run(["hash-object", "--stdin-paths"], stdin: input, limit: Limit.listing)
                 for (i, id) in zip(files, out.split(separator: 0x0A)) { ids[i] = String(decoding: id, as: UTF8.self) }
                 break
             } catch {
@@ -320,10 +331,13 @@ public struct Git: Sendable {
 
     /// Old-side file lines, for expanding context around hunks.
     ///
+    /// - Parameter limit: The most bytes of the old side the caller can use.
     /// - Returns: No lines for a file without an old side, like an added one.
-    public func oldLines(of file: FileDiff) async throws -> [String] {
+    /// - Throws: `GitError` if the old side can't be read, or is larger than `limit` (reason
+    ///   `.outputTooLarge`).
+    public func oldLines(of file: FileDiff, limit: Int = Limit.blob) async throws -> [String] {
         guard file.change.oldOid != zeroOid else { return [] }
-        return splitLines(try await blob(file.change.oldOid))
+        return splitLines(try await blob(file.change.oldOid, limit: limit))
     }
 }
 
@@ -344,13 +358,6 @@ func readLink(_ path: String) -> Data? {
     let n = readlink(path, &buffer, buffer.count)
     guard n >= 0 else { return nil }
     return Data(buffer[..<n])
-}
-
-final class LockedData: @unchecked Sendable {
-    private var data = Data()
-    private let lock = NSLock()
-    func set(_ d: Data) { lock.lock(); data = d; lock.unlock() }
-    func get() -> Data { lock.lock(); defer { lock.unlock() }; return data }
 }
 
 /// Returns a path's line for `git hash-object --stdin-paths`, which reads paths a line at a time

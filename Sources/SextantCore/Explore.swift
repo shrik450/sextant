@@ -62,9 +62,9 @@ extension Git {
     /// Every file in a snapshot, as repository-relative paths.
     public func files(in snapshot: Snapshot) async throws -> [String] {
         let data: Data = switch snapshot {
-        case .worktree: try await run(["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--deduplicate"])
-        case .index: try await run(["ls-files", "-z", "--cached"])
-        case .commit(let c): try await run(["ls-tree", "-r", "-z", "--name-only", c])
+        case .worktree: try await run(["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--deduplicate"], limit: Limit.listing)
+        case .index: try await run(["ls-files", "-z", "--cached"], limit: Limit.listing)
+        case .commit(let c): try await run(["ls-tree", "-r", "-z", "--name-only", c], limit: Limit.listing)
         }
         var paths = data.split(separator: 0).map { String(decoding: $0, as: UTF8.self) }
         if snapshot == .worktree {
@@ -78,9 +78,9 @@ extension Git {
     public func contents(of path: String, in snapshot: Snapshot) async -> Data? {
         switch snapshot {
         case .worktree: readWorktreeFile(path)
-        case .index: try? await run(["cat-file", "blob", ":" + path])
+        case .index: try? await run(["cat-file", "blob", ":" + path], limit: Limit.blob)
         case .commit(let c):
-            ObjectReader.canRead(c + ":" + path) ? await objects.blob(c + ":" + path) : try? await run(["cat-file", "blob", c + ":" + path])
+            ObjectReader.canRead(c + ":" + path) ? await objects.blob(c + ":" + path) : try? await run(["cat-file", "blob", c + ":" + path], limit: Limit.blob)
         }
     }
 
@@ -103,23 +103,23 @@ extension Git {
             prefix = c
         }
         args.append("--")
-        let data = try await Git.run(executable, in: root, args, allowedStatuses: [0, 1])
+        let data = try await Git.run(executable, in: root, args, allowedStatuses: [0, 1], limit: Limit.listing)
         return parseGrepZ(data, revisionPrefix: prefix)
     }
 
     public func blame(_ path: String, in snapshot: Snapshot) async throws -> Blame {
         let data: Data = switch snapshot {
-        case .worktree: try await run(["blame", "--porcelain", "--", path])
+        case .worktree: try await run(["blame", "--porcelain", "--", path], limit: Limit.listing)
         case .index:
-            try await run(["blame", "--porcelain", "--contents", "-", "--", path], stdin: try await run(["cat-file", "blob", ":" + path]))
-        case .commit(let c): try await run(["blame", "--porcelain", c, "--", path])
+            try await run(["blame", "--porcelain", "--contents", "-", "--", path], stdin: try await run(["cat-file", "blob", ":" + path], limit: Limit.blob), limit: Limit.listing)
+        case .commit(let c): try await run(["blame", "--porcelain", c, "--", path], limit: Limit.listing)
         }
         return parseBlamePorcelain(data)
     }
 
     /// Commits that touched a path, newest first, following renames.
     public func history(of path: String, from ref: String, count: Int) async throws -> [Commit] {
-        let data = try await run(["log", "--format=" + logFormat, "--raw", "--no-abbrev", "-M", "--follow", "-n", "\(count)", ref, "--", path])
+        let data = try await run(["log", "--format=" + logFormat, "--raw", "--no-abbrev", "-M", "--follow", "-n", "\(count)", ref, "--", path], limit: Limit.listing)
         return parseLog(data)
     }
 }

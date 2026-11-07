@@ -143,12 +143,12 @@ extension Git {
     func listBlobs(in snapshot: Snapshot) async throws -> SnapshotListing {
         switch snapshot {
         case .commit(let c):
-            return SnapshotListing(blobs: parseTree(try await run(["ls-tree", "-r", "-z", c])).map { SnapshotBlob(path: $0.path, oid: $0.oid, inWorktree: false) }, unhashed: [])
+            return SnapshotListing(blobs: parseTree(try await run(["ls-tree", "-r", "-z", c], limit: Limit.listing)).map { SnapshotBlob(path: $0.path, oid: $0.oid, inWorktree: false) }, unhashed: [])
         case .index:
-            return SnapshotListing(blobs: parseStaged(try await run(["ls-files", "-s", "-z"])).map { SnapshotBlob(path: $0.path, oid: $0.oid, inWorktree: false) }, unhashed: [])
+            return SnapshotListing(blobs: parseStaged(try await run(["ls-files", "-s", "-z"], limit: Limit.listing)).map { SnapshotBlob(path: $0.path, oid: $0.oid, inWorktree: false) }, unhashed: [])
         case .worktree:
-            async let staged = run(["ls-files", "-s", "-z"])
-            async let changed = run(["ls-files", "-z", "-m", "-o", "--exclude-standard"])
+            async let staged = run(["ls-files", "-s", "-z"], limit: Limit.listing)
+            async let changed = run(["ls-files", "-z", "-m", "-o", "--exclude-standard"], limit: Limit.listing)
             var byPath = Dictionary(parseStaged(try await staged).map { ($0.path, $0.oid) }, uniquingKeysWith: { a, _ in a })
             var unhashed = Set<String>()
             for raw in try await changed.split(separator: 0) {

@@ -59,7 +59,7 @@ public struct OpenRequest: Equatable, Sendable {
         var isFolder: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isFolder) else { throw GitError(message: "\(url.path): no such file or folder") }
         let folder = isFolder.boolValue ? url : url.deletingLastPathComponent()
-        guard let root = try? await Git.run(git, in: folder, ["rev-parse", "--show-toplevel"]) else { throw GitError(message: "not a git repository: \(url.path)") }
+        guard let root = try? await Git.run(git, in: folder, ["rev-parse", "--show-toplevel"], limit: Git.Limit.value) else { throw GitError(message: "not a git repository: \(url.path)") }
         let checkout = String(decoding: root, as: UTF8.self).trimmingCharacters(in: .newlines)
         if let revision, let missing = await unresolved(revision, in: URL(fileURLWithPath: checkout), git: git) {
             throw GitError(message: "unknown revision: \(missing)")

@@ -128,7 +128,7 @@ import Testing
             for p in paths {
                 group.addTask {
                     let batched = await repo.contents(of: p, in: .commit(head))
-                    let oneOff = try? await repo.run(["cat-file", "blob", head + ":" + p])
+                    let oneOff = try? await repo.run(["cat-file", "blob", head + ":" + p], limit: Git.Limit.blob)
                     return (p, batched, oneOff)
                 }
             }
@@ -136,7 +136,7 @@ import Testing
         }
         #expect(reads.count == paths.count)
         for (p, batched, oneOff) in reads { #expect(batched != nil && batched == oneOff, "\(p)") }
-        let tree = try await repo.run(["rev-parse", head + "^{tree}"])
+        let tree = try await repo.run(["rev-parse", head + "^{tree}"], limit: Git.Limit.value)
         await #expect(throws: GitError.self) { try await repo.blob(String(decoding: tree, as: UTF8.self).trimmingCharacters(in: .newlines)) }
         await #expect(throws: GitError.self) { try await repo.blob(String(repeating: "0", count: 39) + "1") }
         #expect(await repo.contents(of: "src", in: .commit(head)) == nil)

@@ -157,11 +157,19 @@ extension Git {
     var objects: ObjectReader { ObjectReader.shared(root: root, executable: executable) }
 
     /// Returns a blob's contents by object ID.
-    public func blob(_ oid: String) async throws -> Data {
+    ///
+    /// - Parameter limit: The most bytes the caller can use.
+    /// - Throws: `GitError` if there's no such blob, or it's larger than `limit` (reason
+    ///   `.outputTooLarge`).
+    public func blob(_ oid: String, limit: Int = Limit.blob) async throws -> Data {
         if ObjectReader.canRead(oid) {
             guard let data = await objects.blob(oid) else { throw GitError(message: "There’s no blob \(oid)") }
+            guard data.count <= limit else {
+                throw GitError(message: "\(oid) is larger than \(ByteCountFormatter.string(fromByteCount: Int64(limit), countStyle: .binary))",
+                               reason: .outputTooLarge(limit: limit))
+            }
             return data
         }
-        return try await run(["cat-file", "blob", oid])
+        return try await run(["cat-file", "blob", oid], limit: limit)
     }
 }
