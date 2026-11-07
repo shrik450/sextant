@@ -99,28 +99,49 @@ private final class Folder {
         return out
     }
 
+    /// Returns this folder's row, merged with the folders it leads to one by one, such as
+    /// `crates/core/src`.
+    ///
+    /// When unchanged items are folded, the merged row's unchanged row counts the items of every
+    /// folder in it, and revealing them (its path being in `revealed`) splits the row back into
+    /// its folders, each showing all its items.
     func node(name: String, path: String, showAll: Bool, revealed: Set<String>, changed: Set<String>, reviewed: Set<String>) -> FileNode {
-        if let (childName, child) = mergedChild(path: path, showAll: showAll, changed: changed) {
-            var n = child.node(name: childName, path: path + "/" + childName, showAll: showAll, revealed: revealed, changed: changed, reviewed: reviewed)
-            n.name = name + "/" + n.name
-            return n
+        var chain = [(name: name, path: path, folder: self)]
+        while let last = chain.last, let (childName, child) = last.folder.mergedChild(path: last.path, showAll: showAll, revealed: revealed, changed: changed) {
+            chain.append((childName, last.path + "/" + childName, child))
         }
-        return FileNode(name: name, path: path, kind: .folder,
-                        children: nodes(prefix: path + "/", showAll: showAll, revealed: revealed, changed: changed, reviewed: reviewed),
-                        changed: self.changed, reviewed: self.reviewed)
+        let end = chain[chain.count - 1]
+        if chain.count > 1, revealed.contains(end.path) {
+            return node(name: name, path: path, showAll: showAll, revealed: revealed.union(chain.map(\.path)), changed: changed, reviewed: reviewed)
+        }
+        var children = end.folder.nodes(prefix: end.path + "/", showAll: showAll, revealed: revealed, changed: changed, reviewed: reviewed)
+        let merged = zip(chain, chain.dropFirst()).reduce(0) { sum, pair in
+            let (level, next) = pair
+            return sum + level.folder.files.filter { !changed.contains(level.path + "/" + $0) }.count
+                + level.folder.folders.filter { $0.key != next.name && $0.value.changed == 0 }.count
+        }
+        if merged > 0 {
+            if case .unchanged(let own)? = children.last?.kind {
+                children[children.count - 1].kind = .unchanged(own + merged)
+            } else {
+                children.append(FileNode(name: "", path: end.path, kind: .unchanged(merged), children: [], changed: 0, reviewed: 0))
+            }
+        }
+        return FileNode(name: chain.map(\.name).joined(separator: "/"), path: end.path, kind: .folder, children: children,
+                        changed: end.folder.changed, reviewed: end.folder.reviewed)
     }
 
     /// The one subfolder this folder merges with into a single row, if any.
     ///
     /// When everything is shown, a folder merges with an only child folder. When unchanged items
-    /// are folded, a folder that holds no changed files merges with its one subfolder holding changes,
-    /// hiding its unchanged items until everything is shown.
-    private func mergedChild(path: String, showAll: Bool, changed: Set<String>) -> (String, Folder)? {
+    /// are folded, a folder that holds no changed files merges with its one subfolder holding
+    /// changes, unless its unchanged items are revealed.
+    private func mergedChild(path: String, showAll: Bool, revealed: Set<String>, changed: Set<String>) -> (String, Folder)? {
         if showAll || self.changed == 0 {
             guard files.isEmpty, folders.count == 1, let only = folders.first else { return nil }
             return (only.key, only.value)
         }
-        guard !files.contains(where: { changed.contains(path + "/" + $0) }) else { return nil }
+        guard !revealed.contains(path), !files.contains(where: { changed.contains(path + "/" + $0) }) else { return nil }
         let leading = folders.filter { $0.value.changed > 0 }
         guard leading.count == 1, let only = leading.first else { return nil }
         return (only.key, only.value)

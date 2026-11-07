@@ -114,9 +114,11 @@ private let treePaths = [
     #expect(outline(tree) == [
         "crates/core/src/ 0/1",
         "  lib.rs *",
+        "  ⋯ 2 [crates/core/src]",
         "src/ 1/2",
         "  deep/x/ 0/1",
         "    y.swift *",
+        "    ⋯ 1 [src/deep/x]",
         "  a.swift *",
         "  ⋯ 1 [src]",
         "⋯ 2 []",
@@ -130,6 +132,7 @@ private let treePaths = [
         "src/ 0/2",
         "  deep/x/ 0/1",
         "    y.swift *",
+        "    ⋯ 1 [src/deep/x]",
         "  a.swift *",
         "  b.swift",
         "⋯ 3 []",
@@ -275,4 +278,25 @@ private func added(_ new: Int) -> DiffLine { DiffLine(kind: .added, oldNo: 0, ne
     #expect(lines.indices.map(p.newSideLine) == [0, 0, 1, 2, 3, 3, 3])
     #expect(LinePositions([removed(1), context(2, 1)]).newSideHalfLine(at: 0) == -1)
     #expect(LinePositions([removed(1)]).lastNew == 0)
+}
+
+@Test func aMergedFolderRowCountsTheUnchangedItemsOfTheFoldersItMergesAndRevealsThem() {
+    let paths = ["a/readme.md", "a/b/notes.txt", "a/b/c/changed.swift", "top.txt"]
+    let folded = fileTree(paths: paths, changed: ["a/b/c/changed.swift"], reviewed: [], showUnchanged: false, revealed: [])
+    #expect(outline(folded) == [
+        "a/b/c/ 0/1",
+        "  changed.swift *",
+        "  ⋯ 2 [a/b/c]",
+        "⋯ 1 []",
+    ])
+    let revealed = fileTree(paths: paths, changed: ["a/b/c/changed.swift"], reviewed: [], showUnchanged: false, revealed: ["a/b/c"])
+    #expect(outline(revealed) == [
+        "a/ 0/1",
+        "  b/ 0/1",
+        "    c/ 0/1",
+        "      changed.swift *",
+        "    notes.txt",
+        "  readme.md",
+        "⋯ 1 []",
+    ])
 }
