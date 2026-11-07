@@ -316,7 +316,7 @@ final class Automation {
             let p = Process()
             p.executableURL = URL(fileURLWithPath: "/bin/sh")
             p.arguments = ["-c", arg]
-            p.environment = ProcessInfo.processInfo.environment.merging(["PATH": userPath()]) { _, b in b }
+            p.environment = ProcessInfo.processInfo.environment.merging(["PATH": await UserTools.path.value]) { _, b in b }
             try? p.run()
             p.waitUntilExit()
         case "quit": NSApp.terminate(nil)

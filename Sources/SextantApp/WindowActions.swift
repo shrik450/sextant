@@ -225,14 +225,16 @@ extension RepoWindowController: NSMenuItemValidation {
         guard FileManager.default.fileExists(atPath: url.path) else { beep(); return }
         if let cmd = UserDefaults.standard.string(forKey: "editorCommand"), !cmd.trimmingCharacters(in: .whitespaces).isEmpty {
             let full = cmd.replacingOccurrences(of: "{file}", with: shellQuote(url.path)).replacingOccurrences(of: "{line}", with: String(max(1, line)))
-            let p = Process()
-            p.executableURL = URL(fileURLWithPath: "/bin/sh")
-            p.arguments = ["-c", full]
-            p.currentDirectoryURL = root.url
-            var env = ProcessInfo.processInfo.environment
-            env["PATH"] = userPath()
-            p.environment = env
-            do { try p.run() } catch { showError(error) }
+            Task {
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: "/bin/sh")
+                p.arguments = ["-c", full]
+                p.currentDirectoryURL = root.url
+                var env = ProcessInfo.processInfo.environment
+                env["PATH"] = await UserTools.path.value
+                p.environment = env
+                do { try p.run() } catch { showError(error) }
+            }
         } else {
             NSWorkspace.shared.open(url)
         }
@@ -801,36 +803,27 @@ extension RepoWindowController: NSMenuItemValidation {
 
 func shellQuote(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
 
-/// Returns a PATH for launching user tools from a GUI app.
+/// Where the user's tools are: the PATH to launch them on, and the git and GitHub CLI the app
+/// runs.
 ///
 /// A GUI app opened from the Dock or with `open` inherits only the system's directories, where
 /// `/usr/bin/git` may be a stub for tools that aren't installed. So the login shell's PATH comes
-/// first.
-func userPath() -> String {
-    let home = FileManager.default.homeDirectoryForCurrentUser.path
-    let user = NSUserName()
-    let known = ["\(home)/.nix-profile/bin", "/etc/profiles/per-user/\(user)/bin", "/run/current-system/sw/bin", "/nix/var/nix/profiles/default/bin", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
-    return searchPath(shell: loginShellPath, known: known, inherited: ProcessInfo.processInfo.environment["PATH"])
-}
+/// first. Reading it runs the shell's startup files, so each is found once, off the main actor,
+/// and the app starts reading the PATH at launch. A git the app is told to run never waits for
+/// the shell.
+enum UserTools {
+    static let path = Task.detached(priority: .userInitiated) {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let known = ["\(home)/.nix-profile/bin", "/etc/profiles/per-user/\(NSUserName())/bin", "/run/current-system/sw/bin", "/nix/var/nix/profiles/default/bin", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+        let shell = getpwuid(getuid())?.pointee.pw_shell.map { String(cString: $0) }
+        return searchPath(shell: shell.flatMap { readLoginShellPath(shell: $0) }, known: known, inherited: ProcessInfo.processInfo.environment["PATH"])
+    }
 
-/// The PATH the user's login shell sets up, read once, or nil if the shell can't be run or takes
-/// longer than five seconds.
-///
-/// Reading it runs the shell's startup files, so the app starts reading it at launch, off the
-/// main thread, before the first git command needs it.
-let loginShellPath: String? = {
-    guard let entry = getpwuid(getuid()), let shell = entry.pointee.pw_shell else { return nil }
-    let p = Process()
-    p.executableURL = URL(fileURLWithPath: String(cString: shell))
-    p.arguments = ["-l", "-c", "/usr/bin/env"]
-    p.standardInput = FileHandle.nullDevice
-    p.standardError = FileHandle.nullDevice
-    let out = Pipe()
-    p.standardOutput = out
-    guard (try? p.run()) != nil else { return nil }
-    DispatchQueue.global().asyncAfter(deadline: .now() + 5) { if p.isRunning { p.terminate() } }
-    let data = out.fileHandleForReading.readDataToEndOfFile()
-    p.waitUntilExit()
-    guard p.terminationStatus == 0 else { return nil }
-    return pathVariable(inEnvironment: String(decoding: data, as: UTF8.self))
-}()
+    static let git = Task.detached(priority: .userInitiated) {
+        let told = [ProcessInfo.processInfo.environment["SEXTANT_GIT"], Bundle.main.object(forInfoDictionaryKey: "SextantGitPath") as? String]
+        if let git = told.compactMap({ $0 }).first(where: { FileManager.default.isExecutableFile(atPath: $0) }) { return git }
+        return executable(named: "git", in: await path.value) ?? "/usr/bin/git"
+    }
+
+    static let gh = Task.detached(priority: .utility) { executable(named: "gh", in: await path.value) }
+}

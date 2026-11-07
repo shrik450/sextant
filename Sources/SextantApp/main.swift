@@ -9,18 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Whether automation runs without taking focus, behind the windows of the app in use.
     var inBackground = false
 
-    lazy var gitPath: String = {
-        if let p = ProcessInfo.processInfo.environment["SEXTANT_GIT"], FileManager.default.isExecutableFile(atPath: p) { return p }
-        if let p = Bundle.main.object(forInfoDictionaryKey: "SextantGitPath") as? String, FileManager.default.isExecutableFile(atPath: p) { return p }
-        for dir in userPath().split(separator: ":") {
-            let p = "\(dir)/git"
-            if FileManager.default.isExecutableFile(atPath: p) { return p }
-        }
-        return "/usr/bin/git"
-    }()
-
     func applicationWillFinishLaunching(_ notification: Notification) {
-        DispatchQueue.global(qos: .userInitiated).async { _ = loginShellPath }
+        _ = UserTools.path
         NSApp.mainMenu = buildMainMenu()
         _ = Appearance.shared
     }
@@ -81,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
         Task {
             do {
+                let gitPath = await UserTools.git.value
                 let loc = try await Git.locate(url.hasDirectoryPath || isDirectory(url) ? url : url.deletingLastPathComponent(), executable: gitPath)
                 if let existing = controllers.first(where: { $0.repository.commonDir == loc.commonDir }) {
                     existing.window?.raise()

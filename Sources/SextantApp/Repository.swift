@@ -157,11 +157,9 @@ final class Repository {
 
     /// Asks `gh` for the open pull requests, leaving `pullRequests` nil if it can't answer.
     func loadPullRequests() async {
-        guard let gh = Repository.ghPath, let root = worktrees.first?.root else { return }
-        pullRequests = try? await listPullRequests(in: root.url, gh: gh, path: userPath())
+        guard let gh = await UserTools.gh.value, let root = worktrees.first?.root else { return }
+        pullRequests = try? await listPullRequests(in: root.url, gh: gh, path: await UserTools.path.value)
     }
-
-    private static let ghPath: String? = userPath().split(separator: ":").map { "\($0)/gh" }.first { FileManager.default.isExecutableFile(atPath: $0) }
 
     /// The base a subject is compared with: the one last picked for it while that branch is
     /// still there, else the pull request's own base or the default.
