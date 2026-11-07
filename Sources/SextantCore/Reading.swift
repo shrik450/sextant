@@ -326,6 +326,10 @@ public func changeKeys(_ lines: [DiffLine], runs: [ChangeRun]) -> [String] {
             for b in l.text.utf8 { mix(b) }
             if l.carriageReturn { mix(0x0d) }
             if l.noNewline { mix(0x5c) }
+            if l.cut > 0 {
+                mix(0x85)
+                for b in String(l.cut).utf8 { mix(b) }
+            }
             mix(0x0a)
         }
         let earlier = seen[hash, default: 0]

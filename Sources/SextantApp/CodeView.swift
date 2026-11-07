@@ -6,11 +6,13 @@ extension NSAttributedString.Key {
     static let sextantAction = NSAttributedString.Key("SextantAction")
 }
 
-/// What a click on a fold, gap, header or note asks for.
+/// What a click on a fold, gap, header, note or limit notice asks for.
 enum ReaderAction: Hashable {
     case unfold(file: Int, at: Int)
     case openFile(file: Int, line: Int?)
     case editNote(UUID)
+    /// Opens a file shown in part in the user's editor.
+    case openInEditor(file: Int)
 }
 
 /// Rendering settings shared by the text and its gutter.
@@ -122,6 +124,9 @@ func render(_ rows: [Row], side: Int, files: [ShownFile], notes: [UUID: Note], s
             attrs = base.merging([.font: style.boldFont, .paragraphStyle: style.paragraph(height: style.headerHeight, spacingBefore: ri == 0 ? 0 : style.lineHeight),
                                   .baselineOffset: max(0, (style.headerHeight - (style.font.ascender - style.font.descender)) / 2),
                                   .sextantAction: ReaderAction.openFile(file: row.file, line: nil), .cursor: NSCursor.pointingHand]) { $1 }
+        case .limit(let n):
+            s = n
+            attrs = muted.merging([.sextantAction: ReaderAction.openInEditor(file: row.file), .cursor: NSCursor.pointingHand]) { $1 }
         case .notice(let n):
             s = n
             attrs = muted
@@ -703,11 +708,12 @@ final class CodeView: NSTextView {
             switch rows[r].kind {
             case .line:
                 let kind = line(ofRow: r)?.kind
-                guard kind == .added || kind == .deleted else { break }
-                let changed = kind == .added ? t.color("addLine") : t.color("delLine")
-                (isReadLine(rows[r].file, rows[r].line) ? changed.asRead : changed).setFill()
-                full.fill()
-                if let ending = files[rows[r].file].text.ending(ofLine: rows[r].line) { drawEnding(ending, ofRow: r) }
+                if kind == .added || kind == .deleted {
+                    let changed = kind == .added ? t.color("addLine") : t.color("delLine")
+                    (isReadLine(rows[r].file, rows[r].line) ? changed.asRead : changed).setFill()
+                    full.fill()
+                }
+                if let suffix = files[rows[r].file].text.suffix(ofLine: rows[r].line) { drawEnding(suffix, ofRow: r) }
             case .filler:
                 t.color("emptyLine").setFill(); full.fill()
                 t.color("hatch").setStroke(); full.hatch(origin: .zero)
@@ -724,7 +730,7 @@ final class CodeView: NSTextView {
                 t.color("attention").withAlphaComponent(0.10).setFill(); full.fill()
                 t.color("attention").withAlphaComponent(0.7).setFill()
                 NSRect(x: bounds.minX + textContainerInset.width - 6, y: full.minY + 2, width: 2, height: full.height - 4).fill()
-            case .notice:
+            case .notice, .limit:
                 break
             }
         }
@@ -769,8 +775,8 @@ final class CodeView: NSTextView {
         hoveredPill = nil
     }
 
-    /// Draws how a line ends after its text, muted, as a line that reads the same as its pair
-    /// but ends differently shows.
+    /// Draws a line's suffix after its text, muted, outside the text so copying the line copies
+    /// only the code (see `FileText.suffix(ofLine:)`).
     private func drawEnding(_ ending: String, ofRow r: Int) {
         guard let lm = layoutManager, let tc = textContainer else { return }
         let chars = charRange(ofRow: r)

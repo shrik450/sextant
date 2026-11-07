@@ -33,7 +33,7 @@ bundle_id=${SEXTANT_SCENES_BUNDLE:-com.shrikanthup.Sextant.scenes}
 main_checkout=$(cd "$(git -C "$here" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
 lock=${SEXTANT_PERF_LOCK:-$main_checkout/scratch/gui-lock}
 real_git=$(command -v git)
-scenes=(page symlink find reload close base status shared showall columns rename read endings removed notes reference harness fields frames reopen lookups drop slowdrop paneclose)
+scenes=(page symlink find reload close base status shared showall columns rename read endings removed notes reference harness fields frames reopen lookups drop slowdrop paneclose large)
 failed=0
 holding_lock=0
 
@@ -1276,6 +1276,76 @@ EOF
   expect paneclose "readers with the large file open beside" "$(value "$dir/opened.json" readers)" 2
   expect paneclose "readers just after closing its pane" "$(value "$dir/closed.json" readers)" 1
   expect paneclose "scene finished" "$(grep -cx END "$dir/run.log")" 1
+}
+
+#######################################
+# Checks that a value starts as it should.
+# Arguments:
+#   Scene name, what was checked, the value seen, and the start expected.
+#######################################
+expect_start() {
+  local ok=1
+  [[ $3 == "$4"* ]] && ok=0
+  check "$1" "$2" "$ok" "$3" "$4…"
+}
+
+#######################################
+# Opens files too large or too wide to take in whole, one by one and in All Changes: a file too
+# large for git to compare, a change in a file with more lines than are shown whole, a file too
+# large to colour, and a minified line. Each must say above what it shows why it shows only part
+# of the file, or shows it plain, and a cut line must say how much of it is left out.
+#######################################
+scene_large() {
+  local dir repo
+  dir=$(scene_dir large)
+  repo="$dir/repo"
+  g init -q -b main "$repo"
+  printf 'small\n' > "$repo/zero.txt"
+  awk 'BEGIN { for (i = 0; i < 600000; i++) printf "int v%d = %d;\n", i, i }' > "$repo/lines.c"
+  awk 'BEGIN { for (i = 0; i < 120000; i++) printf "let value%d = %d\n", i, i }' > "$repo/plain.swift"
+  awk 'BEGIN { for (i = 0; i < 1000; i++) printf "var a%d=function(b){return b*2};", i; printf "\n" }' > "$repo/wide.js"
+  g -C "$repo" add -A
+  g -C "$repo" commit -qm base
+  awk 'BEGIN { for (i = 0; i < 1000000; i++) print "0123456789 abcdefghij 0123456789 abcdefghij 0123456789 abcdefg" }' > "$repo/zero.txt"
+  awk 'BEGIN { for (i = 0; i < 600000; i++) printf "int v%d = %d;\n", i, (i == 7 || i == 300000) ? -i : i }' > "$repo/lines.c"
+  printf 'let added = 1\n' >> "$repo/plain.swift"
+  awk 'BEGIN { for (i = 0; i < 1000; i++) printf "var a%d=function(b){return b*%d};", i, i == 999 ? 3 : 2; printf "\n" }' > "$repo/wide.js"
+  cat > "$dir/script.txt" <<EOF
+defaults readerMode file
+open $repo
+wait
+panes $dir/lines.json
+render $dir/lines.png
+menu Next File
+wait
+panes $dir/plain.json
+menu Next File
+wait
+panes $dir/wide.json
+render $dir/wide.png
+menu Next File
+wait
+panes $dir/huge.json
+menu All Changes
+wait
+panes $dir/overview.json
+log END
+quit
+EOF
+  run_app "$dir"
+  expect large "scene finished" "$(grep -cx END "$dir/run.log")" 1
+  expect large "too large to compare" "$(value "$dir/huge.json" panes.0.rows.0)" \
+    "limit Too large to compare: the file is 60.1 MB, more than the 50 MB shown whole. These are its first 10,000 lines. Open in Editor to read it all."
+  expect large "its first line" "$(value "$dir/huge.json" panes.0.rows.1)" " 1 0123456789 abcdefghij 0123456789 abcdefghij 0123456789 abcdefg"
+  expect large "its lines numbered" "$(value "$dir/huge.json" panes.0.rows.599)" " 599 0123456789 abcdefghij 0123456789 abcdefghij 0123456789 abcdefg"
+  expect large "too many lines to show whole" "$(value "$dir/lines.json" panes.0.rows.0)" \
+    "limit Only the changes show: the file has 600,000 lines, more than the 500,000 shown whole. Open in Editor to read it all."
+  expect large "rows of only the changes" "$(plutil -extract panes.0.rows raw -o - "$dir/lines.json")" 19
+  expect_start large "too large to colour" "$(value "$dir/plain.json" panes.0.rows.0)" "notice Plain text, without colours or definitions: the text is 2.6 MB, more than the 2 MB analyzed."
+  expect large "a line too long to colour" "$(value "$dir/wide.json" panes.0.rows.0)" \
+    "notice Plain text, without colours or definitions: a line is longer than 20,000 characters. Longer lines show their first 20,000 characters."
+  expect_start large "a cut line says what's left out" "$(value "$dir/wide.json" panes.0.rows.1 | sed 's/^.* ⏎ /⏎ /')" "⏎ … 1"
+  expect large "notices in All Changes" "$(pane_rows "$dir" overview 0 | tr , "\n" | grep -cE "^\"(limit|notice) ")" 4
 }
 
 if [[ ${1:-} == list ]]; then

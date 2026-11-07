@@ -120,8 +120,8 @@ struct ScratchRepo {
         let both = try #require(unstaged.first { $0.path == "both.txt" })
         #expect(both.change.status == "U")
         #expect(both.change.oldOid == (try r.blobID("one\nOURS\nthree\n")))
-        let old = try await r.repo.oldLines(of: both)
-        #expect(wholeFile(both.hunks, oldLines: old).filter { $0.kind != .added }.map(\.text) == old)
+        let old = try #require(try await r.repo.oldLines(of: both))
+        #expect(wholeFile(both.hunks, oldLines: old).filter { $0.kind != .added }.map(\.text) == old.lines)
         #expect(unstaged.first { $0.path == "gone.txt" }?.change.status == "U")
     }
 
@@ -244,8 +244,8 @@ extension GitEdgeCaseTests {
         let untracked = try await r.repo.diff(.worktree(since: nil))
         for file in committed + untracked {
             #expect(file.change.isAdded && file.hunksAreWholeFile, "\(file.path)")
-            let old = try await r.repo.oldLines(of: file)
-            #expect(old.isEmpty, "\(file.path)")
+            let old = try #require(try await r.repo.oldLines(of: file))
+            #expect(old.lines.isEmpty, "\(file.path)")
             #expect(wholeFile(file.hunks, oldLines: old) == file.hunks.flatMap(\.lines), "\(file.path)")
         }
         #expect(committed.map(\.path) == ["b.txt"] && untracked.map(\.path) == ["untracked.txt"])
@@ -289,9 +289,9 @@ extension GitEdgeCaseTests {
         try r.write("dos.txt", "one\r\ntwo\r\nthree\r\nfour\r\nFIVE\r\nsix\r\nseven\r\neight\r\nnine\r\n")
         let file = try #require(try await r.repo.diff(.worktree(since: nil)).first)
         #expect(file.hunks.flatMap(\.lines).allSatisfy { !$0.text.hasSuffix("\r") })
-        let old = try await r.repo.oldLines(of: file)
+        let old = try #require(try await r.repo.oldLines(of: file))
         let all = wholeFile(file.hunks, oldLines: old)
-        #expect(all.filter { $0.kind != .added }.map(\.text) == old)
+        #expect(all.filter { $0.kind != .added }.map(\.text) == old.lines)
         #expect(all.filter { $0.kind != .deleted }.map(\.text) == splitLines(try #require(r.repo.readWorktreeFile("dos.txt"))))
     }
 }
@@ -379,9 +379,9 @@ extension GitEdgeCaseTests {
         #expect(!renamed.hunksAreWholeFile)
         #expect(!chmodded.hunksAreWholeFile)
         #expect(empty.hunksAreWholeFile)
-        let whole = wholeFile(renamed.hunks, oldLines: try await r.repo.oldLines(of: renamed))
+        let whole = wholeFile(renamed.hunks, oldLines: try #require(try await r.repo.oldLines(of: renamed)))
         #expect(whole == ["one", "two", "three"].enumerated().map { DiffLine(kind: .context, oldNo: $0.offset + 1, newNo: $0.offset + 1, text: $0.element) })
-        #expect(wholeFile(chmodded.hunks, oldLines: try await r.repo.oldLines(of: chmodded)).map(\.text) == ["echo hi"])
+        #expect(wholeFile(chmodded.hunks, oldLines: try #require(try await r.repo.oldLines(of: chmodded))).map(\.text) == ["echo hi"])
     }
 }
 

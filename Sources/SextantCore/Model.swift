@@ -98,13 +98,17 @@ public struct DiffLine: Sendable, Hashable {
     ///
     /// Only a patch's lines say; lines filled in from a blob never do.
     public var carriageReturn = false
+    /// How many UTF-16 units of the line were left out after `text`, which is cut to
+    /// `ContentLimits.lineWidth`.
+    public var cut = 0
 
-    public init(kind: LineKind, oldNo: Int, newNo: Int, text: String, noNewline: Bool = false) {
+    public init(kind: LineKind, oldNo: Int, newNo: Int, text: String, noNewline: Bool = false, cut: Int = 0) {
         self.kind = kind
         self.oldNo = oldNo
         self.newNo = newNo
         self.text = text
         self.noNewline = noNewline
+        self.cut = cut
     }
 }
 
@@ -137,6 +141,16 @@ public struct FileDiff: Sendable, Hashable, Identifiable {
     public var notes: [String]
     public var additions: Int
     public var deletions: Int
+    /// How many lines of the file's patch were left out after its hunks' lines.
+    ///
+    /// A patch longer than `ContentLimits.wholeLines` keeps only its first
+    /// `ContentLimits.previewLines` lines; `additions` and `deletions` still count them all.
+    public var omittedLines = 0
+    /// The size of the larger side, when git didn't compare the sides because it's larger than
+    /// `ContentLimits.wholeBytes`.
+    public var uncomparedSize: Int?
+    /// Whether the new side is the worktree's file, which git hashed but doesn't store.
+    public var newSideInWorktree = false
 
     public var id: String { change.path }
     public var path: String { change.path }
@@ -165,6 +179,7 @@ public struct FileDiff: Sendable, Hashable, Identifiable {
     /// when there's nothing to read: an empty file added or deleted, or a submodule, whose IDs
     /// name commits. A rename or a mode change without hunks keeps all its lines, unchanged.
     public var hunksAreWholeFile: Bool {
+        if uncomparedSize != nil || omittedLines > 0 { return false }
         if hunks.isEmpty {
             return change.isAdded || change.isDeleted || change.oldOid == zeroOid || change.oldMode == gitlinkMode || change.newMode == gitlinkMode
         }

@@ -626,7 +626,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     /// can't be.
     private func readyFile(_ path: String, in s: Session) -> FileState? {
         guard let f = s.changes.first(where: { $0.path == path }) else { return explored(path, in: s) }
-        return f.whole != nil || f.diff.isBinary ? f : nil
+        return f.isReady ? f : nil
     }
 
     private func fileState(_ path: String, in t: Target, of s: Session) async -> FileState? {
@@ -636,11 +636,38 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
             return f
         }
         if let f = explored(path, in: s) { return f }
-        guard let data = await git.contents(of: path, in: t.snapshot) else { return nil }
-        let binary = data.prefix(8000).contains(0)
-        let f = FileState(path: path, contents: binary ? nil : splitLines(data), oid: blobID(of: data), contentAnalysis: repository.analysis)
+        guard let read = await git.read(path, in: t.snapshot) else { return nil }
+        let f = switch await Self.admit(read) {
+        case .binary(let oid): FileState(path: path, contents: nil, oid: oid, contentAnalysis: repository.analysis)
+        case .whole(let lines, let oid): FileState(path: path, contents: lines, oid: oid, contentAnalysis: repository.analysis)
+        case .start(let lines, let admission): FileState(path: path, start: lines, admission: admission, contentAnalysis: repository.analysis)
+        }
         if s.target == t { s.explored[path] = f }
         return f
+    }
+
+    /// What a file opened outside the review shows, as its admission takes it in.
+    private enum Explored: Sendable {
+        case binary(oid: String)
+        case whole(AdmittedLines, oid: String)
+        /// The file's first lines, since it's too large to show whole.
+        case start(AdmittedLines, Admission)
+    }
+
+    /// Decides what of a file read in a snapshot shows, off the main actor.
+    @concurrent nonisolated private static func admit(_ read: Git.SnapshotRead) async -> Explored {
+        switch read {
+        case .whole(let data):
+            let oid = blobID(of: data)
+            let admission = Admissions.shared.measure(data, oid: oid)
+            if admission.isBinary { return .binary(oid: oid) }
+            if admission.showsWhole { return .whole(AdmittedLines(data), oid: oid) }
+            return .start(AdmittedLines(data, limit: ContentLimits.previewLines), admission)
+        case .start(let data, let size):
+            let start = Admission(measuring: data)
+            return .start(AdmittedLines(data, limit: ContentLimits.previewLines, complete: false),
+                          Admission(bytes: size, lines: start.lines, longestLine: start.longestLine, isBinary: start.isBinary))
+        }
     }
 
     /// The most bytes of a neighbour's old side read to prepare it, and of each of its sides
@@ -650,7 +677,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     /// A file read while exploring a review, while its text is still kept or shown.
     private func explored(_ path: String, in s: Session) -> FileState? {
         guard let f = s.explored[path] else { return nil }
-        guard f.whole != nil || f.diff.isBinary else {
+        guard f.whole != nil || f.preview != nil || f.diff.isBinary else {
             s.explored[path] = nil
             return nil
         }
@@ -676,7 +703,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         let git = s.resolved?.git ?? repository.git
         p.preparingNeighbour = Task {
             guard await f.loadWhole(git: git, limit: Self.neighbourBytes), !Task.isCancelled, let whole = f.whole,
-                  whole.largestSide <= Self.neighbourBytes else { return }
+                  whole.admission.bytes <= Self.neighbourBytes else { return }
             await whole.analyze(symbols: true)
         }
     }
@@ -1184,6 +1211,11 @@ extension RepoWindowController: ReaderDelegate {
         let anchor: Anchor = line.flatMap { r.sideLine(at: ReaderPosition(file: file, line: $0)) }.map(Anchor.line) ?? .firstChange
         branch()
         open(r.files[file].file.path, at: anchor)
+    }
+
+    func readerOpenInEditor(_ r: Reader, file: Int) {
+        guard r.files.indices.contains(file) else { return }
+        openInEditor(path: r.files[file].file.path, line: 0)
     }
 
     func readerUnfolded(_ r: Reader) {}

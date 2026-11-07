@@ -4,14 +4,15 @@ import Foundation
 ///
 /// The result is the hunks, with the unchanged lines of the old file filled in around and
 /// between them.
-public func wholeFile(_ hunks: [Hunk], oldLines old: [String]) -> [DiffLine] {
+public func wholeFile(_ hunks: [Hunk], oldLines admitted: AdmittedLines) -> [DiffLine] {
+    let old = admitted.lines
     var out: [DiffLine] = []
     out.reserveCapacity(old.count + hunks.reduce(0) { $0 + $1.lines.count })
     var nextOld = 1, nextNew = 1
     func context(through last: Int) {
         guard last >= nextOld else { return }
         for no in nextOld...last {
-            out.append(DiffLine(kind: .context, oldNo: no, newNo: nextNew, text: no - 1 < old.count ? old[no - 1] : ""))
+            out.append(DiffLine(kind: .context, oldNo: no, newNo: nextNew, text: no - 1 < old.count ? old[no - 1] : "", cut: admitted.cut[no - 1] ?? 0))
             nextNew += 1
         }
         nextOld = last + 1
@@ -26,6 +27,51 @@ public func wholeFile(_ hunks: [Hunk], oldLines old: [String]) -> [DiffLine] {
     }
     context(through: old.count)
     return out
+}
+
+/// What reading a file whole found.
+public enum WholeRead: Sendable {
+    /// The whole file: the hunks with the unchanged lines around them filled in.
+    case lines([DiffLine])
+    /// The old side is larger than the read's limit, which is below what's shown whole.
+    case overLimit(Int)
+    /// The file is too large to show whole, by its admission, with its first lines when git
+    /// didn't compare it.
+    case partial(Admission, start: AdmittedLines?)
+}
+
+extension Git {
+    /// Reads a changed file whole, unless it's too large to show whole.
+    ///
+    /// A file too large to show whole isn't read whole: the read says why, and for a file git
+    /// didn't compare, reads the start of its new side, or its old side if it was deleted.
+    ///
+    /// - Parameter limit: The most bytes of the old side the caller wants read.
+    /// - Returns: Nil if the file couldn't be read.
+    public func whole(of diff: FileDiff, limit: Int = Limit.blob) async -> WholeRead? {
+        if let size = diff.uncomparedSize {
+            guard limit >= Limit.blob else { return .overLimit(limit) }
+            guard let start = await start(of: diff, old: diff.change.isDeleted) else { return nil }
+            let measured = Admission(measuring: start.data)
+            return .partial(Admission(bytes: size, lines: measured.lines, longestLine: measured.longestLine, isBinary: measured.isBinary),
+                            start: AdmittedLines(start.data, limit: ContentLimits.previewLines, complete: start.complete))
+        }
+        if diff.omittedLines > 0 {
+            return .partial(Admission(bytes: 0, lines: diff.lineCount + diff.omittedLines, longestLine: 0), start: nil)
+        }
+        do {
+            guard let old = try await oldLines(of: diff, limit: limit) else {
+                return .partial(Admissions.shared[diff.change.oldOid] ?? Admission(bytes: Limit.blob + 1, lines: 0, longestLine: 0), start: nil)
+            }
+            let all = wholeFile(diff.hunks, oldLines: old)
+            if all.count > ContentLimits.wholeLines { return .partial(Admission(bytes: 0, lines: all.count, longestLine: 0), start: nil) }
+            return .lines(all)
+        } catch let e as GitError where e.reason == .outputTooLarge(limit: limit) {
+            return .overLimit(limit)
+        } catch {
+            return nil
+        }
+    }
 }
 
 /// Returns how many unchanged lines a diff leaves out before each hunk, after the hunk before it.

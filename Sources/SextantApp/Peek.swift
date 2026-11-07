@@ -95,8 +95,7 @@ final class Peek: NSViewController {
         let snapshot = self.snapshot, git = self.git, analysis = self.analysis, style = self.style
         Task {
             guard let data = await git.contents(of: d.path, in: snapshot) else { return }
-            let all = splitLines(data)
-            let tokens = await Peek.tokens(all, oid: blobID(of: data), path: d.path, analysis: analysis)
+            let (all, tokens) = await Peek.read(data, path: d.path, analysis: analysis)
             let start = min(max(0, d.line - 4), all.count)
             let shown = start..<min(all.count, start + 40)
             guard index < definitions.count, definitions[index] == d else { return }
@@ -105,11 +104,13 @@ final class Peek: NSViewController {
         }
     }
 
-    /// Returns the tokens of each line of a whole file, so code under a long comment is coloured
-    /// as the comment leaves it.
-    @concurrent nonisolated private static func tokens(_ lines: [String], oid: String, path: String, analysis: ContentAnalysis) async -> [[Token]]? {
-        guard let language = SyntaxRuntime.shared?.language(forPath: path) else { return nil }
-        return await analysis.analysis(of: lines, oid: oid, language: language, definitions: false).tokens
+    /// Returns the lines of a whole file, and the tokens of each when its admission lets it be
+    /// analyzed, so code under a long comment is coloured as the comment leaves it.
+    @concurrent nonisolated private static func read(_ data: Data, path: String, analysis: ContentAnalysis) async -> (lines: [String], tokens: [[Token]]?) {
+        let oid = blobID(of: data)
+        let lines = AdmittedLines(data).lines
+        guard Admissions.shared.measure(data, oid: oid).analyzes, let language = SyntaxRuntime.shared?.language(forPath: path) else { return (lines, nil) }
+        return (lines, await analysis.analysis(of: lines, oid: oid, language: language, definitions: false).tokens)
     }
 
     private static func render(_ lines: [String], tokens: [[Token]]?, focus: Int, style: Style) -> NSAttributedString {

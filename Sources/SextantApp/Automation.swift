@@ -858,6 +858,7 @@ extension RepoWindowController {
             case .gap: "gap"
             case .header: "header \(code.files[row.file].file.path)"
             case .notice(let s): "notice \(s)"
+            case .limit(let s): "limit \(s)"
             case .note: "note"
             }
             let rect = code.convert(frag, to: nil)
@@ -887,7 +888,7 @@ extension RepoWindowController {
                         mismatched += 1
                         described += " | shown: \(shown)"
                     }
-                    if let ending = code.files[row.file].text.ending(ofLine: row.line) { described += " ⏎ \(ending)" }
+                    if let suffix = code.files[row.file].text.suffix(ofLine: row.line) { described += " ⏎ \(suffix)" }
                     rows.append(described)
                 case .filler: rows.append("filler")
                 case .fold(let range):
@@ -898,6 +899,7 @@ extension RepoWindowController {
                     rows.append("gap \(n)")
                 case .header: rows.append("header \(code.files[row.file].file.path)")
                 case .notice(let s): rows.append("notice \(s)")
+                case .limit(let s): rows.append("limit \(s)")
                 case .note(let id): rows.append("note \(notes.notes.first { $0.id == id }?.text ?? "?")")
                 }
             }

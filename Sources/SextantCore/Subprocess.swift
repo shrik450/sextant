@@ -10,6 +10,8 @@ struct ProcessOutput: Sendable {
     var output: Data
     /// What it printed to standard error, up to the run's error limit.
     var errors: Data
+    /// Whether it printed more than the output kept, and was stopped for it.
+    var truncated = false
 }
 
 /// Why a program's run didn't give its output.
@@ -19,7 +21,7 @@ enum ProcessFailure: Error, Equatable {
     case outputTooLarge(limit: Int)
 }
 
-/// The programs started by `runProcess(_:_:in:environment:input:outputLimit:errorLimit:qos:)`
+/// The programs started by `runProcess(_:_:in:environment:input:outputLimit:keepingStart:errorLimit:qos:)`
 /// that haven't ended yet.
 public enum RunningProcesses {
     private static let live = Mutex(0)
@@ -38,7 +40,7 @@ public enum RunningProcesses {
 /// to end and killing them a second later if they haven't, and then throws `CancellationError`
 /// once the program has ended. Output past `outputLimit` stops the program the same way and
 /// throws `ProcessFailure.outputTooLarge`, so a caller never takes part of the output for all
-/// of it.
+/// of it, unless the caller asks for the output's start.
 ///
 /// - Parameters:
 ///   - path: The program's executable.
@@ -48,12 +50,14 @@ public enum RunningProcesses {
 ///   - input: What it reads on standard input, or nil for `/dev/null`. A program may end
 ///     without reading all of it.
 ///   - outputLimit: The most bytes of standard output the caller can use.
+///   - keepingStart: Whether output past `outputLimit` stops the program and returns the output
+///     up to the limit, marked `truncated`, rather than throwing.
 ///   - errorLimit: The most bytes of standard error kept; the rest is read and dropped.
 ///   - qos: The quality of service the program runs at, and its output is read at.
 func runProcess(_ path: String, _ arguments: [String], in directory: URL, environment: [String: String], input: Data?,
-                outputLimit: Int, errorLimit: Int = 64 << 10, qos: QualityOfService) async throws -> ProcessOutput {
+                outputLimit: Int, keepingStart: Bool = false, errorLimit: Int = 64 << 10, qos: QualityOfService) async throws -> ProcessOutput {
     try Task.checkCancellation()
-    let run = ProcessRun(outputLimit: outputLimit, errorLimit: errorLimit, input: input, qos: qos)
+    let run = ProcessRun(outputLimit: outputLimit, keepingStart: keepingStart, errorLimit: errorLimit, input: input, qos: qos)
     return try await withTaskCancellationHandler {
         try await withCheckedThrowingContinuation { continuation in
             run.start(path, arguments, in: directory, environment: environment, continuation: continuation)
@@ -70,6 +74,8 @@ func runProcess(_ path: String, _ arguments: [String], in directory: URL, enviro
 private final class ProcessRun: @unchecked Sendable {
     private let queue: DispatchQueue
     private let outputLimit: Int
+    private let keepingStart: Bool
+    private var truncated = false
     private let errorLimit: Int
     private let qos: QualityOfService
     private var input: Data?
@@ -88,8 +94,9 @@ private final class ProcessRun: @unchecked Sendable {
     private var failure: Error?
     private var cancelled = false
 
-    init(outputLimit: Int, errorLimit: Int, input: Data?, qos: QualityOfService) {
+    init(outputLimit: Int, keepingStart: Bool, errorLimit: Int, input: Data?, qos: QualityOfService) {
         self.outputLimit = outputLimit
+        self.keepingStart = keepingStart
         self.errorLimit = errorLimit
         self.input = input
         self.qos = qos
@@ -191,8 +198,14 @@ private final class ProcessRun: @unchecked Sendable {
     }
 
     private func take(output chunk: UnsafeRawBufferPointer) {
-        guard failure == nil else { return }
+        guard failure == nil, !truncated else { return }
         guard output.count + chunk.count <= outputLimit else {
+            if keepingStart {
+                output.append(contentsOf: chunk.prefix(outputLimit - output.count))
+                truncated = true
+                stop()
+                return
+            }
             output = Data()
             failure = ProcessFailure.outputTooLarge(limit: outputLimit)
             stop()
@@ -261,7 +274,7 @@ private final class ProcessRun: @unchecked Sendable {
             kill(-pid, SIGKILL)
         }
         if let failure { return finish(.failure(failure)) }
-        finish(.success(ProcessOutput(status: r == pid ? exitStatus(raw) : -1, output: output, errors: errors)))
+        finish(.success(ProcessOutput(status: r == pid ? exitStatus(raw) : -1, output: output, errors: errors, truncated: truncated)))
     }
 
     private func finish(_ result: Result<ProcessOutput, Error>) {

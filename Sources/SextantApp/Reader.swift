@@ -7,6 +7,7 @@ protocol ReaderDelegate: AnyObject {
     /// Tells the delegate the reader's code took the keyboard.
     func readerFocused(_ r: Reader)
     func readerOpenFile(_ r: Reader, file: Int, line: Int?)
+    func readerOpenInEditor(_ r: Reader, file: Int)
     func readerUnfolded(_ r: Reader)
     func readerJumpToDefinition(_ r: Reader, word: String, file: Int, line: Int)
     func readerEditNote(_ r: Reader, id: UUID)
@@ -1091,6 +1092,8 @@ final class Reader: NSViewController, CodeViewDelegate {
             delegate?.readerUnfolded(self)
         case .openFile(let file, let line):
             delegate?.readerOpenFile(self, file: file, line: line)
+        case .openInEditor(let file):
+            delegate?.readerOpenInEditor(self, file: file)
         case .editNote(let id):
             delegate?.readerEditNote(self, id: id)
         }

@@ -210,8 +210,21 @@ func parseFilePatch(_ lines: [ArraySlice<UInt8>], change: RawChange) -> FileDiff
     var oldNo = 0, newNo = 0
     var prefixWidth = 1
     var inHeader = true
+    let keep = lines.count > ContentLimits.wholeLines ? ContentLimits.previewLines : Int.max
+    var kept = 0
+    var omitted = (lines: 0, added: 0, deleted: 0)
 
     for raw in lines {
+        if kept >= keep, !inHeader {
+            switch raw.first {
+            case UInt8(ascii: "+"): omitted.added += 1
+            case UInt8(ascii: "-"): omitted.deleted += 1
+            case UInt8(ascii: "@"), UInt8(ascii: "\\"): continue
+            default: break
+            }
+            omitted.lines += 1
+            continue
+        }
         guard let first = raw.first else {
             if cur != nil {
                 cur!.lines.append(DiffLine(kind: .context, oldNo: oldNo, newNo: newNo, text: ""))
@@ -251,7 +264,8 @@ func parseFilePatch(_ lines: [ArraySlice<UInt8>], change: RawChange) -> FileDiff
         let prefix = raw.prefix(prefixWidth)
         let body = raw.dropFirst(prefixWidth)
         let carriageReturn = body.last == 0x0D
-        let text = String(decoding: carriageReturn ? body.dropLast() : body, as: UTF8.self)
+        let (text, left) = (carriageReturn ? body.dropLast() : body).withUnsafeBytes { admittedLine($0) }
+        kept += 1
         if prefixWidth == 1 {
             switch first {
             case UInt8(ascii: "+"):
@@ -271,9 +285,14 @@ func parseFilePatch(_ lines: [ArraySlice<UInt8>], change: RawChange) -> FileDiff
             }
         }
         if carriageReturn { cur!.lines[cur!.lines.count - 1].carriageReturn = true }
+        if left > 0 { cur!.lines[cur!.lines.count - 1].cut = left }
     }
     if let c = cur { hunks.append(c) }
-    return FileDiff(change: change, hunks: hunks, isBinary: isBinary, notes: notes)
+    var diff = FileDiff(change: change, hunks: hunks, isBinary: isBinary, notes: notes)
+    diff.omittedLines = omitted.lines
+    diff.additions += omitted.added
+    diff.deletions += omitted.deleted
+    return diff
 }
 
 public let logFormat = "%x1e%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%D%x1f%s"
@@ -333,11 +352,17 @@ public func untrackedFileDiff(path: String, oid: String, contents: Data?, mode: 
     if contents.prefix(8000).contains(0) { return FileDiff(change: change, isBinary: true) }
     if contents.isEmpty { return FileDiff(change: change) }
     let endsWithNewline = contents.last == 0x0A
-    let lines = splitLines(contents)
-    var dl = lines.enumerated().map { DiffLine(kind: .added, oldNo: 0, newNo: $0.offset + 1, text: $0.element) }
-    if !endsWithNewline, !dl.isEmpty { dl[dl.count - 1].noNewline = true }
-    let hunk = Hunk(oldStart: 0, oldCount: 0, newStart: 1, newCount: dl.count, section: "", lines: dl)
-    return FileDiff(change: change, hunks: [hunk])
+    let admission = Admission(measuring: contents)
+    let kept = admission.lines > ContentLimits.wholeLines ? ContentLimits.previewLines : admission.lines
+    let admitted = AdmittedLines(contents, limit: kept)
+    var dl = admitted.lines.enumerated().map { DiffLine(kind: .added, oldNo: 0, newNo: $0.offset + 1, text: $0.element, cut: admitted.cut[$0.offset] ?? 0) }
+    if !endsWithNewline, kept == admission.lines, !dl.isEmpty { dl[dl.count - 1].noNewline = true }
+    let hunk = Hunk(oldStart: 0, oldCount: 0, newStart: 1, newCount: admission.lines, section: "", lines: dl)
+    var diff = FileDiff(change: change, hunks: [hunk])
+    diff.omittedLines = admission.lines - kept
+    diff.additions = admission.lines
+    diff.newSideInWorktree = true
+    return diff
 }
 
 /// Builds a diff for a repository inside the worktree that git doesn't track, which git would

@@ -58,7 +58,7 @@ import Testing
     @Test func contentsTooLargeOrBinaryAreReadOnce() async throws {
         let swift = try #require(SyntaxRuntime.shared?.language(forPath: "a.swift"))
         let reads = ParseCount()
-        let binary = Data("func f() {}\n\0".utf8), large = Data(repeating: 0x20, count: ContentAnalysis.largestFile + 1)
+        let binary = Data("func f() {}\n\0".utf8), large = Data(repeating: 0x20, count: ContentLimits.analysisBytes + 1)
         let sources = [binary, large].map { data in
             ContentAnalysis.Source(key: ContentKey(oid: blobID(of: data), grammar: swift.version), language: swift) {
                 reads.increment()

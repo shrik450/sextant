@@ -231,8 +231,8 @@ final class Repository {
         guard let resolved = try? await Resolver(git: git).resolve(review, worktrees: refs.worktrees, pullRequests: []),
               let diffs = try? await resolved.git.diff(resolved.target) else { return Opening(refs: refs) }
         var firstWhole: [DiffLine]?
-        if let first = diffs.first, !first.isBinary, !first.hunksAreWholeFile, let old = try? await resolved.git.oldLines(of: first) {
-            firstWhole = wholeFile(first.hunks, oldLines: old)
+        if let first = diffs.first, !first.isBinary, !first.hunksAreWholeFile, case .lines(let all)? = await resolved.git.whole(of: first) {
+            firstWhole = all
         }
         return Opening(refs: refs, loaded: Loaded(review: review, resolved: resolved, diffs: diffs, firstWhole: firstWhole))
     }

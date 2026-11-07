@@ -76,6 +76,9 @@ public actor ContentAnalysis {
     ///   - definitions: Whether to find its definitions too.
     public func analysis(of lines: [String], oid: String, language: SyntaxLanguage, definitions wanted: Bool) async -> BlobAnalysis {
         let key = ContentKey(oid: oid, grammar: language.version)
+        if let known = Admissions.shared[oid], !known.analyzes {
+            return BlobAnalysis(tokens: [[Token]](repeating: [], count: lines.count), definitions: wanted && language.hasTags ? [] : nil)
+        }
         let needsDefinitions = wanted && language.hasTags
         if let hit = memory.value(for: CacheKey(Kept(content: key))) as? BlobAnalysis, !needsDefinitions || hit.definitions != nil { return hit }
         if let r = running[key], r.definitions || !needsDefinitions { return await r.task.value }
@@ -104,14 +107,6 @@ public actor ContentAnalysis {
             self.language = language
             self.read = read
         }
-    }
-
-    /// The largest contents parsed for definitions, in bytes.
-    public static let largestFile = 1 << 20
-
-    /// Whether contents are worth parsing for definitions: not too large, and not binary.
-    public static func isParseable(_ data: Data) -> Bool {
-        data.count <= largestFile && !data.prefix(8000).contains(0)
     }
 
     /// Returns the definitions in some versions of files, reading and parsing in parallel those
@@ -168,10 +163,16 @@ public actor ContentAnalysis {
 
     @concurrent private static func found(in source: Source, analysis: ContentAnalysis) async throws -> Found? {
         try Task.checkCancellation()
-        guard let data = await source.read() else { return nil }
+        if let known = Admissions.shared[source.key.oid], !known.analyzes {
+            return Found(asked: source.key, read: source.key, definitions: [])
+        }
+        guard let data = await source.read() else {
+            guard let known = Admissions.shared[source.key.oid], !known.analyzes else { return nil }
+            return Found(asked: source.key, read: source.key, definitions: [])
+        }
         let read = ContentKey(oid: blobID(of: data), grammar: source.key.grammar)
         if let saved = await analysis.saved(read) { return Found(asked: source.key, read: read, definitions: saved) }
-        let found = isParseable(data)
+        let found = Admissions.shared.measure(data, oid: read.oid).analyzes
             ? autoreleasepool { indexedDefinitions(source.language.symbols(splitLines(data).joined(separator: "\n"))) }
             : []
         return Found(asked: source.key, read: read, definitions: found)

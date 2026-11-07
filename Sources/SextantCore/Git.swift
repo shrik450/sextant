@@ -11,10 +11,13 @@ public struct GitError: Error, LocalizedError, Sendable {
 
     public var message: String
     public var reason: Reason
+    /// How large the object is, for an object too large for the caller, when git said.
+    public var size: Int?
 
-    public init(message: String, reason: Reason = .failed) {
+    public init(message: String, reason: Reason = .failed, size: Int? = nil) {
         self.message = message
         self.reason = reason
+        self.size = size
     }
 
     public var errorDescription: String? { message }
@@ -57,12 +60,15 @@ public struct Git: Sendable {
     public enum Limit {
         /// One value, such as an object ID, a ref, or one commit's message.
         public static let value = 1 << 20
-        /// A list over the repository, such as its files, refs, commits, status or search results.
+        /// A list over the repository, such as its files, refs, commits or status. Paths and
+        /// object IDs, not contents, so a million files fit several times over.
         public static let listing = 256 << 20
-        /// A diff with its patches.
-        public static let patch = 512 << 20
-        /// One file's contents.
-        public static let blob = 256 << 20
+        /// A diff with its patches. Git leaves out each side larger than
+        /// `ContentLimits.wholeBytes` (see `Git.diff(_:)`), so this bounds how many such files
+        /// a diff holds, not any one file; parsed, a patch takes a few times its size.
+        public static let patch = 256 << 20
+        /// One file's contents: the most shown whole.
+        public static let blob = ContentLimits.wholeBytes
     }
 
     /// Runs git in a directory and returns what it prints.
@@ -78,6 +84,21 @@ public struct Git: Sendable {
     ///   when the task is cancelled.
     public static func run(_ executable: String, in dir: URL, _ args: [String], stdin: Data? = nil, allowedStatuses: Set<Int32> = [0],
                            priority: QualityOfService = .userInitiated, limit: Int) async throws -> Data {
+        try await runKeeping(executable, in: dir, args, stdin: stdin, allowedStatuses: allowedStatuses, priority: priority, limit: limit, start: false).data
+    }
+
+    /// Runs git in a directory and returns the start of what it prints, stopping it once it has
+    /// printed `limit` bytes.
+    ///
+    /// - Returns: What git printed up to `limit`, and whether that's all of it.
+    /// - Throws: `GitError` when git fails, and `CancellationError` when the task is cancelled.
+    public static func runStart(_ executable: String, in dir: URL, _ args: [String], allowedStatuses: Set<Int32> = [0],
+                                priority: QualityOfService = .userInitiated, limit: Int) async throws -> (data: Data, complete: Bool) {
+        try await runKeeping(executable, in: dir, args, stdin: nil, allowedStatuses: allowedStatuses, priority: priority, limit: limit, start: true)
+    }
+
+    private static func runKeeping(_ executable: String, in dir: URL, _ args: [String], stdin: Data?, allowedStatuses: Set<Int32>,
+                                   priority: QualityOfService, limit: Int, start: Bool) async throws -> (data: Data, complete: Bool) {
         var env = ProcessInfo.processInfo.environment
         env["GIT_OPTIONAL_LOCKS"] = "0"
         env["GIT_PAGER"] = "cat"
@@ -87,18 +108,19 @@ public struct Git: Sendable {
         let ran: ProcessOutput
         do {
             ran = try await runProcess(executable, ["-c", "core.quotePath=false", "-c", "color.ui=false", "-c", "log.showSignature=false"] + args,
-                                       in: dir, environment: env, input: stdin, outputLimit: limit, qos: priority)
+                                       in: dir, environment: env, input: stdin, outputLimit: limit, keepingStart: start, qos: priority)
         } catch ProcessFailure.couldNotStart(let code) {
             throw GitError(message: "Couldn't run git at \(executable): \(String(cString: strerror(code)))")
         } catch ProcessFailure.outputTooLarge(let limit) {
             throw GitError(message: "git \(args.first ?? "") printed more than \(ByteCountFormatter.string(fromByteCount: Int64(limit), countStyle: .binary))",
                            reason: .outputTooLarge(limit: limit))
         }
+        if ran.truncated { return (ran.output, false) }
         guard allowedStatuses.contains(ran.status) else {
             let msg = String(decoding: ran.errors, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
             throw GitError(message: msg.isEmpty ? "git \(args.first ?? "") failed" : msg)
         }
-        return ran.output
+        return (ran.output, true)
     }
 
     /// Runs git in the checkout and returns what it prints (see `run(_:in:_:stdin:allowedStatuses:priority:limit:)`).
@@ -212,12 +234,17 @@ public struct Git: Sendable {
         return try await loadDiff(target, args: args)
     }
 
+    /// Runs a diff with its patches, and lists the untracked files with it.
+    ///
+    /// Git compares no side larger than `ContentLimits.wholeBytes`, which it reports as binary;
+    /// those sides are measured, and a file with one gets its `uncomparedSize` instead.
     private func loadDiff(_ target: Target, args: [String]) async throws -> [FileDiff] {
-        async let patchData = run(["diff"] + Git.diffFlags + args + ["--"], limit: Limit.patch)
+        async let patchData = run(["-c", "core.bigFileThreshold=\(ContentLimits.wholeBytes)", "diff"] + Git.diffFlags + args + ["--"], limit: Limit.patch)
         async let untracked = target.includesWorktree ? untrackedFiles() : []
         var files = parseRawPatchZ(try await patchData)
 
         if target.includesWorktree {
+            for i in files.indices where !files[i].change.isDeleted { files[i].newSideInWorktree = true }
             for i in files.indices where files[i].change.newMode == gitlinkMode && files[i].change.newOid == zeroOid {
                 files[i].change.newOid = subprojectCommit(files[i]) ?? zeroOid
             }
@@ -229,12 +256,53 @@ public struct Git: Sendable {
                 if path.hasSuffix("/") {
                     files.append(untrackedRepositoryDiff(path: String(path.dropLast())))
                 } else if let oid = hashes[unhashed.count + n] {
-                    files.append(untrackedFileDiff(path: path, oid: oid, contents: readWorktreeFile(path), mode: worktreeMode(path)))
+                    files.append(untrackedFileDiff(path: path, oid: oid, contents: readWorktreeFile(path, limit: 4 << 20), mode: worktreeMode(path)))
                 }
             }
             files.sort { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
         }
+        try await markUncompared(&files)
         return files
+    }
+
+    /// Marks the files git called binary because a side is too large to compare.
+    private func markUncompared(_ files: inout [FileDiff]) async throws {
+        let binary = files.indices.filter { files[$0].isBinary }
+        guard !binary.isEmpty else { return }
+        var stored = Set<String>()
+        for i in binary {
+            let c = files[i].change
+            if c.oldOid != zeroOid { stored.insert(c.oldOid) }
+            if c.newOid != zeroOid, !files[i].newSideInWorktree { stored.insert(c.newOid) }
+        }
+        let sizes = try await objectSizes(Array(stored))
+        for i in binary {
+            let c = files[i].change
+            let new = files[i].newSideInWorktree ? worktreeSize(c.path) : sizes[c.newOid]
+            let largest = max(sizes[c.oldOid] ?? 0, new ?? 0)
+            guard largest > ContentLimits.wholeBytes else { continue }
+            files[i].isBinary = false
+            files[i].uncomparedSize = largest
+        }
+    }
+
+    /// Returns the size of each object that exists, by ID, through one `git cat-file`.
+    func objectSizes(_ oids: [String]) async throws -> [String: Int] {
+        guard !oids.isEmpty else { return [:] }
+        let out = try await run(["cat-file", "--batch-check=%(objectname) %(objectsize)"], stdin: Data(oids.map { $0 + "\n" }.joined().utf8), limit: Limit.listing)
+        var sizes: [String: Int] = [:]
+        for line in out.split(separator: 0x0A) {
+            let f = line.split(separator: 0x20)
+            if f.count == 2, let n = Int(String(decoding: f[1], as: UTF8.self)) { sizes[String(decoding: f[0], as: UTF8.self)] = n }
+        }
+        return sizes
+    }
+
+    /// The size of a regular worktree file, without following a symbolic link.
+    func worktreeSize(_ path: String) -> Int? {
+        var st = stat()
+        guard lstat(root.appendingPathComponent(path).path, &st) == 0, st.st_mode & S_IFMT == S_IFREG else { return nil }
+        return Int(st.st_size)
     }
 
     /// Lists untracked files that aren't ignored, and repositories nested in the worktree, as
@@ -320,21 +388,34 @@ public struct Git: Sendable {
     /// - Parameter limit: The most bytes to read.
     /// - Returns: Nil for a file larger than `limit`, or for a path that's neither a regular file
     ///   nor a symbolic link.
-    public func readWorktreeFile(_ path: String, limit: Int = 4 << 20) -> Data? {
+    public func readWorktreeFile(_ path: String, limit: Int = Limit.blob) -> Data? {
+        guard let read = readWorktreeStart(path, limit: limit), read.complete else { return nil }
+        return read.data
+    }
+
+    /// Reads the start of a worktree path the way git stores it (see `readWorktreeFile(_:limit:)`).
+    ///
+    /// - Parameter limit: The most bytes to read.
+    /// - Returns: Up to `limit` bytes, and whether they're the whole file, or nil for a path
+    ///   that's neither a regular file nor a symbolic link.
+    public func readWorktreeStart(_ path: String, limit: Int) -> (data: Data, complete: Bool)? {
         let full = root.appendingPathComponent(path).path
         let fd = open(full, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
-        guard fd >= 0 else { return errno == ELOOP ? readLink(full) : nil }
+        guard fd >= 0 else { return errno == ELOOP ? readLink(full).map { ($0, true) } : nil }
         defer { close(fd) }
         var st = stat()
-        guard fstat(fd, &st) == 0, st.st_mode & S_IFMT == S_IFREG, st.st_size <= limit else { return nil }
-        var data = Data(count: Int(st.st_size) + 1)
+        guard fstat(fd, &st) == 0, st.st_mode & S_IFMT == S_IFREG else { return nil }
+        var data = Data(count: min(Int(st.st_size), limit) + 1)
         var count = 0
         while true {
             if count == data.count {
-                guard count <= limit else { return nil }
+                guard count <= limit else {
+                    data.count = limit
+                    return (data, false)
+                }
                 data.count = min(count + (64 << 10), limit + 1)
             }
-            let n = data.withUnsafeMutableBytes { read(fd, $0.baseAddress! + count, $0.count - count) }
+            let n = data.withUnsafeMutableBytes { Darwin.read(fd, $0.baseAddress! + count, $0.count - count) }
             if n == 0 { break }
             if n < 0 {
                 if errno == EINTR { continue }
@@ -343,18 +424,45 @@ public struct Git: Sendable {
             count += n
         }
         data.count = count
-        return data
+        return (data, true)
     }
 
     /// Old-side file lines, for expanding context around hunks.
     ///
+    /// The old side's admission is decided once by its blob ID (see `Admissions`): a side too
+    /// large to show whole is read once at most, to measure it.
+    ///
     /// - Parameter limit: The most bytes of the old side the caller can use.
-    /// - Returns: No lines for a file without an old side, like an added one.
-    /// - Throws: `GitError` if the old side can't be read, or is larger than `limit` (reason
-    ///   `.outputTooLarge`).
-    public func oldLines(of file: FileDiff, limit: Int = Limit.blob) async throws -> [String] {
-        guard file.change.oldOid != zeroOid else { return [] }
-        return splitLines(try await blob(file.change.oldOid, limit: limit))
+    /// - Returns: No lines for a file without an old side, like an added one, or nil when the
+    ///   old side is too large to show whole.
+    /// - Throws: `GitError` if the old side can't be read, or is larger than a `limit` below
+    ///   `ContentLimits.wholeBytes` (reason `.outputTooLarge`).
+    public func oldLines(of file: FileDiff, limit: Int = Limit.blob) async throws -> AdmittedLines? {
+        let oid = file.change.oldOid
+        guard oid != zeroOid else { return AdmittedLines(lines: []) }
+        if let known = Admissions.shared[oid], !known.showsWhole { return nil }
+        let data: Data
+        do {
+            data = try await blob(oid, limit: min(limit, Limit.blob))
+        } catch let e as GitError where limit >= Limit.blob && e.reason == .outputTooLarge(limit: Limit.blob) {
+            Admissions.shared.record(Admission(bytes: e.size ?? Limit.blob + 1, lines: 0, longestLine: 0), for: oid)
+            return nil
+        }
+        guard Admissions.shared.measure(data, oid: oid).showsWhole else { return nil }
+        return AdmittedLines(data)
+    }
+
+    /// Reads the start of one side of a file: up to `ContentLimits.previewBytes`, for a preview
+    /// of a file too large to show whole.
+    ///
+    /// - Parameter old: Whether to read the old side rather than the new.
+    /// - Returns: The bytes read and whether they're the whole side, or nil if it can't be read.
+    public func start(of file: FileDiff, old: Bool) async -> (data: Data, complete: Bool)? {
+        let limit = ContentLimits.previewBytes
+        if !old, file.newSideInWorktree { return readWorktreeStart(file.path, limit: limit) }
+        let oid = old ? file.change.oldOid : file.change.newOid
+        guard oid != zeroOid else { return nil }
+        return try? await Git.runStart(executable, in: root, ["cat-file", "blob", oid], limit: limit)
     }
 }
 

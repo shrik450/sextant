@@ -74,13 +74,41 @@ extension Git {
         return paths
     }
 
-    /// A file's contents in a snapshot, or nil if it doesn't exist there.
+    /// A file's contents in a snapshot, or nil if it doesn't exist there, or is too large to show
+    /// whole.
     public func contents(of path: String, in snapshot: Snapshot) async -> Data? {
+        guard case .whole(let data)? = await read(path, in: snapshot) else { return nil }
+        return data
+    }
+
+    /// What reading a file in a snapshot found.
+    public enum SnapshotRead: Sendable {
+        case whole(Data)
+        /// The file is larger than `ContentLimits.wholeBytes`, so only its start is read, up to
+        /// `ContentLimits.previewBytes`.
+        case start(Data, size: Int)
+    }
+
+    /// Reads a file in a snapshot whole, or only its start when it's too large to show whole.
+    ///
+    /// - Returns: Nil if the file doesn't exist in the snapshot or can't be read.
+    public func read(_ path: String, in snapshot: Snapshot) async -> SnapshotRead? {
+        let name: String
         switch snapshot {
-        case .worktree: readWorktreeFile(path)
-        case .index: try? await run(["cat-file", "blob", ":" + path], limit: Limit.blob)
-        case .commit(let c):
-            ObjectReader.canRead(c + ":" + path) ? (try? await objects.blob(c + ":" + path, limit: Limit.blob)) ?? nil : try? await run(["cat-file", "blob", c + ":" + path], limit: Limit.blob)
+        case .worktree:
+            guard let read = readWorktreeStart(path, limit: Limit.blob) else { return nil }
+            if read.complete { return .whole(read.data) }
+            return .start(read.data.prefix(ContentLimits.previewBytes), size: worktreeSize(path) ?? read.data.count)
+        case .index: name = ":" + path
+        case .commit(let c): name = c + ":" + path
+        }
+        do {
+            return .whole(ObjectReader.canRead(name) ? try await blob(name) : try await run(["cat-file", "blob", name], limit: Limit.blob))
+        } catch let e as GitError where e.reason == .outputTooLarge(limit: Limit.blob) {
+            guard let start = try? await Git.runStart(executable, in: root, ["cat-file", "blob", name], limit: ContentLimits.previewBytes) else { return nil }
+            return .start(start.data, size: e.size ?? Limit.blob + 1)
+        } catch {
+            return nil
         }
     }
 

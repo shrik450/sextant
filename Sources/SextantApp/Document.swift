@@ -65,7 +65,7 @@ final class FileState {
             all += h.lines
         }
         let isWhole = diff.hunksAreWholeFile && gaps.isEmpty
-        let sidesAreBlobs = (diff.change.isAdded || diff.change.isDeleted) && diff.hunks.count == 1 && diff.notes.isEmpty
+        let sidesAreBlobs = (diff.change.isAdded || diff.change.isDeleted) && diff.hunks.count == 1 && diff.notes.isEmpty && diff.omittedLines == 0
         hunks = FileText(all, isWhole: isWhole, gapsBefore: gaps, blobs: sidesAreBlobs ? FileText.blobs(of: diff.change) : (nil, nil),
                          path: diff.path, change: diff.change, isChange: isChange, hasLanguage: hasLanguage, contentAnalysis: contentAnalysis)
     }
@@ -79,10 +79,23 @@ final class FileState {
     /// - Parameters:
     ///   - contents: The file's lines, or nil for a binary file.
     ///   - oid: The blob ID of the file's contents.
-    convenience init(path: String, contents: [String]?, oid: String, contentAnalysis: ContentAnalysis?) {
+    convenience init(path: String, contents: AdmittedLines?, oid: String, contentAnalysis: ContentAnalysis?) {
         let change = RawChange(status: "=", oldMode: "100644", newMode: "100644", oldOid: oid, newOid: oid, oldPath: path, path: path)
         self.init(diff: FileDiff(change: change, isBinary: contents == nil), isChange: false, contentAnalysis: contentAnalysis)
-        whole = wholeText((contents ?? []).enumerated().map { DiffLine(kind: .context, oldNo: $0.offset + 1, newNo: $0.offset + 1, text: $0.element) })
+        whole = wholeText(FileState.unchangedLines(contents ?? AdmittedLines(lines: [])))
+    }
+
+    /// Creates a file opened for reading, outside the change being reviewed, that's too large to
+    /// show whole.
+    ///
+    /// - Parameters:
+    ///   - start: The file's first lines.
+    ///   - admission: The admission that found it too large.
+    convenience init(path: String, start: AdmittedLines, admission: Admission, contentAnalysis: ContentAnalysis?) {
+        let change = RawChange(status: "=", oldMode: "100644", newMode: "100644", oldOid: zeroOid, newOid: zeroOid, oldPath: path, path: path)
+        self.init(diff: FileDiff(change: change, isBinary: admission.isBinary), isChange: false, contentAnalysis: contentAnalysis)
+        tooLarge = admission
+        preview = previewText(start)
     }
 
     var path: String { diff.path }
@@ -91,8 +104,34 @@ final class FileState {
     var changeKeys: [String] { hunks.keyedRuns.map(\.key) }
 
     /// The text a pane showing this file by itself shows: the whole file once it's read, else
-    /// the hunks.
-    var wholeOrHunks: FileText { whole ?? hunks }
+    /// the start of a file too large to compare, else the hunks.
+    var wholeOrHunks: FileText { whole ?? preview ?? hunks }
+
+    /// The admission that found the file too large to show whole, once a read has.
+    ///
+    /// Such a file shows its hunks, or for a file git didn't compare, its first lines
+    /// (`preview`), and the reader says so.
+    private(set) var tooLarge: Admission?
+
+    /// The first lines of a file too large to compare, or opened outside the review and too
+    /// large to show whole.
+    private(set) var preview: FileText?
+
+    /// Whether the file shows as binary: git found it so, or its start shows it is.
+    var isBinary: Bool { diff.isBinary || tooLarge?.isBinary == true }
+
+    /// Whether the file can be shown without reading anything more: it's read whole, it's too
+    /// large to show whole, or it's binary.
+    var isReady: Bool { whole != nil || tooLarge != nil || diff.isBinary }
+
+    nonisolated private static func unchangedLines(_ admitted: AdmittedLines) -> [DiffLine] {
+        admitted.lines.enumerated().map { DiffLine(kind: .context, oldNo: $0.offset + 1, newNo: $0.offset + 1, text: $0.element, cut: admitted.cut[$0.offset] ?? 0) }
+    }
+
+    private func previewText(_ start: AdmittedLines) -> FileText {
+        FileText(FileState.unchangedLines(start), isWhole: false, gapsBefore: [:], blobs: (nil, nil),
+                 path: path, change: diff.change, isChange: isChange, hasLanguage: hasLanguage, contentAnalysis: contentAnalysis)
+    }
 
     /// Whether the file has an old side and a new side, so side by side shows something in each
     /// column.
@@ -119,11 +158,14 @@ final class FileState {
     /// doesn't analyze the file, so a pane waiting to show it waits only for the read. Callers
     /// share one read, which stops once every caller's task is cancelled.
     ///
+    /// A file too large to show whole (see `Admission`) isn't read whole: it records
+    /// `tooLarge`, and a file git didn't compare reads its first lines as its `preview`.
+    ///
     /// - Parameter limit: The most bytes of the old side the caller wants read.
-    /// - Returns: Whether the file is read whole.
+    /// - Returns: Whether the file is ready to show (see `isReady`).
     @discardableResult
     func loadWhole(git: Git, limit: Int = Git.Limit.blob) async -> Bool {
-        while whole == nil, !diff.isBinary, limit > largerThan {
+        while !isReady, limit > largerThan {
             let diff = self.diff
             guard let read = await wholeLoad.value(starting: { await FileState.readWhole(diff, git: git, limit: limit) }) else { return false }
             switch read {
@@ -132,30 +174,19 @@ final class FileState {
                 let read = wholeText(all)
                 whole = read
                 return whole === read
-            case .tooLarge(let tried): largerThan = max(largerThan, tried)
+            case .overLimit(let tried): largerThan = max(largerThan, tried)
+            case .partial(let admission, let start):
+                guard tooLarge == nil else { return true }
+                tooLarge = admission
+                if let start, !admission.isBinary { preview = previewText(start) }
+                return true
             }
         }
-        return whole != nil
+        return isReady
     }
 
-    /// What reading a whole file found.
-    enum WholeRead: Sendable {
-        case lines([DiffLine])
-        /// The old side is larger than the read's limit.
-        case tooLarge(limit: Int)
-    }
-
-    /// Reads a file's old side and fills in the unchanged lines around its hunks.
-    ///
-    /// - Returns: Nil if the old side couldn't be read.
     @concurrent nonisolated private static func readWhole(_ diff: FileDiff, git: Git, limit: Int) async -> WholeRead? {
-        do {
-            return .lines(wholeFile(diff.hunks, oldLines: try await git.oldLines(of: diff, limit: limit)))
-        } catch let e as GitError where e.reason == .outputTooLarge(limit: limit) {
-            return .tooLarge(limit: limit)
-        } catch {
-            return nil
-        }
+        await git.whole(of: diff, limit: limit)
     }
 
     /// Takes the whole file read elsewhere, if it isn't read yet.
@@ -255,16 +286,35 @@ final class FileText {
         if let cacheKey { MemoryCache.shared.resize(cacheKey, bytes: byteCount) }
     }
 
-    /// The size of the larger of the text's two sides, in UTF-8 bytes with a line ending for
-    /// each line: about what analyzing it parses.
-    private(set) lazy var largestSide: Int = {
-        var old = 0, new = 0
+    /// Whether a line is cut to `ContentLimits.lineWidth`, with the rest left out.
+    private(set) lazy var hasCutLines = lines.contains { $0.cut > 0 }
+
+    /// What the app takes in of the text, from the larger of its two sides: whether it's
+    /// analyzed, and if not, why.
+    ///
+    /// A side that's the whole of a blob is remembered by the blob's ID (see `Admissions`), so
+    /// every other use of that version decides the same.
+    private(set) lazy var admission: Admission = {
+        var old = (bytes: 0, lines: 0, longest: 0), new = old
         for l in lines {
-            let n = l.text.utf8.count + 1
-            if l.kind != .added { old += n }
-            if l.kind != .deleted { new += n }
+            let n = l.text.utf8.count
+            let width = l.cut > 0 ? l.text.utf16.count + l.cut : n > ContentLimits.analysisLineWidth ? l.text.utf16.count : n
+            if l.kind != .added {
+                old.bytes += n + l.cut + 1
+                old.lines += 1
+                old.longest = max(old.longest, width)
+            }
+            if l.kind != .deleted {
+                new.bytes += n + l.cut + 1
+                new.lines += 1
+                new.longest = max(new.longest, width)
+            }
         }
-        return max(old, new)
+        let oldSide = Admission(bytes: old.bytes, lines: old.lines, longestLine: old.longest)
+        let newSide = Admission(bytes: new.bytes, lines: new.lines, longestLine: new.longest)
+        if let oid = blobs.old { Admissions.shared.record(oldSide, for: oid) }
+        if let oid = blobs.new { Admissions.shared.record(newSide, for: oid) }
+        return oldSide.joined(newSide)
     }()
 
     /// Returns the index of a 1-based line number on one side, or of the nearest line after it.
@@ -314,6 +364,17 @@ final class FileText {
         return endings?[line]
     }
 
+    /// Returns what the reader shows after a line's text: how much of a line too long to take
+    /// in whole was left out, and how it ends if that changed.
+    func suffix(ofLine line: Int) -> String? {
+        let left = lines[line].cut
+        let cut = left > 0 ? "… \(left.formatted(.number)) more character\(left == 1 ? "" : "s")" : nil
+        switch (cut, ending(ofLine: line)) {
+        case let (cut?, ending?): return cut + " · " + ending
+        case let (cut, ending): return cut ?? ending
+        }
+    }
+
     /// Returns the unchanged runs to hide when showing just the changes.
     ///
     /// Leaves out the runs a pane opened and runs holding a line with a note.
@@ -353,6 +414,7 @@ final class FileText {
     func analyze(symbols: Bool) async {
         guard hasLanguage else { return }
         if tokens != nil, !symbols || outline != nil { return }
+        guard admission.analyzes else { return showPlain() }
         let withSymbols = symbols || symbolsWork.isRunning
         let lines = self.lines, isChange = self.isChange, path = self.path, blobs = self.blobs, contentAnalysis = self.contentAnalysis
         let work = withSymbols ? symbolsWork : tokensWork
@@ -363,6 +425,16 @@ final class FileText {
         if let d = a.definitions { definitions = d }
         if let o = a.outline { outline = o }
         hasTags = a.hasTags
+        resized()
+    }
+
+    /// Gives a text its admission doesn't let be analyzed no tokens, definitions or outline, so
+    /// it shows as plain text and nothing waits for it.
+    private func showPlain() {
+        tokens = [[Token]](repeating: [], count: lines.count)
+        definitions = []
+        outline = []
+        hasTags = false
         resized()
     }
 
@@ -457,7 +529,7 @@ final class FileText {
     ///
     /// Callers share one indexing, which stops once every caller's task is cancelled.
     func indexNames() async {
-        guard hasLanguage, names == nil, let tokens else { return }
+        guard hasLanguage, admission.analyzes, names == nil, let tokens else { return }
         let lines = self.lines, path = self.path
         guard let found = await naming.value(starting: { await FileText.indexNames(lines, tokens: tokens, path: path) }) else { return }
         if names == nil { names = found }
@@ -578,6 +650,8 @@ struct Row: Equatable {
         /// A file's title in the overview.
         case header
         case notice(String)
+        /// Says a file shows in part, which opens it in the user's editor when clicked.
+        case limit(String)
         case note(UUID)
     }
 
@@ -601,9 +675,14 @@ func layoutRows(files: [ShownFile], overview: Bool, split: Bool, showAll: Bool, 
     for (fi, shown) in files.enumerated() {
         let f = shown.file, t = shown.text
         if overview { both(Row(kind: .header, file: fi)) }
-        if f.diff.isBinary { both(Row(kind: .notice("Binary file"), file: fi)); continue }
-        let touchesNoLines = f.isChange && f.diff.hunks.isEmpty
-        if t.lines.isEmpty || (overview && touchesNoLines) { both(Row(kind: .notice(emptyNotice(f)), file: fi)); continue }
+        if f.isBinary { both(Row(kind: .notice("Binary file"), file: fi)); continue }
+        let admitted = admissionNotices(f, shown: t)
+        for kind in admitted { both(Row(kind: kind, file: fi)) }
+        let touchesNoLines = f.isChange && f.diff.hunks.isEmpty && f.diff.uncomparedSize == nil
+        if t.lines.isEmpty || (overview && touchesNoLines) {
+            if admitted.isEmpty { both(Row(kind: .notice(emptyNotice(f)), file: fi)) }
+            continue
+        }
         if touchesNoLines { both(Row(kind: .notice(emptyNotice(f)), file: fi)) }
 
         var anchors: [Int: [Note]] = [:]
@@ -652,6 +731,34 @@ func layoutRows(files: [ShownFile], overview: Bool, split: Bool, showAll: Bool, 
         }
     }
     return Layout(left: left, right: sideBySide ? right : nil)
+}
+
+/// Says why a file shows in part, or as plain text, as the rows heading its lines.
+///
+/// A file shows in part when it's too large to show whole (see `Admission`): its changes, the
+/// first lines of a change too long to take in, or the first lines of a file git didn't
+/// compare. Those notices open the file in the user's editor. A file a grammar covers shows as
+/// plain text when its text is too large, or its lines too long, to analyze.
+@MainActor
+func admissionNotices(_ f: FileState, shown t: FileText) -> [Row.Kind] {
+    var out: [Row.Kind] = []
+    let openIt = "Open in Editor to read it all."
+    let first = "These are its first \(t.lines.count.formatted(.number)) lines."
+    if let size = f.diff.uncomparedSize {
+        let why = Admission(bytes: size, lines: 0, longestLine: 0).reason ?? ""
+        out.append(.limit(t === f.preview && !t.lines.isEmpty ? "Too large to compare: \(why). \(first) \(openIt)" : "Too large to compare: \(why). \(openIt)"))
+    } else if f.diff.omittedLines > 0, t === f.hunks {
+        let total = t.lines.count + f.diff.omittedLines
+        out.append(.limit("Only the first \(t.lines.count.formatted(.number)) lines of this change show: it has \(total.formatted(.number)) lines, more than the \(ContentLimits.wholeLines.formatted(.number)) shown whole. \(openIt)"))
+    } else if let a = f.tooLarge, !t.isWhole {
+        let why = a.reason ?? ""
+        out.append(.limit(t === f.preview ? "Too large to show whole: \(why). \(first) \(openIt)" : "Only the changes show: \(why). \(openIt)"))
+    }
+    if f.hasLanguage, !t.lines.isEmpty, t.admission.verdict == .plain, let why = t.admission.reason {
+        let cut = t.hasCutLines ? " Longer lines show their first \(ContentLimits.lineWidth.formatted(.number)) characters." : ""
+        out.append(.notice("Plain text, without colours or definitions: \(why).\(cut)"))
+    }
+    return out
 }
 
 /// Says what a change that touches no lines did, such as renaming the file or changing its mode.

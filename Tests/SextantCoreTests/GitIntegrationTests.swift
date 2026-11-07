@@ -77,9 +77,9 @@ import Testing
         #expect(Self.ready)
         for target in [Target.worktree(since: nil), .staged, .unstaged] {
             for file in try await repo.diff(target) where !file.change.isAdded && !file.isBinary && !file.change.isDeleted {
-                let old = try await repo.oldLines(of: file)
+                let old = try #require(try await repo.oldLines(of: file))
                 let all = wholeFile(file.hunks, oldLines: old)
-                #expect(all.filter { $0.kind != .added }.map(\.text) == old, "\(file.path) old side")
+                #expect(all.filter { $0.kind != .added }.map(\.text) == old.lines, "\(file.path) old side")
                 let newData = target == .staged ? await repo.contents(of: file.path, in: .index) : repo.readWorktreeFile(file.path)
                 #expect(all.filter { $0.kind != .deleted }.map(\.text) == splitLines(try #require(newData)), "\(file.path) new side")
             }

@@ -75,9 +75,9 @@ final class ObjectReader: @unchecked Sendable {
                     switch answer {
                     case .blob(let data): continuation.resume(returning: data)
                     case .notBlob, .failed: continuation.resume(returning: nil)
-                    case .tooLarge:
-                        let size = ByteCountFormatter.string(fromByteCount: Int64(limit), countStyle: .binary)
-                        continuation.resume(throwing: GitError(message: "\(name) is larger than \(size)", reason: .outputTooLarge(limit: limit)))
+                    case .tooLarge(let size):
+                        let shown = ByteCountFormatter.string(fromByteCount: Int64(limit), countStyle: .binary)
+                        continuation.resume(throwing: GitError(message: "\(name) is larger than \(shown)", reason: .outputTooLarge(limit: limit), size: size))
                     }
                 }
             }
@@ -89,7 +89,7 @@ final class ObjectReader: @unchecked Sendable {
     private enum Answer {
         case blob(Data)
         case notBlob
-        case tooLarge
+        case tooLarge(size: Int)
         /// The process couldn't answer, so the caller can start it again and retry once.
         case failed
     }
@@ -101,7 +101,7 @@ final class ObjectReader: @unchecked Sendable {
         let isBlob = fields[1] == "blob"
         guard isBlob, size <= limit else {
             if size > Self.largestSkipped || !skip(size + 1) { stop() }
-            return isBlob ? .tooLarge : .notBlob
+            return isBlob ? .tooLarge(size: size) : .notBlob
         }
         guard let body = readBody(size) else { return .failed }
         return .blob(body)

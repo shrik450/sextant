@@ -169,7 +169,7 @@ private func hunk(_ oldStart: Int, _ newStart: Int, _ lines: [(LineKind, String)
         hunk(2, 2, [(.context, "L2"), (.deleted, "L3"), (.context, "L4")]),
         hunk(7, 6, [(.context, "L7"), (.deleted, "L8"), (.added, "a"), (.added, "b"), (.context, "L9")]),
     ]
-    let all = wholeFile(hunks, oldLines: old)
+    let all = wholeFile(hunks, oldLines: AdmittedLines(lines: old))
     #expect(all.map(\.text) == ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", "a", "b", "L9", "L10", "L11", "L12"])
     #expect(all.filter { $0.kind != .added }.map(\.oldNo) == Array(1...12))
     #expect(all.filter { $0.kind != .deleted }.map(\.newNo) == Array(1...12))
@@ -180,11 +180,11 @@ private func hunk(_ oldStart: Int, _ newStart: Int, _ lines: [(LineKind, String)
     let inserted = DiffLine(kind: .added, oldNo: 0, newNo: 4, text: "x")
     let h = Hunk(oldStart: 3, oldCount: 0, newStart: 4, newCount: 2, section: "",
                  lines: [inserted, DiffLine(kind: .added, oldNo: 0, newNo: 5, text: "y")])
-    let all = wholeFile([h], oldLines: ["a", "b", "c", "d"])
+    let all = wholeFile([h], oldLines: AdmittedLines(lines: ["a", "b", "c", "d"]))
     #expect(all.map(\.text) == ["a", "b", "c", "x", "y", "d"])
     #expect(all.last?.newNo == 6)
     let added = hunk(0, 1, [(.added, "one"), (.added, "two")])
-    #expect(wholeFile([added], oldLines: []).map(\.text) == ["one", "two"])
+    #expect(wholeFile([added], oldLines: AdmittedLines(lines: [])).map(\.text) == ["one", "two"])
 }
 
 @Test func countsTheUnchangedLinesBetweenHunksAsWholeFileFillsThem() {
@@ -196,7 +196,7 @@ private func hunk(_ oldStart: Int, _ newStart: Int, _ lines: [(LineKind, String)
                         lines: [DiffLine(kind: .added, oldNo: 0, newNo: 1, text: "")])
     let hunks = [deleted(5, 3), deleted(20, 2), inserted, deleted(31, 1)]
     #expect(unchangedLinesBefore(hunks) == [4, 12, 9, 0])
-    let kinds = wholeFile(hunks, oldLines: Array(repeating: "", count: 40)).map { l in
+    let kinds = wholeFile(hunks, oldLines: AdmittedLines(lines: Array(repeating: "", count: 40))).map { l in
         switch l.kind { case .context: "."; case .added: "+"; case .deleted: "-" }
     }.joined()
     #expect(kinds == "....---............--.........+-.........")
@@ -211,7 +211,7 @@ private func hunk(_ oldStart: Int, _ newStart: Int, _ lines: [(LineKind, String)
              lines: [DiffLine(kind: .added, oldNo: 0, newNo: old - 2, text: "")])
     }
     func kinds(_ hunks: [Hunk]) -> String {
-        wholeFile(hunks, oldLines: Array(repeating: "", count: 12)).map { l in
+        wholeFile(hunks, oldLines: AdmittedLines(lines: Array(repeating: "", count: 12))).map { l in
             switch l.kind { case .context: "."; case .added: "+"; case .deleted: "-" }
         }.joined()
     }

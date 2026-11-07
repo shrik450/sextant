@@ -62,9 +62,32 @@ public struct DefinitionIndex: Sendable {
         return covered.compactMap { b in
             guard let language = runtime.language(forPath: b.path), language.hasTags else { return nil }
             let read: @Sendable () async -> Data? = { [path = b.path, oid = b.oid, inWorktree = b.inWorktree] in
-                inWorktree ? git.readWorktreeFile(path, limit: ContentAnalysis.largestFile) : await git.blob(oid: oid)
+                await DefinitionIndex.readForAnalysis(path: path, oid: oid, inWorktree: inWorktree, git: git)
             }
             return File(path: b.path, source: ContentAnalysis.Source(key: ContentKey(oid: b.oid, grammar: language.version), language: language, read: read))
+        }
+    }
+
+    /// Reads a version of a file to analyze, up to `ContentLimits.analysisBytes`.
+    ///
+    /// A version larger than that has its admission recorded instead, so it isn't read again.
+    ///
+    /// - Returns: The contents, or nil if they're too large or can't be read.
+    static func readForAnalysis(path: String, oid: String, inWorktree: Bool, git: Git) async -> Data? {
+        if inWorktree {
+            if let size = git.worktreeSize(path), size > ContentLimits.analysisBytes {
+                Admissions.shared.record(Admission(bytes: size, lines: 0, longestLine: 0), for: oid)
+                return nil
+            }
+            return git.readWorktreeFile(path, limit: ContentLimits.analysisBytes)
+        }
+        do {
+            return try await git.blob(oid, limit: ContentLimits.analysisBytes)
+        } catch let e as GitError where e.reason == .outputTooLarge(limit: ContentLimits.analysisBytes) {
+            Admissions.shared.record(Admission(bytes: e.size ?? ContentLimits.analysisBytes + 1, lines: 0, longestLine: 0), for: oid)
+            return nil
+        } catch {
+            return nil
         }
     }
 
@@ -82,7 +105,7 @@ public struct DefinitionIndex: Sendable {
                     let url = git.root.appendingPathComponent(path)
                     guard let language = runtime.language(forPath: path), language.hasTags,
                           (try? FileManager.default.attributesOfItem(atPath: url.path))?[.type] as? FileAttributeType == .typeRegular,
-                          let data = git.readWorktreeFile(path, limit: ContentAnalysis.largestFile), ContentAnalysis.isParseable(data) else { return nil }
+                          let data = git.readWorktreeFile(path, limit: ContentLimits.analysisBytes), Admissions.shared.measure(data, oid: blobID(of: data)).analyzes else { return nil }
                     return File(path: path, source: ContentAnalysis.Source(key: ContentKey(oid: blobID(of: data), grammar: language.version), language: language, read: { data }))
                 }
             }
