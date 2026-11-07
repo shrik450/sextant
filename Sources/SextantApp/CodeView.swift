@@ -126,8 +126,12 @@ func render(_ rows: [Row], side: Int, files: [ShownFile], notes: [UUID: Note], s
             s = n
             attrs = muted
         case .note(let id):
-            let anchoredSide = files[row.file].text.lines[row.line].kind == .deleted ? 0 : 1
-            s = side < 0 || side == anchoredSide ? (notes[id]?.text ?? "").replacingOccurrences(of: "\n", with: "\u{2028}") : ""
+            let note = notes[id]
+            let lines = (note?.text ?? "").split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
+            let anchoredSide = note?.lines?.old == true ? 0 : 1
+            s = side < 0 || side == anchoredSide
+                ? lines.joined(separator: "\u{2028}")
+                : String(repeating: "\u{2028}", count: lines.count - 1)
             attrs = base.merging([.font: NSFont.systemFont(ofSize: style.font.pointSize), .sextantAction: ReaderAction.editNote(id), .cursor: NSCursor.pointingHand]) { $1 }
         }
         plain += s

@@ -292,7 +292,7 @@ final class Automation {
             setBackdrop(args)
             await waitIdle()
         case "note":
-            if let save = window?.noteOnSelection() { save(arg) } else { log("! no lines to note") }
+            if let save = window?.noteOnSelection() { save(arg.replacingOccurrences(of: "\\n", with: "\n")) } else { log("! no lines to note") }
             await waitIdle()
         case "stall":
             usleep(useconds_t((Double(arg) ?? 0) * 1000))
@@ -829,6 +829,8 @@ extension RepoWindowController {
                 case .note(let id): rows.append("note \(notes.notes.first { $0.id == id }?.text ?? "?")")
                 }
             }
+            let views = reader.codeViews
+            let misaligned = views.count == 2 ? views[0].rows.indices.filter { views[0].rect(ofRow: $0).minY != views[1].rect(ofRow: $0).minY }.count : 0
             let caret: String = reader.caret.map { c in
                 let path = reader.files[c.file].file.path
                 return reader.sideLine(at: c).map { lineReference(path: path, lines: $0.number...$0.number, old: $0.old) } ?? path
@@ -840,6 +842,7 @@ extension RepoWindowController {
                 "columns": code.side == 1 ? 2 : 1,
                 "showAll": reader.showAll,
                 "mismatched": mismatched,
+                "misaligned": misaligned,
                 "folds": folds,
                 "gaps": gaps,
                 "rows": Array(rows.prefix(600)),

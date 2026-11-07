@@ -548,9 +548,9 @@ func layoutRows(files: [ShownFile], overview: Bool, split: Bool, showAll: Bool, 
             for k in 0..<max(dels.count, adds.count) {
                 left.append(k < dels.count ? Row(kind: .line, file: fi, line: dels[k]) : Row(kind: .filler, file: fi))
                 right.append(k < adds.count ? Row(kind: .line, file: fi, line: adds[k]) : Row(kind: .filler, file: fi))
+                if k < dels.count { emitNotes(after: dels[k]) }
+                if k < adds.count { emitNotes(after: adds[k]) }
             }
-            for d in dels { emitNotes(after: d) }
-            for a in adds { emitNotes(after: a) }
         }
     }
     return Layout(left: left, right: sideBySide ? right : nil)

@@ -44,6 +44,8 @@ final class Reader: NSViewController, CodeViewDelegate {
         let gutter: Gutter
     }
     private var columns: [Column] = []
+    /// The code view of each column, left to right.
+    var codeViews: [CodeView] { columns.map(\.code) }
     private let stack = NSStackView()
     let header: PaneHeader
     private let emptyState = EmptyState(symbolSize: 40, font: .preferredFont(forTextStyle: .title3))

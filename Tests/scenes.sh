@@ -33,7 +33,7 @@ bundle_id=${SEXTANT_SCENES_BUNDLE:-com.shrikanthup.Sextant.scenes}
 main_checkout=$(cd "$(git -C "$here" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
 lock=${SEXTANT_PERF_LOCK:-$main_checkout/scratch/gui-lock}
 real_git=$(command -v git)
-scenes=(page symlink find reload close base status shared showall columns rename read endings removed)
+scenes=(page symlink find reload close base status shared showall columns rename read endings removed notes)
 failed=0
 holding_lock=0
 
@@ -817,6 +817,35 @@ EOF
   expect removed "caret on the removed line" "$(value "$dir/removed.json" caret)" "a.swift:6 (old):9"
   expect removed "caret after Next Definition" "$(value "$dir/next.json" caret)" "a.swift:10:6"
   expect removed "caret after Previous Definition" "$(value "$dir/previous.json" caret)" "a.swift:7:6"
+}
+
+#######################################
+# Adds a note of three lines on the first removed line of a change read side by side: the note
+# must follow the line it's on, and every row after it must stay level with its other side.
+#######################################
+scene_notes() {
+  local dir repo
+  dir=$(scene_dir notes)
+  repo="$dir/repo"
+  mkdir -p "$repo"
+  g init -q -b main "$repo"
+  printf 'l1\nl2\nl3\nl4\nl5\nl6\n' > "$repo/a.txt"
+  g -C "$repo" add -A
+  g -C "$repo" commit -qm base
+  printf 'l1\nL2\nL3\nL4\nl5\nl6\n' > "$repo/a.txt"
+  cat > "$dir/script.txt" <<EOF
+defaults diffMode split
+defaults readerMode file
+open $repo
+wait
+note First\nsecond\nthird
+wait
+panes $dir/noted.json
+quit
+EOF
+  run_app "$dir"
+  expect notes "rows beside a note of three lines" "$(pane_rows "$dir" noted 0)" '[" 1 l1","+2 L2","note First\nsecond\nthird","+3 L3","+4 L4"," 5 l5"," 6 l6"]'
+  expect notes "rows out of level with their other side" "$(pane "$dir" noted 0 misaligned)" 0
 }
 
 if [[ ${1:-} == list ]]; then
