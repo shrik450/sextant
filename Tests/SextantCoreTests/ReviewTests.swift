@@ -200,7 +200,7 @@ private func describe(_ items: [OutlineItem], depth: Int = 0) -> [String] {
         "tail deleted @7",
     ])
     #expect(items[0].children[0].isTouched == false && items[0].isTouched)
-    #expect(changedDefinitions(in: items, lines: lines).map(\.name) == ["fresh", "gone", "edit", "tail"])
+    #expect(changedDefinitions(in: items).map(\.name) == ["fresh", "gone", "edit", "tail"])
 }
 
 @Test func aDefinitionWithChangedLinesOfItsOwnIsAChangedDefinition() {
@@ -213,7 +213,7 @@ private func describe(_ items: [OutlineItem], depth: Int = 0) -> [String] {
     let items = outline(lines: lines, new: [definition("B", "class", 0...3), definition("f", "method", 2...2)],
                         old: [definition("B", "class", 0...2), definition("f", "method", 1...1)])
     #expect(describe(items) == ["B modified @0", "  f none @2"])
-    #expect(changedDefinitions(in: items, lines: lines).map(\.name) == ["B"])
+    #expect(changedDefinitions(in: items).map(\.name) == ["B"])
 }
 
 @Test func definitionsOnTheSameLinesAreSiblings() {
@@ -232,4 +232,36 @@ private func describe(_ items: [OutlineItem], depth: Int = 0) -> [String] {
 @Test func foldsEverythingWhenNothingChanged() {
     let tree = fileTree(paths: treePaths, changed: [], reviewed: [], showUnchanged: false, revealed: [])
     #expect(outline(tree) == ["⋯ 4 []"])
+}
+
+private func context(_ old: Int, _ new: Int) -> DiffLine { DiffLine(kind: .context, oldNo: old, newNo: new, text: "") }
+private func removed(_ old: Int) -> DiffLine { DiffLine(kind: .deleted, oldNo: old, newNo: 0, text: "") }
+private func added(_ new: Int) -> DiffLine { DiffLine(kind: .added, oldNo: 0, newNo: new, text: "") }
+
+@Test func aTypeReplacedAtTheSameLineKeepsItsMembersAndTheGoneOnesKeepTheirs() {
+    let lines = (1...10).map { context($0, $0) } + (11...15).map(removed) + (11...15).map(added) + (16...20).map { context($0, $0) }
+    let a = [definition("StructA", "struct", 0...9), definition("configure", "method", 2...4)]
+    let tail = [definition("bar", "function", 15...19)]
+    let old = a + [definition("StructB", "struct", 10...14), definition("configure", "method", 11...13)] + tail
+    let new = a + [definition("StructC", "struct", 10...14), definition("configure", "method", 11...13)] + tail
+    let items = outline(lines: lines, new: new, old: old)
+    #expect(describe(items) == [
+        "StructA none @0",
+        "  configure none @2",
+        "StructC added @10",
+        "  configure added @11",
+        "StructB deleted @10",
+        "  configure deleted @11",
+        "bar none @15",
+    ])
+    #expect(changedDefinitions(in: items).map(\.name) == ["StructC", "configure", "StructB", "configure"])
+}
+
+@Test func aRemovalAtTheEndOfADefinitionChangesThatDefinitionNotTheNext() {
+    let lines = [context(1, 1), context(2, 2), removed(3), context(4, 3), context(5, 4)]
+    let old = [definition("foo", "function", 0...2), definition("bar", "function", 3...4)]
+    let new = [definition("foo", "function", 0...1), definition("bar", "function", 2...3)]
+    let items = outline(lines: lines, new: new, old: old)
+    #expect(describe(items) == ["foo modified @0", "bar none @2"])
+    #expect(changedDefinitions(in: items).map(\.name) == ["foo"])
 }

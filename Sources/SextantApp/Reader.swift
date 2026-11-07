@@ -990,7 +990,7 @@ final class Reader: NSViewController, CodeViewDelegate {
 
     private func stepChangedDefinition(_ dir: Int, in f: FileText) -> Bool {
         let here = caret?.line ?? topPosition?.line ?? 0
-        let starts = changedDefinitions(in: f.outline ?? [], lines: f.lines).compactMap { d -> Int? in
+        let starts = changedDefinitions(in: f.outline ?? []).compactMap { d -> Int? in
             let old = d.change == .deleted
             return f.lines.firstIndex { old ? $0.kind == .deleted && $0.oldNo == d.line + 1 : $0.kind != .deleted && $0.newNo == d.line + 1 }
         }
