@@ -293,11 +293,13 @@ public func jumpTargets(for query: String, in lines: [String]) -> [JumpTarget] {
 }
 
 /// Returns labels to pick one of `count` jump targets with: a key each while there are enough
-/// keys, home row first, then two keys each.
+/// keys, home row first, then two keys each, then three, so every target gets one and no label
+/// starts another.
 public func jumpLabels(_ count: Int) -> [String] {
     let keys = Array("asdfghjklqwertyuiopzxcvbnm").map(String.init)
-    if count <= keys.count { return Array(keys.prefix(count)) }
-    return Array(keys.lazy.flatMap { a in keys.map { a + $0 } }.prefix(count))
+    var labels = keys
+    while labels.count < count { labels = labels.flatMap { a in keys.map { a + $0 } } }
+    return Array(labels.prefix(count))
 }
 
 /// Returns a key for each run of changed lines in a file, which no other run in the file has.

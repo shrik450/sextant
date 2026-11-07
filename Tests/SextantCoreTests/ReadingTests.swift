@@ -335,3 +335,11 @@ private func file(_ newOid: String, path: String = "f") -> RawChange {
     let across = String(repeating: " ", count: 4095) + "𝕏yz"
     #expect(identifiers(in: across, tokens: []) == [NSRange(location: 4095, length: 4)])
 }
+
+@Test func jumpLabelsGrowAKeyLongerRatherThanRunOut() {
+    let many = jumpLabels(1000)
+    #expect(many.count == 1000 && Set(many).count == 1000)
+    #expect(many.allSatisfy { $0.count == 3 })
+    #expect(jumpLabels(676).allSatisfy { $0.count == 2 })
+    #expect(jumpLabels(0).isEmpty)
+}
