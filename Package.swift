@@ -16,7 +16,7 @@ let package = Package(
             .product(name: "SwiftTreeSitter", package: "SwiftTreeSitter"),
         ]),
         .executableTarget(name: "SextantApp", dependencies: ["SextantCore"]),
-        .executableTarget(name: "sextant"),
+        .executableTarget(name: "sextant", dependencies: ["SextantCore"]),
         .testTarget(name: "SextantCoreTests", dependencies: ["SextantCore"]),
     ]
 )
