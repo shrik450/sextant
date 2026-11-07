@@ -214,10 +214,16 @@ import Testing
     }
 }
 
-/// Counts parsed files from the index's progress reports.
+/// Counts parsed files from the index's progress reports, or reads from tasks running at once.
 final class ParseCount: @unchecked Sendable {
     private let lock = NSLock()
     private var count = 0
     var value: Int { lock.withLock { count } }
     func set(_ n: Int) { lock.withLock { count = n } }
+
+    /// Adds one to the count in one step, so tasks counting at once all add up.
+    ///
+    /// - Returns: The count after this one.
+    @discardableResult
+    func increment() -> Int { lock.withLock { count += 1; return count } }
 }

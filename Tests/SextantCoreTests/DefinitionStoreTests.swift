@@ -47,8 +47,7 @@ import Testing
         let contents = Data("func later() {}\n".utf8)
         let reads = ParseCount()
         let source = ContentAnalysis.Source(key: ContentKey(oid: blobID(of: contents), grammar: swift.version), language: swift) {
-            reads.set(reads.value + 1)
-            return reads.value == 1 ? nil : contents
+            reads.increment() == 1 ? nil : contents
         }
         let analysis = ContentAnalysis(cache: nil)
         #expect(try await analysis.definitions(of: [source])[source.key] == nil)
@@ -62,7 +61,7 @@ import Testing
         let binary = Data("func f() {}\n\0".utf8), large = Data(repeating: 0x20, count: ContentAnalysis.largestFile + 1)
         let sources = [binary, large].map { data in
             ContentAnalysis.Source(key: ContentKey(oid: blobID(of: data), grammar: swift.version), language: swift) {
-                reads.set(reads.value + 1)
+                reads.increment()
                 return data
             }
         }
