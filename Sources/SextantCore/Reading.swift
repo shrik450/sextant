@@ -258,10 +258,10 @@ public func jumpLabels(_ count: Int) -> [String] {
 
 /// Returns a key for each run of changed lines in a file, which no other run in the file has.
 ///
-/// A run's key comes from its lines, and from how many runs with the same lines come before it,
-/// so runs with the same lines have keys of their own. Nothing else goes into it, so a run has
-/// the same key in the hunks and in the whole file, and keeps it however the file changes
-/// elsewhere, unless a run with the same lines comes or goes before it.
+/// A run's key comes from its lines, with their endings, and from how many runs with the same
+/// lines come before it, so runs with the same lines have keys of their own. Nothing else goes
+/// into it, so a run has the same key in the hunks and in the whole file, and keeps it however
+/// the file changes elsewhere, unless a run with the same lines comes or goes before it.
 ///
 /// - Parameters:
 ///   - lines: The file's lines.
@@ -278,6 +278,8 @@ public func changeKeys(_ lines: [DiffLine], runs: [ChangeRun]) -> [String] {
         for l in lines[run.lines] {
             mix(l.kind == .added ? 0x2b : l.kind == .deleted ? 0x2d : 0x20)
             for b in l.text.utf8 { mix(b) }
+            if l.carriageReturn { mix(0x0d) }
+            if l.noNewline { mix(0x5c) }
             mix(0x0a)
         }
         let earlier = seen[hash, default: 0]

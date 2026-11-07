@@ -365,3 +365,21 @@ extension GitEdgeCaseTests {
         #expect(wholeFile(chmodded.hunks, oldLines: try await r.repo.oldLines(of: chmodded)).map(\.text) == ["echo hi"])
     }
 }
+
+extension GitEdgeCaseTests {
+    @Test func aChangeOfLineEndingsAloneSaysHowEachLineEnds() async throws {
+        let r = try ScratchRepo("line-endings")
+        try r.write("dos.txt", "one\r\ntwo\r\nthree\r\n")
+        try r.write("tail.txt", "a\nb")
+        try r.commitAll("Files")
+        try r.write("dos.txt", "one\r\ntwo\nthree\r\n")
+        try r.write("tail.txt", "a\nb\n")
+        let diffs = try await r.repo.diff(.worktree(since: nil))
+        let dos = try #require(diffs.first { $0.path == "dos.txt" }).hunks.flatMap(\.lines)
+        let tail = try #require(diffs.first { $0.path == "tail.txt" }).hunks.flatMap(\.lines)
+        #expect(dos.map(\.carriageReturn) == [true, true, false, true])
+        #expect(dos.filter { $0.kind != .context }.map(\.text) == ["two", "two"])
+        #expect(changedLineEndings(dos) == [1: "CRLF", 2: "LF"])
+        #expect(changedLineEndings(tail) == [1: "No newline at end of file", 2: "LF"])
+    }
+}

@@ -92,7 +92,12 @@ public struct DiffLine: Sendable, Hashable {
     public var oldNo: Int
     public var newNo: Int
     public var text: String
+    /// Whether the line is the last of its file, with no newline after it.
     public var noNewline: Bool = false
+    /// Whether the line ended in CR LF, before `text` left the CR out.
+    ///
+    /// Only a patch's lines say; lines filled in from a blob never do.
+    public var carriageReturn = false
 
     public init(kind: LineKind, oldNo: Int, newNo: Int, text: String, noNewline: Bool = false) {
         self.kind = kind

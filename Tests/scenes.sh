@@ -33,7 +33,7 @@ bundle_id=${SEXTANT_SCENES_BUNDLE:-com.shrikanthup.Sextant.scenes}
 main_checkout=$(cd "$(git -C "$here" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
 lock=${SEXTANT_PERF_LOCK:-$main_checkout/scratch/gui-lock}
 real_git=$(command -v git)
-scenes=(page symlink find reload close base status shared showall columns rename read)
+scenes=(page symlink find reload close base status shared showall columns rename read endings)
 failed=0
 holding_lock=0
 
@@ -749,6 +749,38 @@ EOF
   expect read "runs read once the file changes elsewhere" "$(plutil -extract read json -o - "$dir/edited.json" 2>/dev/null)" '[true,false,false]'
   expect read "runs read once a reviewed file changes elsewhere" "$(plutil -extract read json -o - "$dir/reviewed-edited.json" 2>/dev/null)" '[false,true,true,true]'
   expect read "file reviewed once it changes elsewhere" "$(value "$dir/reviewed-edited.json" files.0.reviewed)" false
+}
+
+#######################################
+# Reads a change that only turns one CR LF line ending into LF, and one that adds the newline
+# missing at the end of a file: each line must say how it ends, as the lines read the same.
+#######################################
+scene_endings() {
+  local dir repo
+  dir=$(scene_dir endings)
+  repo="$dir/repo"
+  mkdir -p "$repo"
+  g init -q -b main "$repo"
+  printf 'one\r\ntwo\r\nthree\r\n' > "$repo/dos.txt"
+  printf 'a\nb' > "$repo/tail.txt"
+  g -C "$repo" add -A
+  g -C "$repo" commit -qm base
+  printf 'one\r\ntwo\nthree\r\n' > "$repo/dos.txt"
+  printf 'a\nb\n' > "$repo/tail.txt"
+  cat > "$dir/script.txt" <<EOF
+defaults readerMode file
+open $repo
+wait
+panes $dir/dos.json
+render $dir/dos.png
+menu Next File
+wait
+panes $dir/tail.json
+quit
+EOF
+  run_app "$dir"
+  expect endings "rows of a line ending changed" "$(pane_rows "$dir" dos 0)" '[" 1 one","-2 two ⏎ CRLF","+2 two ⏎ LF"," 3 three"]'
+  expect endings "rows of a newline added at the end" "$(pane_rows "$dir" tail 0)" '[" 1 a","-2 b ⏎ No newline at end of file","+2 b ⏎ LF"]'
 }
 
 if [[ ${1:-} == list ]]; then

@@ -201,7 +201,7 @@ func parseHunkHeader(_ line: Substring) -> (Int, Int, Int, Int, String)? {
 /// Parses one file's patch.
 ///
 /// A line's trailing CR is dropped, as `splitLines(_:)` drops it, so a line reads the same from
-/// a patch as from its blob.
+/// a patch as from its blob, and `DiffLine.carriageReturn` says it was there.
 func parseFilePatch(_ lines: [ArraySlice<UInt8>], change: RawChange) -> FileDiff {
     var hunks: [Hunk] = []
     var notes: [String] = []
@@ -250,7 +250,8 @@ func parseFilePatch(_ lines: [ArraySlice<UInt8>], change: RawChange) -> FileDiff
         }
         let prefix = raw.prefix(prefixWidth)
         let body = raw.dropFirst(prefixWidth)
-        let text = String(decoding: body.last == 0x0D ? body.dropLast() : body, as: UTF8.self)
+        let carriageReturn = body.last == 0x0D
+        let text = String(decoding: carriageReturn ? body.dropLast() : body, as: UTF8.self)
         if prefixWidth == 1 {
             switch first {
             case UInt8(ascii: "+"):
@@ -269,6 +270,7 @@ func parseFilePatch(_ lines: [ArraySlice<UInt8>], change: RawChange) -> FileDiff
                 cur!.lines.append(DiffLine(kind: .context, oldNo: 0, newNo: newNo, text: text)); newNo += 1
             }
         }
+        if carriageReturn { cur!.lines[cur!.lines.count - 1].carriageReturn = true }
     }
     if let c = cur { hunks.append(c) }
     return FileDiff(change: change, hunks: hunks, isBinary: isBinary, notes: notes)

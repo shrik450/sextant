@@ -703,6 +703,7 @@ final class CodeView: NSTextView {
                 let changed = kind == .added ? t.color("addLine") : t.color("delLine")
                 (isReadLine(rows[r].file, rows[r].line) ? changed.asRead : changed).setFill()
                 full.fill()
+                if let ending = files[rows[r].file].text.ending(ofLine: rows[r].line) { drawEnding(ending, ofRow: r) }
             case .filler:
                 t.color("emptyLine").setFill(); full.fill()
                 t.color("hatch").setStroke(); full.hatch(origin: .zero)
@@ -762,6 +763,21 @@ final class CodeView: NSTextView {
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
         hoveredPill = nil
+    }
+
+    /// Draws how a line ends after its text, muted, as a line that reads the same as its pair
+    /// but ends differently shows.
+    private func drawEnding(_ ending: String, ofRow r: Int) {
+        guard let lm = layoutManager, let tc = textContainer else { return }
+        let chars = charRange(ofRow: r)
+        let glyphs = lm.glyphRange(forCharacterRange: chars, actualCharacterRange: nil)
+        let last = glyphs.length > 0 ? NSMaxRange(glyphs) - 1 : lm.glyphIndexForCharacter(at: chars.location)
+        let fragment = lm.lineFragmentRect(forGlyphAt: min(last, max(0, lm.numberOfGlyphs - 1)), effectiveRange: nil)
+        let x = glyphs.length > 0 ? lm.boundingRect(forGlyphRange: NSRange(location: last, length: 1), in: tc).maxX : fragment.minX
+        let attrs: [NSAttributedString.Key: Any] = [.font: style.pillFont, .foregroundColor: style.theme.fgMuted]
+        let size = (ending as NSString).size(withAttributes: attrs)
+        let origin = NSPoint(x: x + textContainerOrigin.x + style.font.pointSize, y: fragment.midY + textContainerOrigin.y - size.height / 2)
+        (ending as NSString).draw(at: origin, withAttributes: attrs)
     }
 
     /// Draws a fold or gap row's text as a capsule with an expand icon, marking where unchanged

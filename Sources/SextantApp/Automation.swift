@@ -815,6 +815,7 @@ extension RepoWindowController {
                         mismatched += 1
                         described += " | shown: \(shown)"
                     }
+                    if let ending = code.files[row.file].text.ending(ofLine: row.line) { described += " ⏎ \(ending)" }
                     rows.append(described)
                 case .filler: rows.append("filler")
                 case .fold(let range):

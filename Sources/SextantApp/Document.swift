@@ -210,6 +210,16 @@ final class FileText {
         return words?[line] ?? []
     }
 
+    private var endings: [Int: String]?
+
+    /// Returns how a removed or added line ends, if it reads the same as its pair but ends
+    /// differently, which the reader shows so the change isn't a mystery (see
+    /// `changedLineEndings(_:)`).
+    func ending(ofLine line: Int) -> String? {
+        if endings == nil { endings = changedLineEndings(lines) }
+        return endings?[line]
+    }
+
     /// Returns the unchanged runs to hide when showing just the changes.
     ///
     /// Leaves out the runs a pane opened and runs holding a line with a note.

@@ -289,3 +289,26 @@ private func file(_ newOid: String, path: String = "f") -> RawChange {
     #expect(changeOrdinal(atRow: 100, starts: starts) == 3)
     #expect(changeOrdinal(atRow: 3, starts: []) == 0)
 }
+
+@Test func onlyLinesThatReadTheSameSayHowTheyEnd() {
+    var lines = [line(.deleted, 1, 0, "a"), line(.deleted, 2, 0, "b"), line(.added, 0, 1, "a"), line(.added, 0, 2, "B"),
+                 line(.deleted, 3, 0, "c"), line(.added, 0, 3, "c")]
+    lines[0].carriageReturn = true
+    lines[1].carriageReturn = true
+    lines[4].carriageReturn = true
+    lines[5].carriageReturn = true
+    #expect(changedLineEndings(lines) == [0: "CRLF", 2: "LF"])
+    var cr = line(.deleted, 1, 0, "z")
+    cr.carriageReturn = true
+    cr.noNewline = true
+    #expect(changedLineEndings([cr, line(.added, 0, 1, "z")]) == [0: "CR, no newline at end of file", 1: "LF"])
+}
+
+@Test func aRunsKeyFollowsItsLinesAndTheirEndings() {
+    let crlf = [line(.deleted, 1, 0, "two"), line(.added, 0, 1, "two")]
+    var lf = crlf
+    lf[0].carriageReturn = true
+    #expect(keys(crlf) != keys(lf))
+    #expect(keys([line(.added, 0, 1, "x")]) != keys([line(.deleted, 1, 0, "x")]))
+}
+

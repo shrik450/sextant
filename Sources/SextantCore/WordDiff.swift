@@ -84,3 +84,29 @@ public func pairChangedLines(_ lines: [DiffLine]) -> [(Int, Int)] {
     }
     return pairs
 }
+
+/// Returns how each removed and added line that reads the same as its pair but ends differently
+/// ends, as when a change only turns CR LF into LF or adds a newline at the end of the file.
+///
+/// Such lines show no changed words, so without their endings the change looks like nothing.
+///
+/// - Returns: Each such line's ending, by index into `lines`: "CRLF", "LF", or that the file has
+///   no newline after it.
+public func changedLineEndings(_ lines: [DiffLine]) -> [Int: String] {
+    func ending(_ l: DiffLine) -> String {
+        switch (l.carriageReturn, l.noNewline) {
+        case (false, false): "LF"
+        case (true, false): "CRLF"
+        case (false, true): "No newline at end of file"
+        case (true, true): "CR, no newline at end of file"
+        }
+    }
+    var out: [Int: String] = [:]
+    for (d, a) in pairChangedLines(lines) where lines[d].text == lines[a].text {
+        let old = ending(lines[d]), new = ending(lines[a])
+        guard old != new else { continue }
+        out[d] = old
+        out[a] = new
+    }
+    return out
+}
