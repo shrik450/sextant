@@ -63,7 +63,13 @@ public final class SyntaxLanguage: Sendable {
     let tagsQuery: CheckedQuery?
     let localsQuery: CheckedQuery?
 
-    init(name: String, version: String, language: SwiftTreeSitter.Language, highlights: Query?, tags: Query?, locals: Query?) {
+    /// The grammar's keyword nodes: named node types that only ever match fixed text, such as
+    /// C++'s `auto`, unlike an identifier, which matches a pattern.
+    let keywordNodes: Set<String>
+
+    init(name: String, version: String, language: SwiftTreeSitter.Language, highlights: Query?, tags: Query?, locals: Query?,
+         keywordNodes: Set<String>) {
+        self.keywordNodes = keywordNodes
         self.name = name
         self.version = version
         self.language = language
@@ -181,6 +187,8 @@ public final class SyntaxRuntime: @unchecked Sendable {
         var name: String
         var symbol: String
         var fileTypes: [String]
+        /// The grammar's keyword node types, or nil if the runtime couldn't list them.
+        var keywordNodes: [String]?
     }
 
     public let directory: URL
@@ -275,7 +283,8 @@ public final class SyntaxRuntime: @unchecked Sendable {
         }
         let highlights = query("highlights.scm"), tags = query("tags.scm"), locals = query("locals.scm")
         let version = e.name + "@" + digest.finalize().prefix(8).map { String(format: "%02x", $0) }.joined()
-        return SyntaxLanguage(name: e.name, version: version, language: language, highlights: highlights, tags: tags, locals: locals)
+        return SyntaxLanguage(name: e.name, version: version, language: language, highlights: highlights, tags: tags, locals: locals,
+                              keywordNodes: Set(e.keywordNodes ?? []))
     }
 }
 

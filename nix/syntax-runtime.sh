@@ -11,7 +11,9 @@
 #   $out/<language>/locals.scm      locals query (scopes, and the names each defines): Sextant's
 #                                   $queries/<language>/locals.scm, else the grammar's own, when
 #                                   either exists
-#   $out/languages.json             [{name, symbol, fileTypes}]
+#   $out/languages.json             [{name, symbol, fileTypes, keywordNodes}], keywordNodes being
+#                                   the grammar's keyword node types (see keyword_nodes), or null
+#                                   without a grammar.json
 #
 # Reads $grammarsFile, which lists one grammar per line as
 # <attr> <package> <source> [<file-types>]. The optional comma-separated <file-types> adds to
@@ -68,6 +70,39 @@ compose() {
   [[ $found == 1 ]] || rm -f "$dest"
 }
 
+#######################################
+# Lists a grammar's keyword nodes: the named node types that only ever match fixed text, such
+# as C++'s `auto` or Rust's `self`, unlike an identifier, which matches a pattern. A type is one
+# when every rule that makes it (its own rule, or an alias naming it) matches only fixed text;
+# a type an external scanner makes never is.
+# Arguments:
+#   The grammar's src/grammar.json.
+# Outputs:
+#   Writes the sorted types to stdout as a JSON array.
+#######################################
+keyword_nodes() {
+  jq -c '
+    def parts: if .content then [.content] elif .members then .members else [] end;
+    def fixed($rules; $externals; $depth):
+      if $depth > 16 then false
+      elif .type == "STRING" or .type == "BLANK" then true
+      elif .type == "PATTERN" or .type == "REPEAT" or .type == "REPEAT1" then false
+      elif .type == "SYMBOL" then
+        .name as $n
+        | if ($externals | index($n)) != null or $rules[$n] == null then false
+          else $rules[$n] | fixed($rules; $externals; $depth + 1) end
+      else (parts | length > 0) and all(parts[]; fixed($rules; $externals; $depth + 1))
+      end;
+    .rules as $rules
+    | [(.externals // [])[] | select(.type == "SYMBOL") | .name] as $externals
+    | ([$rules | to_entries[] | select(.key | startswith("_") | not) | {type: .key, fixed: (.value | fixed($rules; $externals; 0))}]
+       + [$rules[] | .. | objects | select(.type == "ALIAS" and .named == true) | {type: .value, fixed: (.content | fixed($rules; $externals; 0))}]
+       + [$externals[] | {type: ., fixed: false}])
+    | group_by(.type)
+    | map(select(all(.[]; .fixed)) | .[0].type)
+    | sort' "$1"
+}
+
 as_list='if . == null then [] elif type == "string" then [.] else . end'
 
 while read -r attr pkg src types; do
@@ -101,8 +136,13 @@ while read -r attr pkg src types; do
     fi
   done
 
+  keywords=null
+  for g in "$src/$path/src/grammar.json" "$src/src/grammar.json"; do
+    [[ -f $g ]] && { keywords=$(keyword_nodes "$g"); break; }
+  done
+
   fileTypes=$(jq -c --arg extra "${types:-}" '(.["file-types"] // []) + ($extra | split(",") | map(select(. != ""))) | unique' <<<"$entry")
-  index+=("$(jq -nc --arg n "$attr" --arg s "tree_sitter_$name" --argjson t "$fileTypes" '{name: $n, symbol: $s, fileTypes: $t}')")
+  index+=("$(jq -nc --arg n "$attr" --arg s "tree_sitter_$name" --argjson t "$fileTypes" --argjson k "$keywords" '{name: $n, symbol: $s, fileTypes: $t, keywordNodes: $k}')")
 done < "$grammarsFile"
 
 printf '%s\n' "${index[@]}" | jq -s '.' > "$out/languages.json"

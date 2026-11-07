@@ -338,6 +338,21 @@ struct LocalsSample: Sendable, CustomTestStringConvertible {
         }
     }
 
+    @Test func everyGrammarListsItsKeywordNodes() throws {
+        struct Entry: Decodable {
+            var name: String
+            var keywordNodes: [String]?
+        }
+        let r = try #require(runtime)
+        let entries = try JSONDecoder().decode([Entry].self, from: Data(contentsOf: r.directory.appendingPathComponent("languages.json")))
+        let generatedWhenBuilt: Set = ["sql"]
+        for e in entries where !generatedWhenBuilt.contains(e.name) {
+            #expect(e.keywordNodes != nil, "\(e.name) has no grammar.json to list keyword nodes from")
+        }
+        let cpp = try #require(entries.first { $0.name == "cpp" }?.keywordNodes)
+        #expect(cpp.contains("auto") && cpp.contains("this") && !cpp.contains("identifier"))
+    }
+
     @Test func namesLeaveOutKeywordsCommentsStringsAndUnderscores() throws {
         let (index, lines) = try index("a.go", """
             // count the things
@@ -358,5 +373,19 @@ struct LocalsSample: Sendable, CustomTestStringConvertible {
         let at = line.range(of: "abc")
         #expect(index.name(atLine: 1, column: NSMaxRange(at))?.range == at)
         #expect(index.name(atLine: 1, column: at.location - 1) == nil)
+    }
+
+    @Test func aNameSpelledAsItsNodeTypeIsANameButAKeywordNodeIsNot() throws {
+        for (path, text) in [("a.py", "identifier = 1\nprint(identifier)\n"), ("a.js", "let identifier = 1;\nf(identifier);\n"),
+                             ("a.rs", "fn f(identifier: i32) -> i32 {\n    identifier\n}\n")] {
+            let (index, lines) = try index(path, text)
+            let first = try #require(index.name(atLine: 0, column: (lines[0] as NSString).range(of: "identifier").location), "\(path)")
+            #expect(index.occurrences(of: first.binding).count == 2, "\(path)")
+        }
+        let (cpp, lines) = try index("a.cpp", "int f() {\n    auto total = 1;\n    return total;\n}\n")
+        #expect(cpp.name(atLine: 1, column: (lines[1] as NSString).range(of: "auto").location) == nil)
+        #expect(cpp.name(atLine: 1, column: (lines[1] as NSString).range(of: "total").location) != nil)
+        let (rust, rustLines) = try index("a.rs", "impl P {\n    fn x(&self) -> i32 { self.x }\n}\n")
+        #expect(rust.name(atLine: 1, column: (rustLines[1] as NSString).range(of: "self.x").location) == nil)
     }
 }

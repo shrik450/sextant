@@ -280,9 +280,10 @@ extension SyntaxLanguage {
     /// Returns the names in some lines and which of them name the same thing, parsing the lines
     /// as one text to find their scopes.
     ///
-    /// A name the tree shows is a keyword the highlights missed, such as a node without a name
-    /// or one whose type is its own text, like C++'s `auto`, is left out. A line's trailing CR is
-    /// left out, as `analysis(of:definitions:)` leaves it out.
+    /// A name the tree shows is a keyword the highlights missed is left out: a node without a
+    /// name, or a keyword node (see `keywordNodes`) spelled as its type, like C++'s `auto`. A
+    /// variable spelled as the grammar's identifier type, such as `identifier`, is still a name.
+    /// A line's trailing CR is left out, as `analysis(of:definitions:)` leaves it out.
     ///
     /// - Parameters:
     ///   - lines: The lines.
@@ -297,7 +298,7 @@ extension SyntaxLanguage {
             candidates.removeAll { c in
                 let bytes = UInt32(c.offset * 2)..<UInt32((c.offset + c.range.length) * 2)
                 guard let node = root.descendant(in: bytes), node.range.location == c.offset, node.range.length == c.range.length else { return false }
-                return !node.isNamed || node.nodeType == c.spelling
+                return !node.isNamed || (node.nodeType == c.spelling && keywordNodes.contains(c.spelling))
             }
             return localsQuery.map { Self.locals($0, in: tree, text) }
         }
