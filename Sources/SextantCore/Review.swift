@@ -140,7 +140,7 @@ public struct Resolver: Sendable {
         let head: String?
         switch review.subject {
         case .worktree(let root):
-            runIn = Git(root: root.url, executable: git.executable)
+            runIn = git.forCheckout(root.url)
             head = await runIn.head()
             if let known = worktrees.first(where: { $0.root == root }) {
                 worktree = known

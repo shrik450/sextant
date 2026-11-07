@@ -80,7 +80,7 @@ extension Git {
         case .worktree: readWorktreeFile(path)
         case .index: try? await run(["cat-file", "blob", ":" + path], limit: Limit.blob)
         case .commit(let c):
-            ObjectReader.canRead(c + ":" + path) ? await objects.blob(c + ":" + path) : try? await run(["cat-file", "blob", c + ":" + path], limit: Limit.blob)
+            ObjectReader.canRead(c + ":" + path) ? (try? await objects.blob(c + ":" + path, limit: Limit.blob)) ?? nil : try? await run(["cat-file", "blob", c + ":" + path], limit: Limit.blob)
         }
     }
 

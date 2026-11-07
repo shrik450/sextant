@@ -383,3 +383,11 @@ extension QualityOfService {
         }
     }
 }
+
+/// Reaps a program that was killed, off the caller's thread, so it doesn't linger as a zombie.
+func reapWhenEnded(_ pid: pid_t) {
+    DispatchQueue.global(qos: .utility).async {
+        var status: Int32 = 0
+        while waitpid(pid, &status, 0) < 0, errno == EINTR {}
+    }
+}

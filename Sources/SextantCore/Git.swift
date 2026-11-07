@@ -27,10 +27,27 @@ public struct GitError: Error, LocalizedError, Sendable {
 public struct Git: Sendable {
     public let root: URL
     public let executable: String
+    /// The reader of the repository's objects, which the `Git`s for its checkouts share.
+    let objects: ObjectReader
 
+    /// A git for a repository, with its own reader of the repository's objects.
+    ///
+    /// For another checkout of the same repository, use `forCheckout(_:)` instead, to share
+    /// the reader.
     public init(root: URL, executable: String) {
+        self.init(root: root, executable: executable, objects: ObjectReader(directory: root, executable: executable))
+    }
+
+    private init(root: URL, executable: String, objects: ObjectReader) {
         self.root = root
         self.executable = executable
+        self.objects = objects
+    }
+
+    /// A git for another checkout of the same repository, sharing this one's reader of its
+    /// objects.
+    public func forCheckout(_ root: URL) -> Git {
+        Git(root: root, executable: executable, objects: objects)
     }
 
     /// How much a git command may print, by what its caller does with the output.

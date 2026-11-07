@@ -154,7 +154,7 @@ extension Git {
     public func statuses(of roots: [CanonicalPath]) async -> [CanonicalPath: Result<WorktreeStatus, Error>] {
         await withTaskGroup(of: (CanonicalPath, Result<WorktreeStatus, Error>).self) { group in
             for root in roots {
-                let checkout = Git(root: root.url, executable: executable)
+                let checkout = forCheckout(root.url)
                 group.addTask {
                     let result: Result<WorktreeStatus, Error>
                     do {
