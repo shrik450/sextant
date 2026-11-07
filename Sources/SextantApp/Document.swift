@@ -98,10 +98,12 @@ final class FileState {
         guard let lo = numbers.min(), let hi = numbers.max() else { return nil }
         return (lo...hi, old, kept.map { lines[$0].text })
     }
-    var hasOldSide: Bool { lines.contains { $0.kind == .deleted } }
-    var hasNewSide: Bool { lines.contains { $0.kind == .added } }
-    /// Whether both sides have content, so side-by-side shows something on each.
-    var isTwoSided: Bool { hasOldSide && hasNewSide }
+    /// Whether the file has an old side and a new side, so side by side shows something in each
+    /// column.
+    ///
+    /// A modified file has both, even when its change only adds or only removes lines. An added
+    /// or deleted file has one, and a file opened outside the change is the same on both.
+    var isTwoSided: Bool { isChange && !diff.change.isAdded && !diff.change.isDeleted }
 
     static let generatedNames: Set<String> = [
         "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "cargo.lock", "flake.lock", "gemfile.lock",
