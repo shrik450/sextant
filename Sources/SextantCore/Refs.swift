@@ -143,6 +143,35 @@ extension Git {
         return s
     }
 
+    /// Reads what's uncommitted and conflicted in each of some checkouts of the repository, at
+    /// once.
+    ///
+    /// Each status is read into a local before it's wrapped: Swift 6.3.3's optimizer drops a
+    /// task group's results, and corrupts memory, when a child returns
+    /// `(root, .success(try await checkout.status()))` with `checkout` a local `Git`.
+    ///
+    /// - Returns: Each checkout's status, or why git couldn't give it.
+    public func statuses(of roots: [CanonicalPath]) async -> [CanonicalPath: Result<WorktreeStatus, Error>] {
+        await withTaskGroup(of: (CanonicalPath, Result<WorktreeStatus, Error>).self) { group in
+            for root in roots {
+                let checkout = Git(root: root.url, executable: executable)
+                group.addTask {
+                    let result: Result<WorktreeStatus, Error>
+                    do {
+                        let status = try await checkout.status()
+                        result = .success(status)
+                    } catch {
+                        result = .failure(error)
+                    }
+                    return (root, result)
+                }
+            }
+            var out: [CanonicalPath: Result<WorktreeStatus, Error>] = [:]
+            for await (root, result) in group { out[root] = result }
+            return out
+        }
+    }
+
     public func worktrees() async -> [Worktree] {
         guard let data = try? await run(["worktree", "list", "--porcelain", "-z"], limit: Limit.listing) else { return [] }
         return parseWorktreeList(data)

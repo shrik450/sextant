@@ -121,22 +121,7 @@ final class Repository {
     /// - Returns: Whether anything changed.
     @discardableResult
     func refreshStatus() async -> Bool {
-        let git = self.git
-        let statuses = await withTaskGroup(of: (CanonicalPath, Result<WorktreeStatus, Error>).self) { group in
-            for w in worktrees {
-                group.addTask {
-                    let checkout = Git(root: w.root.url, executable: git.executable)
-                    do {
-                        return (w.root, .success(try await checkout.status()))
-                    } catch {
-                        return (w.root, .failure(error))
-                    }
-                }
-            }
-            var out: [CanonicalPath: Result<WorktreeStatus, Error>] = [:]
-            for await (k, v) in group { out[k] = v }
-            return out
-        }
+        let statuses = await git.statuses(of: worktrees.map(\.root))
         var newUncommitted: [CanonicalPath: Int] = [:], newConflicts: [CanonicalPath: Set<String>] = [:], newFailures: [CanonicalPath: String] = [:]
         for (root, result) in statuses {
             switch result {

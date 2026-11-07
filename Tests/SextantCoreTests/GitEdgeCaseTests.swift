@@ -133,6 +133,25 @@ struct ScratchRepo {
         try Data("not an index".utf8).write(to: r.root.appendingPathComponent(".git/index"))
         await #expect(throws: GitError.self) { try await r.repo.status() }
     }
+
+    @Test func everyCheckoutsStatusComesBackFromOneRead() async throws {
+        let r = try ScratchRepo("statuses")
+        try r.write("a.txt", "a\n")
+        try r.commitAll("A")
+        var roots = [CanonicalPath(r.root)]
+        for n in 1...3 {
+            let linked = r.root.deletingLastPathComponent().appendingPathComponent("statuses-wt-\(n)")
+            try? FileManager.default.removeItem(at: linked)
+            try r.git("worktree", "add", "-q", "--detach", linked.path)
+            for k in 0..<n { try Data("\(k)\n".utf8).write(to: linked.appendingPathComponent("new-\(k).txt")) }
+            roots.append(CanonicalPath(linked))
+        }
+        let gone = CanonicalPath(path: r.root.deletingLastPathComponent().appendingPathComponent("statuses-gone").path)
+        let statuses = await r.repo.statuses(of: roots + [gone])
+        #expect(statuses.count == 5)
+        for (n, root) in roots.enumerated() { #expect((try? statuses[root]?.get())?.count == n) }
+        #expect((try? statuses[gone]?.get()) == nil)
+    }
 }
 
 extension GitEdgeCaseTests {
