@@ -20,7 +20,7 @@ final class Inspector: NSViewController, NSSplitViewDelegate {
         enum Kind {
             case section(String)
             case symbol(OutlineItem)
-            case change(FileState.KeyedRun, enclosing: String?, read: Bool)
+            case change(FileText.KeyedRun, enclosing: String?, read: Bool)
             case file(FileState, index: Int)
             case card(NSAttributedString)
             case message(String)
@@ -52,7 +52,9 @@ final class Inspector: NSViewController, NSSplitViewDelegate {
     /// The entries the outline shows, under a root that stands for the outline itself.
     private let root = Entry(.section(""))
     private var sections: [Entry] { root.children }
-    private var file: FileState?
+    /// The file the focused pane shows by itself, with the text it shows, whose line indices the
+    /// outline and changes follow.
+    private var shown: ShownFile?
     private var items: [OutlineItem] = []
     private var files: [FileState] = []
     private var card: (title: String, text: NSAttributedString)?
@@ -61,7 +63,7 @@ final class Inspector: NSViewController, NSSplitViewDelegate {
     /// The sections the user folded, by title.
     private var folded: Set<String> = []
     /// Says whether a run of changes has been read.
-    var isRead: (FileState, FileState.KeyedRun) -> Bool = { _, _ in false }
+    var isRead: (FileState, FileText.KeyedRun) -> Bool = { _, _ in false }
     private let look: any Look
     private lazy var rowViews = RowViews(look: look)
 
@@ -127,20 +129,22 @@ final class Inspector: NSViewController, NSSplitViewDelegate {
         splitView.bounds.height - 90
     }
 
-    /// Shows a file's outline and changes, with the outline once the file is analyzed.
-    func showFile(_ f: FileState, card: (title: String, text: NSAttributedString)?) {
-        let isNew = f !== file
-        file = f
+    /// Shows the outline and changes of the file the focused pane shows by itself, with the
+    /// outline once the text is analyzed.
+    func showFile(_ s: ShownFile, card: (title: String, text: NSAttributedString)?) {
+        let isNew = s.text !== shown?.text
+        shown = s
         files = []
         self.card = card
         generation += 1
         let gen = generation
-        if isNew || f.outline != nil { items = f.outline ?? [] }
+        let t = s.text
+        if isNew || t.outline != nil { items = t.outline ?? [] }
         rebuild()
-        guard f.outline == nil, f.hasLanguage, f.hasTags != false, !f.diff.isBinary else { return }
+        guard t.outline == nil, t.hasLanguage, t.hasTags != false, !s.file.diff.isBinary else { return }
         Task {
-            await f.analyze(symbols: true)
-            guard gen == generation, let outline = f.outline else { return }
+            await t.analyze(symbols: true)
+            guard gen == generation, let outline = t.outline else { return }
             items = outline
             rebuild()
         }
@@ -148,7 +152,7 @@ final class Inspector: NSViewController, NSSplitViewDelegate {
 
     /// Shows the overview's files as a table of contents.
     func showOverview(_ changes: [FileState], card: (title: String, text: NSAttributedString)?) {
-        file = nil
+        shown = nil
         files = changes
         items = []
         self.card = card
@@ -157,7 +161,7 @@ final class Inspector: NSViewController, NSSplitViewDelegate {
     }
 
     func showEmpty(card: (title: String, text: NSAttributedString)?) {
-        file = nil
+        shown = nil
         files = []
         items = []
         self.card = card
@@ -171,22 +175,23 @@ final class Inspector: NSViewController, NSSplitViewDelegate {
     }
 
     func refreshReviewState() {
-        guard !files.isEmpty || file?.isChange == true else { return }
+        guard !files.isEmpty || shown?.file.isChange == true else { return }
         rebuild()
     }
 
     private func rebuild() {
         var out: [Entry] = []
-        if let f = file {
-            if f.isChange, !f.keyedRuns.isEmpty {
+        if let s = shown {
+            let t = s.text
+            if s.file.isChange, !t.keyedRuns.isEmpty {
                 let flat = flatten(items)
-                out.append(Entry(.section("Changes"), children: f.keyedRuns.map { r in
-                    Entry(.change(r, enclosing: flat.last { $0.change != .deleted && $0.span.contains(r.run.newLine) }?.name, read: isRead(f, r)))
+                out.append(Entry(.section("Changes"), children: t.keyedRuns.map { r in
+                    Entry(.change(r, enclosing: flat.last { $0.change != .deleted && $0.span.contains(r.run.newLine) }?.name, read: isRead(s.file, r)))
                 }))
             }
-            if f.hasLanguage, f.hasTags != false {
-                let shown = changedOnly ? pruned(items) : items
-                let entries = shown.map(entry)
+            if t.hasLanguage, t.hasTags != false {
+                let listed = changedOnly ? pruned(items) : items
+                let entries = listed.map(entry)
                 out.append(Entry(.section("Outline"), children: entries.isEmpty ? [Entry(.message(items.isEmpty ? "No definitions" : "No changed definitions"))] : entries))
             }
         } else if !files.isEmpty {
@@ -292,8 +297,8 @@ final class Inspector: NSViewController, NSSplitViewDelegate {
             if let e = sections.first?.children.first(where: { if case .file(_, let i) = $0.kind { i == lineIndex } else { false } }) {
                 rows.insert(outline.row(forItem: e))
             }
-        } else if let f = file, f.lines.indices.contains(lineIndex) {
-            let line = f.lines[lineIndex]
+        } else if let t = shown?.text, t.lines.indices.contains(lineIndex) {
+            let line = t.lines[lineIndex]
             let newLine = line.kind == .deleted ? nil : line.newNo - 1
             func innermost(_ entries: [Entry]) -> Entry? {
                 for e in entries {
@@ -327,7 +332,7 @@ final class Inspector: NSViewController, NSSplitViewDelegate {
     private func activate(_ e: Entry) {
         switch e.kind {
         case .symbol(let s):
-            guard let f = file, let i = f.index(ofLine: s.line + 1, old: s.change == .deleted) else { return }
+            guard let t = shown?.text, let i = t.index(ofLine: s.line + 1, old: s.change == .deleted) else { return }
             delegate?.inspectorJump(toLineIndex: i)
         case .change(let r, _, _): delegate?.inspectorJump(toLineIndex: r.run.lines.lowerBound)
         case .file(_, let i): delegate?.inspectorShowChange(i)

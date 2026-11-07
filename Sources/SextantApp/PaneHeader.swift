@@ -190,13 +190,14 @@ final class PaneHeader: NSView, NSMenuDelegate {
         (showsOverview ? [title.title] : []) + folders.arrangedSubviews.compactMap { ($0 as? NSButton)?.title } + (showsOverview || shownPath == nil ? [] : [title.title])
     }
 
-    func update(path p: String?, files: [FileState], current: Int?, style: Style) {
-        let reviewable = current.flatMap { files.indices.contains($0) ? files[$0] : nil }.flatMap { $0.isChange ? $0 : nil }
-        let key = "\(p ?? "\u{0}")|\(current ?? -1)|\(reviewable.map { $0.reviewed ? "r" : "u" } ?? "-")|\(p == nil ? -1 : files.first?.definitions?.count ?? -1)|\(files.count):\(files.first.map { ObjectIdentifier($0).hashValue } ?? 0):\(files.last.map { ObjectIdentifier($0).hashValue } ?? 0):\(p == nil ? 0 : files.first?.lines.count ?? 0)|\(style.theme.name)|\(style.theme.color("success"))|\(style.theme.color("danger"))"
+    func update(path p: String?, files: [ShownFile], current: Int?, style: Style) {
+        let text = p == nil ? nil : files.first?.text
+        let reviewable = current.flatMap { files.indices.contains($0) ? files[$0].file : nil }.flatMap { $0.isChange ? $0 : nil }
+        let key = "\(p ?? "\u{0}")|\(current ?? -1)|\(reviewable.map { $0.reviewed ? "r" : "u" } ?? "-")|\(text?.definitions?.count ?? -1)|\(files.count):\(files.first.map { ObjectIdentifier($0.file).hashValue } ?? 0):\(files.last.map { ObjectIdentifier($0.file).hashValue } ?? 0):\(text.map { ObjectIdentifier($0).hashValue } ?? 0)|\(style.theme.name)|\(style.theme.color("success"))|\(style.theme.color("danger"))"
         guard key != shownKey else { return }
         shownKey = key
         currentFile = current
-        let shown = p ?? current.map { files[$0].path }
+        let shown = p ?? current.map { files[$0].file.path }
         shownPath = shown
         showsOverview = p == nil
         let comps = shown.map { $0.split(separator: "/").map(String.init) } ?? []
@@ -211,20 +212,20 @@ final class PaneHeader: NSView, NSMenuDelegate {
         toolTip = shown
         let addDel: (Int, Int)
         if p == nil {
-            addDel = files.reduce((0, 0)) { ($0.0 + $1.diff.additions, $0.1 + $1.diff.deletions) }
+            addDel = files.reduce((0, 0)) { ($0.0 + $1.file.diff.additions, $0.1 + $1.file.diff.deletions) }
         } else {
-            addDel = files.first.map { ($0.diff.additions, $0.diff.deletions) } ?? (0, 0)
+            addDel = files.first.map { ($0.file.diff.additions, $0.file.diff.deletions) } ?? (0, 0)
         }
         let s = NSMutableAttributedString(string: "+\(addDel.0)", attributes: [.foregroundColor: style.theme.color("success")])
         s.append(NSAttributedString(string: "  −\(addDel.1)", attributes: [.foregroundColor: style.theme.color("danger")]))
         stats.attributedStringValue = s
-        stats.isHidden = !files.contains(where: \.isChange)
+        stats.isHidden = !files.contains(where: \.file.isChange)
         reviewedButton.isHidden = reviewable == nil
         isReviewed = reviewable?.reviewed == true
         reviewedButton.image = NSImage(systemSymbolName: isReviewed ? "checkmark.circle.fill" : "checkmark.circle", accessibilityDescription: nil)
         reviewedButton.toolTip = isReviewed ? "Mark as Not Reviewed (R)" : "Mark as Reviewed (R)"
         reviewedButton.setAccessibilityLabel(reviewedButton.toolTip)
-        definitions = p == nil ? [] : files.first?.definitions ?? []
+        definitions = text?.definitions ?? []
         symbolMenuIsCurrent = false
         symbols.isHidden = true
         symbolChevron.isHidden = true

@@ -75,14 +75,14 @@ extension RepoWindowController {
                 }
             }
         case .fileDefinitions(let q):
-            guard let f = focusedFile else { return [] }
+            guard let f = focusedFile?.file else { return [] }
             let defs = reader.header.definitions
             let ranked = q.isEmpty ? defs : defs
                 .compactMap { d in fuzzyScore(q, candidate: d.name, name: d.name).map { ($0, d) } }
                 .sorted { $0.0 > $1.0 }.map(\.1)
             return ranked.prefix(limit).map { definitionItem(LocatedDefinition(name: $0.name, kind: $0.kind, path: f.path, line: $0.nameLine + 1, inOutline: true)) }
         case .line(let n):
-            guard let f = focusedFile else { return [] }
+            guard let f = focusedFile?.file else { return [] }
             guard let n else { return [] }
             return [JumpItem(target: .line(path: f.path, line: n), title: "Line \(n)", detail: f.path,
                              image: NSImage(systemSymbolName: "arrow.right.to.line", accessibilityDescription: nil))]
@@ -117,7 +117,7 @@ extension RepoWindowController {
             open(path)
         case .line(let path, let line):
             if beside { branch() }
-            if focus == .file(path), let f = focusedFile, let i = f.index(ofLine: line) {
+            if focus == .file(path), let f = focusedFile?.text, let i = f.index(ofLine: line) {
                 reader.land(onLine: i)
             } else {
                 open(path, at: .line(SideLine(number: line, old: false)))

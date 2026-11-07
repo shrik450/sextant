@@ -420,7 +420,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         loadSnapshotFiles(s, force: keepPosition)
         for p in showing {
             let here = heres[ObjectIdentifier(p)]
-            if sameCommits, p.pendingLocation == nil, case .file(let path)? = p.focus, let shown = p.reader.files.first, shown.path == path {
+            if sameCommits, p.pendingLocation == nil, case .file(let path)? = p.focus, let shown = p.reader.files.first?.file, shown.path == path {
                 if s.changes.contains(where: { $0 === shown }) {
                     p.reader.updateHeader()
                     continue
@@ -445,7 +445,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         Task {
             defer { busy -= 1 }
             let data = await git.contents(of: shown.path, in: t.snapshot)
-            guard p.session === s, s.target == t, p.reader.files.first === shown, p.pendingLocation == nil else { return }
+            guard p.session === s, s.target == t, p.reader.files.first?.file === shown, p.pendingLocation == nil else { return }
             if let data, blobID(of: data) == shown.diff.change.newOid {
                 s.explored[shown.path] = shown
             } else {
@@ -525,7 +525,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// The file the focused pane shows, when it shows one.
-    var focusedFile: FileState? {
+    var focusedFile: ShownFile? {
         guard case .file? = focus else { return nil }
         return reader.files.first
     }
@@ -580,19 +580,17 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// The file at a path if it can be shown without waiting.
+    /// The file at a path if it can be shown without waiting: once it's read whole, or if it
+    /// can't be.
     private func readyFile(_ path: String, in s: Session) -> FileState? {
         guard let f = s.changes.first(where: { $0.path == path }) else { return s.explored[path] }
-        guard f.hasWhole || f.diff.isBinary else { return nil }
-        f.adoptWhole()
-        return f
+        return f.whole != nil || f.diff.isBinary ? f : nil
     }
 
     private func fileState(_ path: String, in t: Target, of s: Session) async -> FileState? {
         let git = s.resolved?.git ?? repository.git
         if let f = s.changes.first(where: { $0.path == path }) {
-            await f.prepareWhole(git: git, analyzing: false)
-            f.adoptWhole()
+            await f.loadWhole(git: git)
             return f
         }
         if let f = s.explored[path] { return f }
@@ -603,15 +601,17 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         return f
     }
 
-    /// Loads and analyzes the changes around a file, so stepping to them shows them at once.
+    /// Reads and analyzes the changes around a file, so stepping to them shows them at once.
+    ///
+    /// Each is read, then analyzed, so a pane opening one waits only for the read.
     private func prepareNeighbors(of path: String, in s: Session) {
         guard let i = s.changes.firstIndex(where: { $0.path == path }) else { return }
         let git = s.resolved?.git ?? repository.git
         for j in [i + 1, i - 1, i + 2] where s.changes.indices.contains(j) {
             let f = s.changes[j]
             Task {
-                await f.prepareWhole(git: git, analyzing: true)
-                if f.isWhole { await f.analyze(symbols: true) }
+                await f.loadWhole(git: git)
+                await f.whole?.analyze(symbols: true)
             }
         }
     }
@@ -657,10 +657,10 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Shows a file in the inspector once the reader's frame is on screen.
-    private func showInInspector(_ f: FileState) {
+    private func showInInspector(_ s: ShownFile) {
         afterFrame("inspector") { [weak self] in
-            guard let self, self.focusedFile === f else { return }
-            self.inspector.showFile(f, card: self.card())
+            guard let self, self.focusedFile?.text === s.text else { return }
+            self.inspector.showFile(s, card: self.card())
             self.inspector.follow(lineIndex: self.reader.caret?.line)
         }
     }
@@ -679,10 +679,10 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         reader.show(files: [f], overview: false)
         switch anchor {
         case .line(let l):
-            if let i = f.index(ofLine: l.number, old: l.old) { reader.scroll(to: ReaderPosition(file: 0, line: i), animated: false, select: true) }
+            if let at = reader.position(of: l) { reader.scroll(to: at, animated: false, select: true) }
         case .restore(let top, let caret):
-            if let i = f.index(ofLine: top.number, old: top.old) { reader.scroll(to: ReaderPosition(file: 0, line: i), animated: false, offset: 0) }
-            if let caret, let i = f.index(ofLine: caret.line.number, old: caret.line.old) { reader.placeCaret(at: ReaderPosition(file: 0, line: i), column: caret.column) }
+            if let at = reader.position(of: top) { reader.scroll(to: at, animated: false, offset: 0) }
+            if let caret, let at = reader.position(of: caret.line) { reader.placeCaret(at: at, column: caret.column) }
         case .firstChange:
             if f.isChange && reader.hasChanges { reader.scrollToFirstChange() } else { reader.placeCaret(at: ReaderPosition(file: 0, line: 0)) }
         case .lastChange:
@@ -690,8 +690,8 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         case .start:
             reader.placeCaret(at: ReaderPosition(file: 0, line: 0))
         }
-        guard isFocused(p) else { return }
-        showInInspector(f)
+        guard isFocused(p), let shown = reader.files.first else { return }
+        showInInspector(shown)
         if blameOn { loadBlame(f) }
         updateTitle()
     }
@@ -709,14 +709,14 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         reader.blame = nil
         reader.show(files: s.changes, overview: true)
         if let path, let i = s.changes.firstIndex(where: { $0.path == path }) {
-            if let top, let l = s.changes[i].index(ofLine: top.number, old: top.old) {
-                reader.scroll(to: ReaderPosition(file: i, line: l), animated: false, offset: 0)
+            if let top, let at = reader.position(of: top, inFile: i) {
+                reader.scroll(to: at, animated: false, offset: 0)
             } else {
                 reader.scrollToFile(i)
             }
         }
-        if let caret, let i = s.changes.firstIndex(where: { $0.path == caret.path }), let l = s.changes[i].index(ofLine: caret.line.number, old: caret.line.old) {
-            reader.placeCaret(at: ReaderPosition(file: i, line: l), column: caret.column)
+        if let caret, let i = s.changes.firstIndex(where: { $0.path == caret.path }), let at = reader.position(of: caret.line, inFile: i) {
+            reader.placeCaret(at: at, column: caret.column)
         }
         showPanes(animated: false)
         guard isFocused(p) else { return }
@@ -732,10 +732,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         let reader = p.reader
         func side(_ pos: ReaderPosition?) -> (path: String, line: SideLine)? {
             guard let pos, reader.files.indices.contains(pos.file) else { return nil }
-            let f = reader.files[pos.file]
-            guard !f.lines.isEmpty else { return (f.path, SideLine(number: 1, old: false)) }
-            let (n, old) = f.lineNumber(at: pos.line)
-            return (f.path, SideLine(number: n, old: old))
+            return (reader.files[pos.file].file.path, reader.sideLine(at: pos) ?? SideLine(number: 1, old: false))
         }
         let top = side(reader.topPosition)
         let caret = side(reader.caret).map { Location.Caret(path: $0.path, line: $0.line, column: reader.caretColumn) }
@@ -1102,23 +1099,16 @@ extension RepoWindowController: ReaderDelegate {
     func readerOpenFile(_ r: Reader, file: Int, line: Int?) {
         readerFocused(r)
         guard r.files.indices.contains(file) else { return }
-        let f = r.files[file]
-        let anchor: Anchor
-        if let line, !f.lines.isEmpty {
-            let (n, old) = f.lineNumber(at: line)
-            anchor = .line(SideLine(number: n, old: old))
-        } else {
-            anchor = .firstChange
-        }
+        let anchor: Anchor = line.flatMap { r.sideLine(at: ReaderPosition(file: file, line: $0)) }.map(Anchor.line) ?? .firstChange
         branch()
-        open(f.path, at: anchor)
+        open(r.files[file].file.path, at: anchor)
     }
 
     func readerUnfolded(_ r: Reader) {}
 
     func readerJumpToDefinition(_ r: Reader, word: String, file: Int, line: Int) {
         readerFocused(r)
-        jumpToDefinition(word, from: r.files.indices.contains(file) ? r.files[file].path : nil)
+        jumpToDefinition(word, from: r.files.indices.contains(file) ? r.files[file].file.path : nil)
     }
 
     func readerEditNote(_ r: Reader, id: UUID) { editNote(id) }
@@ -1153,7 +1143,7 @@ extension RepoWindowController: ReaderDelegate {
     /// Opens the commit that last changed a line beside the code, at that line.
     func readerBlameClicked(_ r: Reader, commit: Blame.Commit, line: Int) {
         readerFocused(r)
-        guard let f = focusedFile else { return }
+        guard let f = focusedFile?.file else { return }
         let review = Review(subject: .commit(commit.oid))
         let at = SideLine(number: line, old: false)
         select(review, then: Location(review: review, place: .file(f.path), top: at, caret: Location.Caret(path: f.path, line: at)), in: branch())

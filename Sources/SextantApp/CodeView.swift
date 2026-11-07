@@ -85,7 +85,7 @@ struct RenderedText {
 ///
 /// - Parameter side: 0 or 1 for the columns of side-by-side, or -1 for a single column.
 @MainActor
-func render(_ rows: [Row], side: Int, files: [FileState], notes: [UUID: Note], style: Style) -> RenderedText {
+func render(_ rows: [Row], side: Int, files: [ShownFile], notes: [UUID: Note], style: Style) -> RenderedText {
     let t = style.theme
     let text = NSMutableAttributedString()
     var starts: [Int] = []
@@ -107,7 +107,7 @@ func render(_ rows: [Row], side: Int, files: [FileState], notes: [UUID: Note], s
         var attrs: [NSAttributedString.Key: Any]?
         switch row.kind {
         case .line:
-            s = displayText(files[row.file].lines[row.line].text)
+            s = displayText(files[row.file].text.lines[row.line].text)
         case .filler:
             s = ""
         case .fold(let r):
@@ -117,7 +117,7 @@ func render(_ rows: [Row], side: Int, files: [FileState], notes: [UUID: Note], s
             s = unchangedLabel(hidden)
             attrs = pill.merging([.sextantAction: ReaderAction.openFile(file: row.file, line: row.line)]) { $1 }
         case .header:
-            let f = files[row.file]
+            let f = files[row.file].file
             s = f.diff.change.oldPath != f.path && f.diff.change.isRename ? "\(f.diff.change.oldPath) → \(f.path)" : f.path
             attrs = base.merging([.font: style.boldFont, .paragraphStyle: style.paragraph(height: style.headerHeight, spacingBefore: ri == 0 ? 0 : style.lineHeight),
                                   .baselineOffset: max(0, (style.headerHeight - (style.font.ascender - style.font.descender)) / 2),
@@ -126,7 +126,7 @@ func render(_ rows: [Row], side: Int, files: [FileState], notes: [UUID: Note], s
             s = n
             attrs = muted
         case .note(let id):
-            let anchoredSide = files[row.file].lines[row.line].kind == .deleted ? 0 : 1
+            let anchoredSide = files[row.file].text.lines[row.line].kind == .deleted ? 0 : 1
             s = side < 0 || side == anchoredSide ? (notes[id]?.text ?? "").replacingOccurrences(of: "\n", with: "\u{2028}") : ""
             attrs = base.merging([.font: NSFont.systemFont(ofSize: style.font.pointSize), .sextantAction: ReaderAction.editNote(id), .cursor: NSCursor.pointingHand]) { $1 }
         }
@@ -177,7 +177,7 @@ final class CodeView: NSTextView {
     weak var codeDelegate: CodeViewDelegate?
     var rows: [Row] = []
     var rowStarts: [Int] = []
-    var files: [FileState] = []
+    var files: [ShownFile] = []
     var style = Style.current(for: NSAppearance(named: .aqua)!)
     /// The column's side: 0 for the old side (or the only column), 1 for the new side.
     var side = 0
@@ -244,7 +244,7 @@ final class CodeView: NSTextView {
         super.setFrameSize(NSSize(width: width, height: newSize.height))
     }
 
-    func setContent(_ r: RenderedText, rows: [Row], files: [FileState]) {
+    func setContent(_ r: RenderedText, rows: [Row], files: [ShownFile]) {
         hoveredPill = nil
         self.rows = rows
         self.files = files
@@ -324,7 +324,7 @@ final class CodeView: NSTextView {
     private func color(row r: Int, _ lm: NSLayoutManager) -> Bool {
         let row = rows[r]
         guard row.kind == .line else { return true }
-        let f = files[row.file]
+        let f = files[row.file].text
         let range = charRange(ofRow: r)
         let t = style.theme
         lm.removeTemporaryAttribute(.foregroundColor, forCharacterRange: range)
@@ -457,7 +457,7 @@ final class CodeView: NSTextView {
 
     func line(ofRow r: Int) -> DiffLine? {
         guard r < rows.count, rows[r].kind == .line else { return nil }
-        return files[rows[r].file].lines[rows[r].line]
+        return files[rows[r].file].text.lines[rows[r].line]
     }
 
     /// The caret is drawn as a highlight around the token it's on instead, so the word a lookup
@@ -496,7 +496,7 @@ final class CodeView: NSTextView {
 
     private func rows(ofLinesIn file: Int) -> [Int32] {
         if let known = lineRows[file] { return known }
-        var map = [Int32](repeating: -1, count: files[file].lines.count)
+        var map = [Int32](repeating: -1, count: files[file].text.lines.count)
         for r in rowRange(ofFile: file) where rows[r].kind == .line { map[rows[r].line] = Int32(r) }
         lineRows[file] = map
         return map
@@ -506,7 +506,7 @@ final class CodeView: NSTextView {
     ///
     /// Only the rows whose boxes change are colored and drawn again, so moving between names
     /// costs what changes rather than what's shown.
-    func showOccurrences(_ places: [FileState.Occurrence], inFile file: Int) {
+    func showOccurrences(_ places: [FileText.Occurrence], inFile file: Int) {
         let shown: [RowRange]
         if places.isEmpty || !files.indices.contains(file) {
             shown = []
@@ -874,7 +874,7 @@ final class CodeView: NSTextView {
     func landingIndex(ofRow r: Int) -> Int {
         let range = charRange(ofRow: r)
         guard rows[r].kind == .line, let text = textStorage?.string as NSString? else { return range.location }
-        let f = files[rows[r].file]
+        let f = files[rows[r].file].text
         let line = rows[r].line
         return range.location + min(range.length, landingColumn(in: text, range: range, tokens: f.tokens?[line] ?? [], changed: f.wordRanges(line)))
     }
@@ -901,7 +901,7 @@ final class CodeView: NSTextView {
         while true {
             if rows[r].kind == .line, let text = textStorage?.string as NSString? {
                 let range = charRange(ofRow: r)
-                let tokens = files[rows[r].file].tokens?[rows[r].line] ?? []
+                let tokens = files[rows[r].file].text.tokens?[rows[r].line] ?? []
                 var pick: Int?
                 forEachIdentifier(in: text, range: range, tokens: tokens) { name in
                     let at = name.location + range.location
@@ -1122,7 +1122,7 @@ final class Gutter: NSRulerView {
 
     /// The width of one column of line numbers, fitting the largest line number and its sign.
     private var numberColumnWidth: CGFloat {
-        let maxNo = code.files.reduce(1) { max($0, $1.lines.last.map { max($0.oldNo, $0.newNo) } ?? 1) }
+        let maxNo = code.files.reduce(1) { max($0, $1.text.lines.last.map { max($0.oldNo, $0.newNo) } ?? 1) }
         let characters = max(3, String(maxNo).count) + (signsNumbers ? 1 : 0)
         return CGFloat(characters) * code.style.digitWidth + 12
     }

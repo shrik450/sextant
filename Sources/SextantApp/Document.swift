@@ -1,7 +1,12 @@
 import AppKit
 import SextantCore
 
-/// A file in the reader: one of the target's changes, or a file opened while exploring.
+/// A file in a review: one of the target's changes, or a file opened while exploring.
+///
+/// Every pane showing the review shares it, with its review state and its texts. A text never
+/// changes once it's made, so a pane keeps line indices into the text it shows however other
+/// panes read the file. Which text a pane shows, and which runs it unfolded, are the pane's own
+/// (`ShownFile`).
 @MainActor
 final class FileState {
     let diff: FileDiff
@@ -11,54 +16,35 @@ final class FileState {
     let isChange: Bool
     var reviewed = false
     var conflicted = false
-    /// Every line shown for this file.
-    ///
-    /// Holds just the hunks until the whole file is loaded.
-    private(set) var lines: [DiffLine]
-    private(set) var isWhole: Bool
-    /// The number of unchanged lines left out before the hunk starting at each index into `lines`.
-    ///
-    /// Only used before the whole file is loaded.
-    private(set) var gapsBefore: [Int: Int] = [:]
-    /// The folded runs the reader has opened, by their first line index.
-    var unfolded: Set<Int> = []
     /// Whether a grammar covers the file, which analysis loads off the main thread.
     let hasLanguage: Bool
-    /// Whether the grammar finds definitions, once the file is analyzed.
-    private(set) var hasTags: Bool?
-    /// The syntax tokens per line, once analyzed.
-    private(set) var tokens: [[Token]]?
-    /// The new side's definitions, once analyzed with symbols.
-    private(set) var definitions: [Symbol]?
-    /// The file's definitions with what changed in each, once analyzed with symbols.
-    private(set) var outline: [OutlineItem]?
-    private var words: [Int: [NSRange]]?
-    /// Counts changes to `lines`, so work begun on old lines is dropped.
-    private var version = 0
-    private var analysis: (task: Task<Void, Never>, symbols: Bool, version: Int)?
+    /// The diff's hunks, with the unchanged lines between them left out.
+    ///
+    /// When the hunks hold the whole file, as an added file's one hunk does, this is the whole
+    /// file too.
+    let hunks: FileText
+    /// The whole file once it's read: the hunks with the unchanged lines around them filled in.
+    private(set) var whole: FileText?
     private var wholeLoad: Task<Void, Never>?
-    private var preparedWhole: (lines: [DiffLine], analysis: Analysis?)?
-    /// Where each version of a file is analyzed once, for every reader.
     private let contentAnalysis: ContentAnalysis?
-    /// Whether each side's lines are the whole of its blob, so its analysis can be shared by
-    /// the blob's ID.
-    private var sidesAreBlobs: Bool
 
     init(diff: FileDiff, isChange: Bool = true, contentAnalysis: ContentAnalysis?) {
         self.diff = diff
         self.isChange = isChange
         self.contentAnalysis = contentAnalysis
-        sidesAreBlobs = (diff.change.isAdded || diff.change.isDeleted) && diff.hunks.count == 1 && diff.notes.isEmpty
-        hasLanguage = SyntaxRuntime.shared?.hasLanguage(forPath: diff.path) ?? false
+        let hasLanguage = SyntaxRuntime.shared?.hasLanguage(forPath: diff.path) ?? false
+        self.hasLanguage = hasLanguage
         var all: [DiffLine] = []
         var gaps: [Int: Int] = [:]
         for (h, skipped) in zip(diff.hunks, unchangedLinesBefore(diff.hunks)) {
             if skipped > 0 { gaps[all.count] = skipped }
             all += h.lines
         }
-        lines = all
-        gapsBefore = gaps
-        isWhole = diff.hunksAreWholeFile && gaps.isEmpty
+        let isWhole = diff.hunksAreWholeFile && gaps.isEmpty
+        let sidesAreBlobs = (diff.change.isAdded || diff.change.isDeleted) && diff.hunks.count == 1 && diff.notes.isEmpty
+        hunks = FileText(all, isWhole: isWhole, gapsBefore: gaps, blobs: sidesAreBlobs ? FileText.blobs(of: diff.change) : (nil, nil),
+                         path: diff.path, change: diff.change, isChange: isChange, hasLanguage: hasLanguage, contentAnalysis: contentAnalysis)
+        whole = isWhole ? hunks : nil
     }
 
     /// Creates a file opened for reading, outside the change being reviewed.
@@ -69,35 +55,15 @@ final class FileState {
     convenience init(path: String, contents: [String]?, oid: String, contentAnalysis: ContentAnalysis?) {
         let change = RawChange(status: "=", oldMode: "100644", newMode: "100644", oldOid: oid, newOid: oid, oldPath: path, path: path)
         self.init(diff: FileDiff(change: change, isBinary: contents == nil), isChange: false, contentAnalysis: contentAnalysis)
-        setWhole((contents ?? []).enumerated().map { DiffLine(kind: .context, oldNo: $0.offset + 1, newNo: $0.offset + 1, text: $0.element) })
+        whole = wholeText((contents ?? []).enumerated().map { DiffLine(kind: .context, oldNo: $0.offset + 1, newNo: $0.offset + 1, text: $0.element) })
     }
 
     var path: String { diff.path }
 
-    /// Returns the index of a 1-based line number on one side, or of the nearest line after it.
-    func index(ofLine n: Int, old: Bool = false) -> Int? {
-        if let exact = lines.firstIndex(where: { old ? $0.kind != .added && $0.oldNo == n : $0.kind != .deleted && $0.newNo == n }) { return exact }
-        return lines.firstIndex { old ? $0.oldNo >= n : $0.newNo >= n } ?? (lines.isEmpty ? nil : lines.count - 1)
-    }
+    /// The text a pane showing this file by itself shows: the whole file once it's read, else
+    /// the hunks.
+    var wholeOrHunks: FileText { whole ?? hunks }
 
-    /// Returns the 1-based line number of a line index, on the new side unless the line was removed.
-    func lineNumber(at i: Int) -> (number: Int, old: Bool) {
-        let l = lines[min(max(0, i), lines.count - 1)]
-        return l.kind == .deleted ? (l.oldNo, true) : (l.newNo, false)
-    }
-
-    /// Returns the reference and code for some line indices.
-    ///
-    /// The reference uses new-side line numbers, or old-side ones if all the lines were removed.
-    func reference(_ indices: [Int]) -> (lines: ClosedRange<Int>, old: Bool, code: [String])? {
-        let picked = indices.filter { lines.indices.contains($0) }
-        guard !picked.isEmpty else { return nil }
-        let old = picked.allSatisfy { lines[$0].kind == .deleted }
-        let kept = old ? picked : picked.filter { lines[$0].kind != .deleted }
-        let numbers = kept.map { old ? lines[$0].oldNo : lines[$0].newNo }
-        guard let lo = numbers.min(), let hi = numbers.max() else { return nil }
-        return (lo...hi, old, kept.map { lines[$0].text })
-    }
     /// Whether the file has an old side and a new side, so side by side shows something in each
     /// column.
     ///
@@ -116,65 +82,154 @@ final class FileState {
         return FileState.generatedNames.contains(name) || name.hasSuffix(".min.js") || name.hasSuffix(".min.css") || name.hasSuffix(".pbxproj")
     }
 
-    func setWhole(_ all: [DiffLine]) {
-        lines = all
-        isWhole = true
-        sidesAreBlobs = true
-        gapsBefore = [:]
-        unfolded = []
-        tokens = nil
-        definitions = nil
-        outline = nil
-        words = nil
-        names = nil
-        naming = nil
-        runs = nil
-        version += 1
-        analysis = nil
-    }
-
-    /// Whether the whole file is loaded, or ready to adopt.
-    var hasWhole: Bool { isWhole || preparedWhole != nil }
-
-    /// Reads the whole file in the background, ready for `adoptWhole()`.
+    /// Reads the whole file in the background, once, if it isn't read yet.
     ///
-    /// The file's lines stay as they are until it's adopted, since the reader may be showing
-    /// them.
-    ///
-    /// - Parameter analyzing: Whether to analyze it too, for a file that isn't shown yet. A file
-    ///   about to show is analyzed after it shows instead.
-    func prepareWhole(git: Git, analyzing: Bool) async {
-        guard !hasWhole, !diff.isBinary else { return }
+    /// Panes go on showing the text they show; a pane shows the whole file when it next shows
+    /// the file. A file that can't be read stays unread, so the next call tries again. Reading
+    /// doesn't analyze the file, so a pane waiting to show it waits only for the read.
+    func loadWhole(git: Git) async {
+        guard whole == nil, !diff.isBinary else { return }
         if let wholeLoad { return await wholeLoad.value }
-        let diff = self.diff, isChange = self.isChange, contentAnalysis = self.contentAnalysis
+        let diff = self.diff
         let task = Task {
             guard let old = try? await git.oldLines(of: diff) else { return }
             let all = await Task.detached(priority: .userInitiated) { wholeFile(diff.hunks, oldLines: old) }.value
-            let analysis = analyzing
-                ? await FileState.analyze(all, path: diff.path, isChange: isChange, symbols: true, blobs: FileState.blobs(of: diff.change), contentAnalysis: contentAnalysis)
-                : nil
-            preparedWhole = (all, analysis)
+            if whole == nil { whole = wholeText(all) }
         }
         wholeLoad = task
         await task.value
         wholeLoad = nil
     }
 
-    /// Takes the whole file read elsewhere, ready for `adoptWhole()`.
+    /// Takes the whole file read elsewhere, if it isn't read yet.
     func offerWhole(_ all: [DiffLine]) {
-        guard !hasWhole else { return }
-        preparedWhole = (all, nil)
+        guard whole == nil else { return }
+        whole = wholeText(all)
     }
 
-    /// Shows the whole file prepared or offered, if there is one.
-    func adoptWhole() {
-        guard let p = preparedWhole else { return }
-        preparedWhole = nil
-        setWhole(p.lines)
-        if let a = p.analysis { apply(a) }
+    private func wholeText(_ all: [DiffLine]) -> FileText {
+        FileText(all, isWhole: true, gapsBefore: [:], blobs: FileText.blobs(of: diff.change),
+                 path: path, change: diff.change, isChange: isChange, hasLanguage: hasLanguage, contentAnalysis: contentAnalysis)
+    }
+}
+
+/// One of a file's texts: its hunks, or the whole file.
+///
+/// Its lines never change, so the panes showing it keep line indices into them, and what's
+/// worked out from them (syntax tokens, definitions, the outline, names, changed words and runs
+/// of changes) is worked out once, for every pane, and stays right.
+@MainActor
+final class FileText {
+    /// Every line, in order. A pane's rows refer to them by index.
+    let lines: [DiffLine]
+    /// Whether the lines are the whole file, rather than hunks with unchanged lines left out
+    /// between them.
+    let isWhole: Bool
+    /// The number of unchanged lines left out before the hunk starting at each index into
+    /// `lines`.
+    ///
+    /// Empty for a whole file.
+    let gapsBefore: [Int: Int]
+    let path: String
+    /// Whether a grammar covers the file, which analysis loads off the main thread.
+    let hasLanguage: Bool
+    private let change: RawChange
+    private let isChange: Bool
+    /// The blob IDs of the sides whose lines are the whole of their blob, so each side's
+    /// analysis is shared by its blob's ID.
+    private let blobs: (old: String?, new: String?)
+    /// Where each version of a file is analyzed once, for every reader.
+    private let contentAnalysis: ContentAnalysis?
+    /// Whether the grammar finds definitions, once the text is analyzed.
+    private(set) var hasTags: Bool?
+    /// The syntax tokens per line, once analyzed.
+    private(set) var tokens: [[Token]]?
+    /// The new side's definitions, once analyzed with symbols.
+    private(set) var definitions: [Symbol]?
+    /// The file's definitions with what changed in each, once analyzed with symbols.
+    private(set) var outline: [OutlineItem]?
+    private var words: [Int: [NSRange]]?
+    private var analysis: (task: Task<Void, Never>, symbols: Bool)?
+
+    fileprivate init(_ lines: [DiffLine], isWhole: Bool, gapsBefore: [Int: Int], blobs: (old: String?, new: String?),
+                     path: String, change: RawChange, isChange: Bool, hasLanguage: Bool, contentAnalysis: ContentAnalysis?) {
+        self.lines = lines
+        self.isWhole = isWhole
+        self.gapsBefore = gapsBefore
+        self.blobs = blobs
+        self.path = path
+        self.change = change
+        self.isChange = isChange
+        self.hasLanguage = hasLanguage
+        self.contentAnalysis = contentAnalysis
     }
 
-    /// What analyzing a file finds.
+    /// Returns the index of a 1-based line number on one side, or of the nearest line after it.
+    func index(ofLine n: Int, old: Bool = false) -> Int? {
+        if let exact = lines.firstIndex(where: { old ? $0.kind != .added && $0.oldNo == n : $0.kind != .deleted && $0.newNo == n }) { return exact }
+        return lines.firstIndex { old ? $0.oldNo >= n : $0.newNo >= n } ?? (lines.isEmpty ? nil : lines.count - 1)
+    }
+
+    /// Returns the line number of a line index, on the new side unless the line was removed.
+    ///
+    /// - Returns: The number, or nil if the text has no lines.
+    func lineNumber(at i: Int) -> SideLine? {
+        guard !lines.isEmpty else { return nil }
+        let l = lines[min(max(0, i), lines.count - 1)]
+        return l.kind == .deleted ? SideLine(number: l.oldNo, old: true) : SideLine(number: l.newNo, old: false)
+    }
+
+    /// Returns the reference and code for some line indices.
+    ///
+    /// The reference uses new-side line numbers, or old-side ones if all the lines were removed.
+    func reference(_ indices: [Int]) -> (lines: ClosedRange<Int>, old: Bool, code: [String])? {
+        let picked = indices.filter { lines.indices.contains($0) }
+        guard !picked.isEmpty else { return nil }
+        let old = picked.allSatisfy { lines[$0].kind == .deleted }
+        let kept = old ? picked : picked.filter { lines[$0].kind != .deleted }
+        let numbers = kept.map { old ? lines[$0].oldNo : lines[$0].newNo }
+        guard let lo = numbers.min(), let hi = numbers.max() else { return nil }
+        return (lo...hi, old, kept.map { lines[$0].text })
+    }
+
+    /// Returns the changed words in a line, if it's one of a pair of removed and added lines.
+    func wordRanges(_ line: Int) -> [NSRange] {
+        if words == nil {
+            var w: [Int: [NSRange]] = [:]
+            for (d, a) in pairChangedLines(lines) {
+                let dt = lines[d].text, at = lines[a].text
+                guard dt.utf16.count < 2000, at.utf16.count < 2000, let r = wordDiff(dt, at) else { continue }
+                w[d] = r.old
+                w[a] = r.new
+            }
+            words = w
+        }
+        return words?[line] ?? []
+    }
+
+    /// Returns the unchanged runs to hide when showing just the changes.
+    ///
+    /// Leaves out the runs a pane opened and runs holding a line with a note.
+    ///
+    /// - Parameters:
+    ///   - unfolded: The first line indices of the runs the pane opened.
+    ///   - anchored: The indices of lines that have notes.
+    func folds(unfolded: Set<Int>, keeping anchored: Set<Int>) -> [Range<Int>] {
+        guard isWhole else { return [] }
+        return foldedRuns(lines, context: 3).filter { r in
+            !unfolded.contains(r.lowerBound) && !anchored.contains { r.contains($0) }
+        }
+    }
+
+    /// The line index a note is anchored to, if its code is still there.
+    func anchor(of note: Note) -> Int? {
+        guard let on = note.lines, on.path == path else { return nil }
+        let no = on.range.upperBound
+        guard let i = lines.firstIndex(where: { on.old ? ($0.kind == .deleted && $0.oldNo == no) : ($0.kind != .deleted && $0.newNo == no) }) else { return nil }
+        return on.code.last.map { $0 == lines[i].text } ?? true ? i : nil
+    }
+
+    /// What analyzing a text finds.
     struct Analysis: Sendable {
         var tokens: [[Token]]
         var definitions: [Symbol]?
@@ -182,37 +237,31 @@ final class FileState {
         var hasTags = false
     }
 
-    /// Analyzes the lines off the main thread, once for each version of them.
+    /// Analyzes the lines off the main thread, once.
     ///
     /// - Parameter symbols: Whether to find definitions and the outline too, which the overview
     ///   doesn't need.
     func analyze(symbols: Bool) async {
         guard hasLanguage else { return }
         if tokens != nil, !symbols || outline != nil { return }
-        if let a = analysis, a.version == version, a.symbols || !symbols { return await a.task.value }
-        let snapshot = lines, v = version, isChange = self.isChange, path = self.path, contentAnalysis = self.contentAnalysis
-        let blobs = sidesAreBlobs ? FileState.blobs(of: diff.change) : (old: nil, new: nil)
+        if let a = analysis, a.symbols || !symbols { return await a.task.value }
+        let lines = self.lines, isChange = self.isChange, path = self.path, blobs = self.blobs, contentAnalysis = self.contentAnalysis
         let task = Task {
-            let a = await FileState.analyze(snapshot, path: path, isChange: isChange, symbols: symbols, blobs: blobs, contentAnalysis: contentAnalysis)
-            guard v == version else { return }
-            apply(a)
+            let a = await FileText.analyze(lines, path: path, isChange: isChange, symbols: symbols, blobs: blobs, contentAnalysis: contentAnalysis)
+            tokens = a.tokens
+            if let d = a.definitions { definitions = d }
+            if let o = a.outline { outline = o }
+            hasTags = a.hasTags
         }
-        analysis = (task, symbols, v)
+        analysis = (task, symbols)
         await task.value
-    }
-
-    private func apply(_ a: Analysis) {
-        tokens = a.tokens
-        if let d = a.definitions { definitions = d }
-        if let o = a.outline { outline = o }
-        hasTags = a.hasTags
     }
 
     /// Returns the blob IDs of a change's sides, for the sides that are regular files.
     ///
     /// A symbolic link's lines are its target's path, but in the worktree git hashes the
     /// target's contents instead, so its ID doesn't name its lines.
-    nonisolated private static func blobs(of change: RawChange) -> (old: String?, new: String?) {
+    nonisolated fileprivate static func blobs(of change: RawChange) -> (old: String?, new: String?) {
         func id(_ oid: String, _ mode: String) -> String? {
             oid != zeroOid && (mode == "100644" || mode == "100755") ? oid : nil
         }
@@ -261,24 +310,24 @@ final class FileState {
                         hasTags: language.hasTags)
     }
 
-    /// The names in one side of the file, with where its lines are among the file's.
+    /// The names in one side of the text, with where its lines are among the text's.
     struct SideNames: Sendable {
         var index: NameIndex
-        /// The index into the file's lines of each of the side's lines.
+        /// The index into the text's lines of each of the side's lines.
         var lines: [Int]
-        /// The side's line for each of the file's lines, or -1 where the side doesn't have it.
+        /// The side's line for each of the text's lines, or -1 where the side doesn't have it.
         var sideLines: [Int32]
     }
 
-    /// The names in each side of the file, once indexed: the new side, and the old side if the
-    /// file has removed lines.
+    /// The names in each side of the text, once indexed: the new side, and the old side if the
+    /// text has removed lines.
     private var names: (new: SideNames, old: SideNames?)?
-    private var naming: (task: Task<Void, Never>, version: Int)?
+    private var naming: Task<Void, Never>?
 
-    /// Whether the file's names are indexed, so `occurrences(atLine:column:)` can find them.
+    /// Whether the text's names are indexed, so `occurrences(atLine:column:)` can find them.
     var hasNames: Bool { names != nil }
 
-    /// A place a name is used: a line, by index into the file's lines, and its range in the line.
+    /// A place a name is used: a line, by index into the text's lines, and its range in the line.
     struct Occurrence: Comparable {
         var line: Int
         var range: NSRange
@@ -288,18 +337,16 @@ final class FileState {
         }
     }
 
-    /// Indexes the names in each side of the file off the main thread, once its tokens have
+    /// Indexes the names in each side of the text off the main thread, once its tokens have
     /// arrived, since they tell names from keywords.
     func indexNames() async {
         guard hasLanguage, names == nil, let tokens else { return }
-        if let n = naming, n.version == version { return await n.task.value }
-        let lines = self.lines, v = version, path = self.path
+        if let naming { return await naming.value }
+        let lines = self.lines, path = self.path
         let task = Task(priority: .utility) {
-            let found = await FileState.indexNames(lines, tokens: tokens, path: path)
-            guard v == version, let found else { return }
-            names = found
+            names = await FileText.indexNames(lines, tokens: tokens, path: path)
         }
-        naming = (task, v)
+        naming = task
         await task.value
     }
 
@@ -316,7 +363,7 @@ final class FileState {
         return (side(false), hasOld ? side(true) : nil)
     }
 
-    /// Returns where the name at a place in the file is used, and the places of the names that
+    /// Returns where the name at a place in the text is used, and the places of the names that
     /// name the same thing, in order.
     ///
     /// A line both sides have finds the name in each. A line only one side has finds it in
@@ -325,7 +372,7 @@ final class FileState {
     /// found in the other side by its spelling.
     ///
     /// - Parameters:
-    ///   - line: The index into the file's lines.
+    ///   - line: The index into the text's lines.
     ///   - column: The caret's UTF-16 offset in the line.
     /// - Returns: The places, empty if there's no name there, or nil until the names are indexed.
     func occurrences(atLine line: Int, column: Int) -> [Occurrence]? {
@@ -371,71 +418,42 @@ final class FileState {
     private var runs: [KeyedRun]?
 
     /// A run of changed lines with the key its read state is kept under.
+    ///
+    /// The key comes from the run's lines, so a run has the same key in the hunks and in the
+    /// whole file, and reading it in one pane reads it in every pane.
     struct KeyedRun {
         var run: ChangeRun
         var key: String
     }
 
-    /// The file's runs of changes, with their keys.
+    /// The text's runs of changes, with their keys.
     var keyedRuns: [KeyedRun] {
         if let runs { return runs }
-        let file = diff.change.reviewKey
+        let file = change.reviewKey
         let r = isChange ? changeRuns(lines).map { KeyedRun(run: $0, key: changeKey(file: file, lines: lines[$0.lines])) } : []
         runs = r
         return r
     }
 
-    /// The run of changes holding a line, by index into the file's lines.
+    /// The run of changes holding a line, by index into the text's lines.
     func run(at line: Int) -> KeyedRun? { keyedRuns.first { $0.run.lines.contains(line) } }
+}
 
-    /// Returns the text of one side as it is in the file.
-    ///
-    /// The old side is the lines with `kind != .added`; the new side is those with
-    /// `kind != .deleted`.
-    func sideText(old: Bool) -> [String] {
-        lines.filter { old ? $0.kind != .added : $0.kind != .deleted }.map(\.text)
-    }
-
-    /// Returns the changed words in a line, if it's one of a pair of removed and added lines.
-    func wordRanges(_ line: Int) -> [NSRange] {
-        if words == nil {
-            var w: [Int: [NSRange]] = [:]
-            for (d, a) in pairChangedLines(lines) {
-                let dt = lines[d].text, at = lines[a].text
-                guard dt.utf16.count < 2000, at.utf16.count < 2000, let r = wordDiff(dt, at) else { continue }
-                w[d] = r.old
-                w[a] = r.new
-            }
-            words = w
-        }
-        return words?[line] ?? []
-    }
-
-    /// Returns the unchanged runs to hide when showing just the changes.
-    ///
-    /// Leaves out runs the reader opened and runs holding a line with a note.
-    ///
-    /// - Parameter anchored: The indices of lines that have notes.
-    func folds(keeping anchored: Set<Int>) -> [Range<Int>] {
-        guard isWhole else { return [] }
-        return foldedRuns(lines, context: 3).filter { r in
-            !unfolded.contains(r.lowerBound) && !anchored.contains { r.contains($0) }
-        }
-    }
-
-    /// The line index a note is anchored to, if its code is still there.
-    func anchor(of note: Note) -> Int? {
-        guard let on = note.lines, on.path == path else { return nil }
-        let no = on.range.upperBound
-        guard let i = lines.firstIndex(where: { on.old ? ($0.kind == .deleted && $0.oldNo == no) : ($0.kind != .deleted && $0.newNo == no) }) else { return nil }
-        return on.code.last.map { $0 == lines[i].text } ?? true ? i : nil
-    }
+/// A file as one pane shows it: which of the file's texts, and the folded runs the pane opened.
+///
+/// It's the pane's own, so what one pane does with a review's files never changes what another
+/// shows.
+struct ShownFile {
+    let file: FileState
+    let text: FileText
+    /// The folded runs of unchanged lines the pane opened, by their first line index.
+    var unfolded: Set<Int> = []
 }
 
 /// One line of the reader's text.
 struct Row: Equatable {
     enum Kind: Equatable {
-        /// The file line at `files[file].lines[line]`.
+        /// The line at `files[file].text.lines[line]`.
         case line
         /// Space opposite a one-sided change in side-by-side.
         case filler
@@ -461,19 +479,20 @@ struct Layout {
 }
 
 @MainActor
-func layoutRows(files: [FileState], overview: Bool, split: Bool, showAll: Bool, notes: [Note]) -> Layout {
+func layoutRows(files: [ShownFile], overview: Bool, split: Bool, showAll: Bool, notes: [Note]) -> Layout {
     var left: [Row] = [], right: [Row] = []
-    let sideBySide = split && (overview || files.contains { $0.isTwoSided })
+    let sideBySide = split && (overview || files.contains { $0.file.isTwoSided })
     func both(_ r: Row) { left.append(r); right.append(r) }
 
-    for (fi, f) in files.enumerated() {
+    for (fi, shown) in files.enumerated() {
+        let f = shown.file, t = shown.text
         if overview { both(Row(kind: .header, file: fi)) }
         if f.diff.isBinary { both(Row(kind: .notice("Binary file"), file: fi)); continue }
-        if f.lines.isEmpty { both(Row(kind: .notice(emptyNotice(f)), file: fi)); continue }
+        if t.lines.isEmpty { both(Row(kind: .notice(emptyNotice(f)), file: fi)); continue }
 
         var anchors: [Int: [Note]] = [:]
-        for n in notes { if let a = f.anchor(of: n) { anchors[a, default: []].append(n) } }
-        let folds = showAll ? [] : f.folds(keeping: Set(anchors.keys))
+        for n in notes { if let a = t.anchor(of: n) { anchors[a, default: []].append(n) } }
+        let folds = showAll ? [] : t.folds(unfolded: shown.unfolded, keeping: Set(anchors.keys))
         let foldAt = Dictionary(folds.map { ($0.lowerBound, $0) }, uniquingKeysWith: { a, _ in a })
         let twoColumns = sideBySide
 
@@ -482,14 +501,14 @@ func layoutRows(files: [FileState], overview: Bool, split: Bool, showAll: Bool, 
         }
 
         var i = 0
-        let lines = f.lines
+        let lines = t.lines
         while i < lines.count {
             if let fold = foldAt[i] {
                 both(Row(kind: .fold(fold), file: fi))
                 i = fold.upperBound
                 continue
             }
-            if let hidden = f.gapsBefore[i] { both(Row(kind: .gap(hidden), file: fi, line: i)) }
+            if let hidden = t.gapsBefore[i] { both(Row(kind: .gap(hidden), file: fi, line: i)) }
             if !twoColumns {
                 left.append(Row(kind: .line, file: fi, line: i))
                 emitNotes(after: i)
@@ -505,7 +524,7 @@ func layoutRows(files: [FileState], overview: Bool, split: Bool, showAll: Bool, 
             }
             var dels: [Int] = [], adds: [Int] = []
             let runStart = i
-            func continues(_ k: LineKind) -> Bool { i < lines.count && lines[i].kind == k && foldAt[i] == nil && !(i != runStart && f.gapsBefore[i] != nil) }
+            func continues(_ k: LineKind) -> Bool { i < lines.count && lines[i].kind == k && foldAt[i] == nil && !(i != runStart && t.gapsBefore[i] != nil) }
             while continues(.deleted) { dels.append(i); i += 1 }
             while continues(.added) { adds.append(i); i += 1 }
             for k in 0..<max(dels.count, adds.count) {

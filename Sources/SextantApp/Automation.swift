@@ -703,9 +703,9 @@ extension RepoWindowController {
             }
         }
         let caretText: String = reader.caret.map { p in
-            guard reader.files.indices.contains(p.file), !reader.files[p.file].lines.isEmpty else { return "" }
-            let f = reader.files[p.file]
-            let (n, old) = f.lineNumber(at: p.line)
+            guard reader.files.indices.contains(p.file), let l = reader.sideLine(at: p) else { return "" }
+            let f = reader.files[p.file].file
+            let (n, old) = (l.number, l.old)
             let code = reader.activeCode
             let col = code.selectedRange().location - code.charRange(ofRow: reader.caretRow ?? 0).location
             return "\(f.path):\(n)\(old ? " (old)" : ""):\(col + 1)"
@@ -730,7 +730,7 @@ extension RepoWindowController {
             "caret": caretText,
             "selection": NSStringFromRange(reader.activeCode.selectedRange()) + " row \(reader.caretRow ?? -1) of \(reader.activeCode.rows.count) len \(reader.activeCode.textStorage?.length ?? 0)",
             "currentChange": currentChange.map { changes[$0].path } ?? "",
-            "isWhole": focusedFile?.isWhole ?? false,
+            "isWhole": focusedFile?.text.isWhole ?? false,
             "rows": reader.primary.rows.count,
             "firstResponder": focusName,
             "windowFrame": NSStringFromRect(window?.frame ?? .zero),
@@ -752,7 +752,7 @@ extension RepoWindowController {
             "selectionRows": reader.selection?.lines.count ?? 0,
             "uses": reader.activeCode.uses.count,
             "jumpLabels": reader.activeCode.jumpLabels.map(\.label),
-            "read": reader.caretRun.map { c in c.file.keyedRuns.map { repository.reviews.isRead($0.key, in: c.file.diff.change) } } ?? [],
+            "read": reader.caretRun.map { c in c.text.keyedRuns.map { repository.reviews.isRead($0.key, in: c.file.diff.change) } } ?? [],
             "panes": panes.map(\.title),
             "focusedPane": focusedPane,
             "jump": jumpPanel?.isVisible == true ? (jumpPanel?.items ?? []).map { $0.title + " | " + $0.detail } : [],
@@ -777,14 +777,14 @@ extension RepoWindowController {
             let row = code.rows[r]
             let kind: String = switch row.kind {
             case .line: {
-                let l = code.files[row.file].lines[row.line]
+                let l = code.files[row.file].text.lines[row.line]
                 let sign = l.kind == .added ? "+" : l.kind == .deleted ? "-" : " "
                 return "\(sign)\(l.kind == .deleted ? l.oldNo : l.newNo) \(l.text.prefix(40))"
             }()
             case .filler: "filler"
             case .fold(let range): "fold \(range.count)"
             case .gap: "gap"
-            case .header: "header \(code.files[row.file].path)"
+            case .header: "header \(code.files[row.file].file.path)"
             case .notice(let s): "notice \(s)"
             case .note: "note"
             }
@@ -807,7 +807,7 @@ extension RepoWindowController {
             for (r, row) in code.rows.enumerated() {
                 switch row.kind {
                 case .line:
-                    let l = code.files[row.file].lines[row.line]
+                    let l = code.files[row.file].text.lines[row.line]
                     let sign = l.kind == .added ? "+" : l.kind == .deleted ? "-" : " "
                     let shown = text.substring(with: code.charRange(ofRow: r))
                     var described = "\(sign)\(l.kind == .deleted ? l.oldNo : l.newNo) \(l.text)"
@@ -823,16 +823,14 @@ extension RepoWindowController {
                 case .gap(let n):
                     gaps += 1
                     rows.append("gap \(n)")
-                case .header: rows.append("header \(code.files[row.file].path)")
+                case .header: rows.append("header \(code.files[row.file].file.path)")
                 case .notice(let s): rows.append("notice \(s)")
                 case .note(let id): rows.append("note \(notes.notes.first { $0.id == id }?.text ?? "?")")
                 }
             }
             let caret: String = reader.caret.map { c in
-                let f = reader.files[c.file]
-                guard !f.lines.isEmpty else { return f.path }
-                let (n, old) = f.lineNumber(at: c.line)
-                return lineReference(path: f.path, lines: n...n, old: old)
+                let path = reader.files[c.file].file.path
+                return reader.sideLine(at: c).map { lineReference(path: path, lines: $0.number...$0.number, old: $0.old) } ?? path
             } ?? ""
             return [
                 "title": p.title,

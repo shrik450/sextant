@@ -29,7 +29,8 @@ struct ReaderPosition: Equatable {
 final class Reader: NSViewController, CodeViewDelegate {
     weak var delegate: ReaderDelegate?
 
-    private(set) var files: [FileState] = []
+    /// The files shown, each with the text this reader shows of it and the runs it unfolded.
+    private(set) var files: [ShownFile] = []
     private(set) var overview = false
     var notes: [Note] = []
     var split = false
@@ -178,8 +179,12 @@ final class Reader: NSViewController, CodeViewDelegate {
             ?? columns.last!.code
     }
 
+    /// Shows one file by itself, or every change as an overview.
+    ///
+    /// A file by itself shows whole once it's read; the overview shows each change's hunks,
+    /// whatever other panes read of them.
     func show(files: [FileState], overview: Bool, at position: ReaderPosition? = nil) {
-        self.files = files
+        self.files = files.map { ShownFile(file: $0, text: overview ? $0.hunks : $0.wholeOrHunks) }
         self.overview = overview
         usesWord = nil
         boxed = nil
@@ -202,24 +207,24 @@ final class Reader: NSViewController, CodeViewDelegate {
     /// The overview only needs colors; one file needs its definitions and outline too.
     private func analyzeShownFiles() {
         analysis?.cancel()
-        let shown = files, symbols = !overview
+        let shown = files.map(\.text), symbols = !overview
         analysis = Task {
             var tried = Set<ObjectIdentifier>()
-            while !Task.isCancelled, let f = nextToAnalyze(shown, symbols: symbols, skipping: tried) {
-                tried.insert(ObjectIdentifier(f))
-                await f.analyze(symbols: symbols)
-                guard !Task.isCancelled, let fi = files.firstIndex(where: { $0 === f }) else { return }
+            while !Task.isCancelled, let t = nextToAnalyze(shown, symbols: symbols, skipping: tried) {
+                tried.insert(ObjectIdentifier(t))
+                await t.analyze(symbols: symbols)
+                guard !Task.isCancelled, let fi = files.firstIndex(where: { $0.text === t }) else { return }
                 analyzed(file: fi)
             }
         }
     }
 
-    private func nextToAnalyze(_ shown: [FileState], symbols: Bool, skipping tried: Set<ObjectIdentifier>) -> FileState? {
+    private func nextToAnalyze(_ shown: [FileText], symbols: Bool, skipping tried: Set<ObjectIdentifier>) -> FileText? {
         let here = currentFile ?? 0
         return shown.indices
             .filter { i in
-                let f = shown[i]
-                return f.hasLanguage && !tried.contains(ObjectIdentifier(f)) && (f.tokens == nil || symbols && f.outline == nil)
+                let t = shown[i]
+                return t.hasLanguage && !tried.contains(ObjectIdentifier(t)) && (t.tokens == nil || symbols && t.outline == nil)
             }
             .min { abs($0 - here) * 2 + ($0 < here ? 1 : 0) < abs($1 - here) * 2 + ($1 < here ? 1 : 0) }
             .map { shown[$0] }
@@ -275,10 +280,10 @@ final class Reader: NSViewController, CodeViewDelegate {
         for (i, rows) in sides.enumerated() {
             let c = columns[i]
             c.code.style = style
-            c.code.isReadLine = { fi, li in files[fi].run(at: li).map { isRead(files[fi], $0) } ?? false }
+            c.code.isReadLine = { fi, li in files[fi].text.run(at: li).map { isRead(files[fi].file, $0) } ?? false }
             c.code.setContent(render(rows, side: sides.count == 2 ? i : -1, files: files, notes: byID, style: style), rows: rows, files: files)
             c.scroll.drawsBackground = false
-            c.gutter.columns = sides.count == 2 || !files.contains(where: \.isChange) ? 1 : 2
+            c.gutter.columns = sides.count == 2 || !files.contains(where: \.file.isChange) ? 1 : 2
             c.gutter.updateThickness()
         }
         changeStops = changeStarts(changedRows(layout))
@@ -296,7 +301,7 @@ final class Reader: NSViewController, CodeViewDelegate {
     }
 
     /// Says whether a run of changes has been read.
-    var isRead: (FileState, FileState.KeyedRun) -> Bool = { _, _ in false }
+    var isRead: (FileState, FileText.KeyedRun) -> Bool = { _, _ in false }
 
     /// Redraws the change bars after runs were read or unread.
     /// Redraws changes in their read or unread colors.
@@ -308,10 +313,10 @@ final class Reader: NSViewController, CodeViewDelegate {
         }
     }
 
-    /// The run of changes the caret is in, with its file.
-    var caretRun: (file: FileState, run: FileState.KeyedRun)? {
-        guard let p = caret, files.indices.contains(p.file), let r = files[p.file].run(at: p.line) else { return nil }
-        return (files[p.file], r)
+    /// The run of changes the caret is in, with its file and the text it's in.
+    var caretRun: (file: FileState, text: FileText, run: FileText.KeyedRun)? {
+        guard let p = caret, files.indices.contains(p.file), let r = files[p.file].text.run(at: p.line) else { return nil }
+        return (files[p.file].file, files[p.file].text, r)
     }
 
     /// The caret's column in its line, as a UTF-16 offset.
@@ -344,7 +349,7 @@ final class Reader: NSViewController, CodeViewDelegate {
     }
 
     /// The file and places of the names boxed, which name what the caret's name names.
-    private var boxed: (file: Int, places: [FileState.Occurrence])?
+    private var boxed: (file: Int, places: [FileText.Occurrence])?
     /// The update of the boxes waiting for the caret to settle.
     private var pendingOccurrences: Task<Void, Never>?
 
@@ -383,7 +388,7 @@ final class Reader: NSViewController, CodeViewDelegate {
     }
 
     /// Whether the caret is on or just after one of some places in a line.
-    private static func contains(_ places: [FileState.Occurrence], line: Int, column: Int) -> Bool {
+    private static func contains(_ places: [FileText.Occurrence], line: Int, column: Int) -> Bool {
         var lo = 0, hi = places.count
         while lo < hi {
             let mid = (lo + hi) / 2
@@ -398,12 +403,12 @@ final class Reader: NSViewController, CodeViewDelegate {
         pendingOccurrences?.cancel()
         pendingOccurrences = nil
         guard let at = nameAtCaret, files.indices.contains(at.file) else { return box(nil) }
-        let f = files[at.file]
-        guard let places = f.occurrences(atLine: at.line, column: at.column) else {
-            guard f.tokens != nil else { return }
+        let t = files[at.file].text
+        guard let places = t.occurrences(atLine: at.line, column: at.column) else {
+            guard t.tokens != nil else { return }
             Task(priority: .utility) { [weak self] in
-                await f.indexNames()
-                guard f.hasNames, let self, self.caret.map({ self.files[$0.file] === f }) == true else { return }
+                await t.indexNames()
+                guard t.hasNames, let self, self.caret.map({ self.files[$0.file].text === t }) == true else { return }
                 self.updateOccurrences()
             }
             return
@@ -411,7 +416,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         box(places.isEmpty ? nil : (at.file, places))
     }
 
-    private func box(_ new: (file: Int, places: [FileState.Occurrence])?) {
+    private func box(_ new: (file: Int, places: [FileText.Occurrence])?) {
         boxed = new
         for c in columns { c.code.showOccurrences(new?.places ?? [], inFile: new?.file ?? 0) }
     }
@@ -690,6 +695,19 @@ final class Reader: NSViewController, CodeViewDelegate {
     /// The row at the top of the viewport, as a file and line.
     var topPosition: ReaderPosition? { topAnchor?.position }
 
+    /// Returns where a line number is in the text shown of a file: the line, or the nearest line
+    /// after it.
+    func position(of line: SideLine, inFile fi: Int = 0) -> ReaderPosition? {
+        guard files.indices.contains(fi), let i = files[fi].text.index(ofLine: line.number, old: line.old) else { return nil }
+        return ReaderPosition(file: fi, line: i)
+    }
+
+    /// Returns the line number at a position in the text shown of a file.
+    func sideLine(at p: ReaderPosition) -> SideLine? {
+        guard files.indices.contains(p.file) else { return nil }
+        return files[p.file].text.lineNumber(at: p.line)
+    }
+
     /// How far the top of the viewport sits below the top position's row; negative when above it.
     private var offsetFromTopPosition: CGFloat {
         guard let a = topAnchor else { return 0 }
@@ -829,7 +847,7 @@ final class Reader: NSViewController, CodeViewDelegate {
     private func changedRows(_ layout: Layout) -> [Bool] {
         let files = self.files
         func changed(_ r: Row) -> Bool {
-            r.kind == .line && files[r.file].lines[r.line].kind != .context
+            r.kind == .line && files[r.file].text.lines[r.line].kind != .context
         }
         guard let right = layout.right else { return layout.left.map(changed) }
         return zip(layout.left, right).map { changed($0) || changed($1) }
@@ -922,7 +940,7 @@ final class Reader: NSViewController, CodeViewDelegate {
     /// - Returns: False if there is none in that direction.
     @discardableResult
     func stepDefinition(_ dir: Int, changedOnly: Bool) -> Bool {
-        guard !overview, let f = files.first, !f.lines.isEmpty else { return false }
+        guard !overview, let f = files.first?.text, !f.lines.isEmpty else { return false }
         if changedOnly { return stepChangedDefinition(dir, in: f) }
         let here = caret.map { f.lines[$0.line] }.map { $0.kind == .deleted ? max(0, $0.newNo) : $0.newNo - 1 } ?? currentNewLine ?? 0
         let starts = Set(header.definitions.map(\.nameLine)).sorted()
@@ -932,7 +950,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         return true
     }
 
-    private func stepChangedDefinition(_ dir: Int, in f: FileState) -> Bool {
+    private func stepChangedDefinition(_ dir: Int, in f: FileText) -> Bool {
         let here = caret?.line ?? topPosition?.line ?? 0
         let starts = changedDefinitions(in: f.outline ?? [], lines: f.lines).compactMap { d -> Int? in
             let old = d.change == .deleted
@@ -992,7 +1010,7 @@ final class Reader: NSViewController, CodeViewDelegate {
 
     /// The zero-based new-side line at the caret when it's in view, else at the top of the view.
     private var currentNewLine: Int? {
-        guard !overview, let f = files.first, !f.lines.isEmpty else { return nil }
+        guard !overview, let f = files.first?.text, !f.lines.isEmpty else { return nil }
         let p = (caretInView ? caret : nil) ?? topPosition
         return p.map { f.lines[min($0.line, f.lines.count - 1)] }.map { $0.newNo > 0 ? $0.newNo - 1 : max(0, $0.oldNo - 1) }
     }
@@ -1003,7 +1021,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         if overview {
             header.update(path: nil, files: files, current: currentFile, style: style)
         } else if let f = files.first {
-            header.update(path: f.path, files: files, current: 0, style: style)
+            header.update(path: f.file.path, files: files, current: 0, style: style)
             header.updateSymbol(line: currentNewLine)
         }
     }

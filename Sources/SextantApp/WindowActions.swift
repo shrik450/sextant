@@ -119,7 +119,7 @@ extension RepoWindowController {
             }
             if let mb = res.mergeBase { add("Base \(mb.prefix(7))", mono) }
         }
-        if blameOn, let f = focusedFile, let caret = reader.caret, f.lines.indices.contains(caret.line), f.lines[caret.line].kind != .deleted,
+        if blameOn, let f = focusedFile?.text, let caret = reader.caret, f.lines.indices.contains(caret.line), f.lines[caret.line].kind != .deleted,
            let c = reader.blame?.commit(forLine: f.lines[caret.line].newNo - 1) {
             add("", meta)
             add("Line \(f.lines[caret.line].newNo)", bold)
@@ -334,7 +334,7 @@ extension RepoWindowController: NSMenuItemValidation {
 
     /// Goes to a definition in the file being read.
     func goToDefinition(_ s: Symbol) {
-        guard let f = focusedFile, let i = f.index(ofLine: s.nameLine + 1) else { return }
+        guard let f = focusedFile?.text, let i = f.index(ofLine: s.nameLine + 1) else { return }
         reader.land(onLine: i)
     }
 
@@ -357,7 +357,7 @@ extension RepoWindowController: NSMenuItemValidation {
         Task {
             defer { busy -= 1 }
             let b = try? await git.blame(path, in: t.snapshot)
-            guard blameOn, target == t, focusedFile === f else { return }
+            guard blameOn, target == t, focusedFile?.file === f else { return }
             reader.blame = b
             inspector.updateCard(card())
         }
@@ -365,14 +365,14 @@ extension RepoWindowController: NSMenuItemValidation {
 
     @objc func toggleBlame(_ sender: Any?) {
         blameOn.toggle()
-        if blameOn, let f = focusedFile { loadBlame(f) } else { reader.blame = nil; inspector.updateCard(card()) }
+        if blameOn, let f = focusedFile?.file { loadBlame(f) } else { reader.blame = nil; inspector.updateCard(card()) }
     }
 
     /// Lists the commits that touched the focused file, newest first.
     ///
     /// Choosing one reads the file at that commit.
     @objc func showFileHistory(_ sender: Any?) {
-        guard let f = focusedFile, let t = target else { beep(); return }
+        guard let f = focusedFile?.file, let t = target else { beep(); return }
         let from: String = switch t.snapshot {
         case .commit(let c): c
         default: "HEAD"
@@ -422,12 +422,12 @@ extension RepoWindowController: NSMenuItemValidation {
             m.addItem(.separator())
         }
         if let file, reader.files.indices.contains(file) {
-            let f = reader.files[file]
+            let f = reader.files[file].file
             if f.isChange {
                 add(m, f.reviewed ? "Mark as Not Reviewed" : "Mark as Reviewed", #selector(menuToggleReviewed(_:)), [f.path])
                 m.addItem(.separator())
             }
-            let n = line.map { f.lineNumber(at: $0).number } ?? 0
+            let n = line.flatMap { reader.sideLine(at: ReaderPosition(file: file, line: $0))?.number } ?? 0
             add(m, "Open in Editor", #selector(menuOpenInEditor(_:)), [f.path, n] as [Any])
             add(m, "Reveal in Finder", #selector(menuReveal(_:)), f.path)
         }
@@ -438,8 +438,8 @@ extension RepoWindowController: NSMenuItemValidation {
     private var selectedReference: (path: String, lines: ClosedRange<Int>, old: Bool, code: [String], file: Int, line: Int)? {
         guard let sel = reader.selection, reader.files.indices.contains(sel.file), let last = sel.lines.last else { return nil }
         let f = reader.files[sel.file]
-        guard let r = f.reference(sel.lines) else { return nil }
-        return (f.path, r.lines, r.old, r.code, sel.file, last)
+        guard let r = f.text.reference(sel.lines) else { return nil }
+        return (f.file.path, r.lines, r.old, r.code, sel.file, last)
     }
 
     @objc func copyReference(_ sender: Any?) {
@@ -527,12 +527,12 @@ extension RepoWindowController: NSMenuItemValidation {
     ///
     /// Reading the last unread run marks the file reviewed.
     @objc func toggleChangeRead(_ sender: Any?) {
-        guard let (f, run) = reader.caretRun else { beep(); return }
+        guard let (f, text, run) = reader.caretRun else { beep(); return }
         let reviews = repository.reviews
         let read = !reviews.isRead(run.key, in: f.diff.change)
-        reviews.setRead(run.key, in: f.diff.change, all: f.keyedRuns.map(\.key), to: read)
-        guard read, let fi = reader.files.firstIndex(where: { $0 === f }) else { return }
-        let unread = f.keyedRuns.filter { !reviews.isRead($0.key, in: f.diff.change) }
+        reviews.setRead(run.key, in: f.diff.change, all: text.keyedRuns.map(\.key), to: read)
+        guard read, let fi = reader.files.firstIndex(where: { $0.text === text }) else { return }
+        let unread = text.keyedRuns.filter { !reviews.isRead($0.key, in: f.diff.change) }
         if let next = unread.first(where: { $0.run.lines.lowerBound > run.run.lines.lowerBound }) ?? unread.first {
             reader.land(onLine: next.run.lines.lowerBound, file: fi)
         }
@@ -541,7 +541,7 @@ extension RepoWindowController: NSMenuItemValidation {
     /// Shows the definition of the name at the caret in a popover, without leaving the file.
     @objc func peekDefinition(_ sender: Any?) {
         guard let t = target, let word = reader.wordAtCaret, let anchor = reader.caretAnchor else { beep(); return }
-        let from = reader.selection.map { reader.files[$0.file].path }
+        let from = reader.selection.map { reader.files[$0.file].file.path }
         definitionTask?.cancel()
         busy += 1
         definitionTask = Task {
@@ -676,7 +676,7 @@ extension RepoWindowController: NSMenuItemValidation {
 
     @objc func jumpToDefinitionAction(_ sender: Any?) {
         guard let w = reader.wordAtCaret else { beep(); return }
-        jumpToDefinition(w, from: reader.selection.map { reader.files[$0.file].path })
+        jumpToDefinition(w, from: reader.selection.map { reader.files[$0.file].file.path })
     }
 
     @objc func findReferencesAction(_ sender: Any?) {
@@ -708,19 +708,19 @@ extension RepoWindowController: NSMenuItemValidation {
     }
 
     @objc func openCurrentInEditor(_ sender: Any?) {
-        guard let path = focusedFile?.path ?? actionPaths.first else { beep(); return }
+        guard let path = focusedFile?.file.path ?? actionPaths.first else { beep(); return }
         let line = selectedReference.map { $0.old ? 0 : $0.lines.lowerBound } ?? 0
         openInEditor(path: path, line: line)
     }
 
     @objc func copyCurrentPath(_ sender: Any?) {
-        let paths = focusedFile.map { [$0.path] } ?? actionPaths
+        let paths = focusedFile.map { [$0.file.path] } ?? actionPaths
         guard !paths.isEmpty else { beep(); return }
         copy(paths.joined(separator: "\n"))
     }
 
     @objc func goToLine(_ sender: Any?) {
-        guard let window, sheet == nil, let f = focusedFile, !f.lines.isEmpty else { beep(); return }
+        guard let window, sheet == nil, let f = focusedFile?.text, !f.lines.isEmpty else { beep(); return }
         let last = f.lines.last.map { max($0.newNo, $0.oldNo) } ?? 1
         let s = RevisionSheet(title: "Go to Line", placeholder: "1–\(last)", suggestions: [], initial: "") { [weak self] text in
             guard let self, let n = Int(text.trimmingCharacters(in: .whitespaces)), n >= 1 else { return "Enter a line number" }
@@ -776,7 +776,7 @@ extension RepoWindowController: NSMenuItemValidation {
         case #selector(copyAllNotes(_:)): return !reviewNotes.isEmpty
         case #selector(addReviewNote(_:)): return review != nil
         case #selector(toggleChangeRead(_:)):
-            guard let (f, run) = reader.caretRun else { return false }
+            guard let (f, _, run) = reader.caretRun else { return false }
             item.title = repository.reviews.isRead(run.key, in: f.diff.change) ? "Mark Change as Unread" : "Mark Change as Read"
             return true
         case #selector(peekDefinition(_:)): return reader.wordAtCaret != nil
