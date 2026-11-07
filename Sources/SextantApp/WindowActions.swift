@@ -742,11 +742,22 @@ extension RepoWindowController: NSMenuItemValidation {
     @objc func smallerFont(_ sender: Any?) { Appearance.shared.adjustFontSize(-1) }
     @objc func actualSizeFont(_ sender: Any?) { Appearance.shared.resetFontSize() }
 
+    /// Whether the key AppKit is matching to a menu item's shortcut is typed into a text field,
+    /// which should get it instead.
+    ///
+    /// AppKit offers every key to the main menu before the window gets it, so a command whose
+    /// shortcut is a bare key would take that letter from a field being typed in. The command
+    /// stays enabled otherwise, for the menu bar and Go to Anything.
+    private func isTypedIntoText(_ item: NSMenuItem) -> Bool {
+        guard !item.keyEquivalent.isEmpty, item.keyEquivalentModifierMask.isSubset(of: .shift),
+              let event = NSApp.currentEvent, event.type == .keyDown,
+              event.modifierFlags.isDisjoint(with: [.command, .control, .option]),
+              let text = event.window?.firstResponder as? NSTextView else { return false }
+        return text.isEditable
+    }
+
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        if item.keyEquivalentModifierMask.subtracting(.shift).isEmpty, !item.keyEquivalent.isEmpty,
-           let text = window?.firstResponder as? NSTextView, text.isEditable {
-            return false
-        }
+        if isTypedIntoText(item) { return false }
         let reading = focusedFile != nil
         let commitRows = navigator.changes.scopeRows.contains { if case .commit = $0 { true } else { false } }
         switch item.action {
@@ -774,7 +785,8 @@ extension RepoWindowController: NSMenuItemValidation {
         case #selector(goToLine(_:)), #selector(showFileHistory(_:)), #selector(showSymbols(_:)), #selector(nextDefinition(_:)), #selector(previousDefinition(_:)):
             return reading
         case #selector(copyReference(_:)), #selector(copyReferenceWithCode(_:)), #selector(addNote(_:)): return reader.selection != nil
-        case #selector(jumpToDefinitionAction(_:)), #selector(findReferencesAction(_:)), #selector(copySymbol(_:)): return reader.wordAtCaret != nil
+        case #selector(jumpToDefinitionAction(_:)), #selector(findReferencesAction(_:)): return reader.wordAtCaret != nil
+        case #selector(copySymbol(_:)): return symbolAtCaret != nil
         case #selector(copySymbolWithReference(_:)): return symbolAtCaret != nil && selectedReference != nil
         case #selector(copyAllNotes(_:)): return !reviewNotes.isEmpty
         case #selector(addReviewNote(_:)): return review != nil

@@ -133,7 +133,7 @@ extension RepoWindowController {
     ///
     /// Commands are checked against this window's responders rather than whichever window
     /// is key, since the jump bar takes the keyboard once it opens.
-    private func enabledCommands(in menu: NSMenu?, path: String = "") -> [(path: String, item: NSMenuItem)] {
+    func enabledCommands(in menu: NSMenu?, path: String = "") -> [(path: String, item: NSMenuItem)] {
         var out: [(String, NSMenuItem)] = []
         for item in menu?.items ?? [] where !item.isSeparatorItem && !item.isHidden && !item.isAlternate {
             if let sub = item.submenu {

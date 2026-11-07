@@ -823,6 +823,8 @@ extension RepoWindowController {
             "settled": isSettled,
             "jumpShown": jumpPanel?.isVisible == true,
             "filterText": navigator.changes.filter.stringValue,
+            "jumpQuery": jumpPanel?.isVisible == true ? jumpPanel?.field.stringValue ?? "" : "",
+            "commands": enabledCommands(in: NSApp.mainMenu).map(\.item.title),
             "footprintMB": physicalFootprint() / 1_048_576,
             "indexing": session?.indexing.map { "\($0.done)/\($0.total)" } ?? "",
         ]

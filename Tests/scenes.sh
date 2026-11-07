@@ -33,7 +33,7 @@ bundle_id=${SEXTANT_SCENES_BUNDLE:-com.shrikanthup.Sextant.scenes}
 main_checkout=$(cd "$(git -C "$here" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
 lock=${SEXTANT_PERF_LOCK:-$main_checkout/scratch/gui-lock}
 real_git=$(command -v git)
-scenes=(page symlink find reload close base status shared showall columns rename read endings removed notes reference harness)
+scenes=(page symlink find reload close base status shared showall columns rename read endings removed notes reference harness fields)
 failed=0
 holding_lock=0
 
@@ -937,6 +937,55 @@ EOF
   expect harness "Go to Anything after cmd+k" "$(value "$dir/jump.json" jumpShown)" true
   expect harness "slow repository's files when its open is waited for" "$(value "$dir/slow.json" files.0.path)" a.txt
   expect harness "colours when a heavy file's open is waited for" "$(value "$dir/heavy.json" settled)" true
+}
+
+#######################################
+# Types letters that are also commands' shortcuts into the file filter and into Go to
+# Anything: the letters must go into the fields, and the commands must stay in the menus and in
+# Go to Anything. Copy Symbol Name must offer the definition around a blank line.
+#######################################
+scene_fields() {
+  local dir repo f
+  dir=$(scene_dir fields)
+  repo="$dir/repo"
+  mkdir -p "$repo"
+  g init -q -b main "$repo"
+  for f in a b c; do printf 'func %s() {\n    let one = 1\n}\n' "$f" > "$repo/$f.swift"; done
+  g -C "$repo" add -A
+  g -C "$repo" commit -qm base
+  for f in a b c; do printf 'func %s() {\n    let one = 1\n\n    let two = 2\n}\n' "$f" > "$repo/$f.swift"; done
+  cat > "$dir/script.txt" <<EOF
+defaults readerMode file
+defaults diffMode unified
+open $repo
+wait
+dump $dir/blank.json
+menu Go to Anything…
+key u
+dump $dir/jump.json
+key esc
+menu Find File…
+key u
+dump $dir/filter.json
+quit
+EOF
+  run_app "$dir"
+  expect fields "caret on the blank line" "$(value "$dir/blank.json" caret)" a.swift:3:1
+  expect fields "Copy Symbol Name on a blank line in a function" "$(has_command "$dir/blank.json" "Copy Symbol Name")" yes
+  expect fields "filter text after typing u" "$(value "$dir/filter.json" filterText)" u
+  expect fields "file after typing u in the filter" "$(value "$dir/filter.json" currentChange)" a.swift
+  expect fields "Next Unreviewed File while the filter has the keyboard" "$(has_command "$dir/filter.json" "Next Unreviewed File")" yes
+  expect fields "Go to Anything's text after typing u" "$(value "$dir/jump.json" jumpQuery)" u
+  expect fields "file after typing u in Go to Anything" "$(value "$dir/jump.json" currentChange)" a.swift
+}
+
+#######################################
+# Prints yes if a state dump lists a command among those enabled, as Go to Anything offers them.
+# Arguments:
+#   The dump, then the command's title.
+#######################################
+has_command() {
+  if plutil -extract commands json -o - "$1" 2>/dev/null | grep -qF "\"$2\""; then echo yes; else echo no; fi
 }
 
 if [[ ${1:-} == list ]]; then
