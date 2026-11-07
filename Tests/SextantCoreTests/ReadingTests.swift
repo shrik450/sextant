@@ -39,17 +39,17 @@ private func landing(_ line: String, tokens: [Token], changed: [NSRange]) -> Int
 }
 
 private func quadraticIdentifiers(in text: String, tokens: [Token]) -> [NSRange] {
-    let s = text as NSString
     let skipped = tokens.filter { [.keyword, .comment, .string, .number].contains($0.kind) }.map(\.range)
+    let scalars = text.unicodeScalars.map { (s: $0, length: $0.utf16.count) }
+    func isIdentifier(_ s: UnicodeScalar) -> Bool { CharacterSet.alphanumerics.contains(s) || s == "_" || s == "$" }
     var out: [NSRange] = []
-    var i = 0
-    while i < s.length {
-        guard isIdentifierUnit(s.character(at: i)) else { i += 1; continue }
-        let start = i
-        while i < s.length, isIdentifierUnit(s.character(at: i)) { i += 1 }
-        let r = NSRange(location: start, length: i - start)
-        let u = s.character(at: start)
-        if !(u >= 0x30 && u <= 0x39), !skipped.contains(where: { NSIntersectionRange($0, r).length > 0 }) { out.append(r) }
+    var i = 0, offset = 0
+    while i < scalars.count {
+        guard isIdentifier(scalars[i].s) else { offset += scalars[i].length; i += 1; continue }
+        let start = offset, first = scalars[i].s
+        while i < scalars.count, isIdentifier(scalars[i].s) { offset += scalars[i].length; i += 1 }
+        let r = NSRange(location: start, length: offset - start)
+        if !(first.value >= 0x30 && first.value <= 0x39), !skipped.contains(where: { NSIntersectionRange($0, r).length > 0 }) { out.append(r) }
     }
     return out
 }
@@ -81,7 +81,7 @@ private func randomRanges(in length: Int, count: Int, using g: inout SeededRando
 
 @Test func identifiersAndLandingMatchCheckingEveryTokenForEveryName() {
     var g = SeededRandom(state: 42)
-    let pieces = ["a", "b_", "$x", "9", "0x1F", " ", "  ", "\t", ".", "(", ")", "é", "日本", "😀", "_", "z9", "=", "\"s\"", "//"]
+    let pieces = ["a", "b_", "$x", "9", "0x1F", " ", "  ", "\t", ".", "(", ")", "é", "日本", "😀", "𝕏", "𝟘", "𠀀", "_", "z9", "=", "\"s\"", "//"]
     let kinds: [TokenKind] = [.keyword, .string, .comment, .number, .type, .function, .variable]
     for _ in 0..<3000 {
         let text = (0..<Int.random(in: 0...30, using: &g)).map { _ in pieces.randomElement(using: &g)! }.joined()
@@ -324,4 +324,14 @@ private func file(_ newOid: String, path: String = "f") -> RawChange {
     #expect(referencedLines([4], in: lines, old: nil).map { [$0.lines.lowerBound, $0.lines.upperBound] } == [3, 3])
     #expect(referencedLines([3], in: lines, old: true) == nil)
     #expect(referencedLines([9], in: lines, old: nil) == nil)
+}
+
+@Test func lettersBeyondTheBasicPlaneArePartOfNames() {
+    #expect(identifiers(in: "let 𝕏 = x𝕏y + 😀", tokens: []) == [NSRange(location: 0, length: 3), NSRange(location: 4, length: 2), NSRange(location: 9, length: 4)])
+    #expect(wholeWordMatches(of: "foo", in: "𝕏foo foo𝕏 foo").map(\.location) == [12])
+    let text = "a 𝕏b c" as NSString
+    #expect(identifier(at: 2, in: text) == NSRange(location: 2, length: 3))
+    #expect(identifier(at: 3, in: text) == NSRange(location: 2, length: 3))
+    let across = String(repeating: " ", count: 4095) + "𝕏yz"
+    #expect(identifiers(in: across, tokens: []) == [NSRange(location: 4095, length: 4)])
 }

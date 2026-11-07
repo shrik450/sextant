@@ -17,6 +17,31 @@ public func isIdentifierUnit(_ u: unichar) -> Bool {
 
 private func isDigit(_ u: unichar) -> Bool { u >= 0x30 && u <= 0x39 }
 
+private func isHighSurrogate(_ u: unichar) -> Bool { u >= 0xD800 && u <= 0xDBFF }
+
+private func isLowSurrogate(_ u: unichar) -> Bool { u >= 0xDC00 && u <= 0xDFFF }
+
+/// Returns whether the character a surrogate pair encodes can be part of an identifier: a
+/// letter, mark or digit beyond the basic plane, such as `𝕏`.
+private func isIdentifierScalar(_ high: unichar, _ low: unichar) -> Bool {
+    let value = 0x10000 + ((UInt32(high) - 0xD800) << 10) + (UInt32(low) - 0xDC00)
+    return UnicodeScalar(value).map(alphanumerics.contains) ?? false
+}
+
+/// Returns whether the character holding a UTF-16 unit of a text can be part of an
+/// identifier, reading a surrogate pair as the one character it encodes.
+func isIdentifierCharacter(in text: NSString, at i: Int) -> Bool {
+    guard i >= 0, i < text.length else { return false }
+    let u = text.character(at: i)
+    if isHighSurrogate(u) {
+        return i + 1 < text.length && isLowSurrogate(text.character(at: i + 1)) && isIdentifierScalar(u, text.character(at: i + 1))
+    }
+    if isLowSurrogate(u) {
+        return i > 0 && isHighSurrogate(text.character(at: i - 1)) && isIdentifierScalar(text.character(at: i - 1), u)
+    }
+    return isIdentifierUnit(u)
+}
+
 /// Reads a range of a string's UTF-16 units from front to back, a chunk at a time, so reading
 /// a unit costs neither a message send nor an allocation.
 ///
@@ -87,6 +112,7 @@ public func forEachIdentifier(in text: NSString, range: NSRange, tokens: [Token]
     var start: Int?
     var startsWithDigit = false
     var offset = 0
+    var high: unichar?
     var goOn = true
     func found(_ start: Int, _ end: Int) -> Bool {
         let r = NSRange(location: start, length: end - start)
@@ -99,24 +125,42 @@ public func forEachIdentifier(in text: NSString, range: NSRange, tokens: [Token]
             offset = at
             start = current
         }
-        for u in chunk {
-            if isIdentifierUnit(u) {
+        func character(at position: Int, isIdentifier: Bool, isDigit: Bool) -> Bool {
+            if isIdentifier {
                 if current == nil {
-                    current = at
-                    startsWithDigit = isDigit(u)
+                    current = position
+                    startsWithDigit = isDigit
                 }
             } else if let s = current {
                 current = nil
-                if !startsWithDigit, !found(s, at) {
+                if !startsWithDigit, !found(s, position) {
                     goOn = false
                     return false
                 }
+            }
+            return true
+        }
+        for u in chunk {
+            if let h = high {
+                high = nil
+                if isLowSurrogate(u) {
+                    guard character(at: at - 1, isIdentifier: isIdentifierScalar(h, u), isDigit: false) else { return false }
+                    at += 1
+                    continue
+                }
+                guard character(at: at - 1, isIdentifier: false, isDigit: false) else { return false }
+            }
+            if isHighSurrogate(u) {
+                high = u
+            } else {
+                guard character(at: at, isIdentifier: isIdentifierUnit(u), isDigit: isDigit(u)) else { return false }
             }
             at += 1
         }
         return true
     }
-    if goOn, let s = start, !startsWithDigit { _ = found(s, offset) }
+    guard goOn, let s = start, !startsWithDigit else { return }
+    _ = found(s, high == nil ? offset : offset - 1)
 }
 
 /// Returns the identifiers in a line of code that name something.
@@ -175,10 +219,10 @@ public func landingColumn(in text: NSString, range: NSRange, tokens: [Token], ch
 }
 
 /// Returns the range of the identifier at or just before a UTF-16 offset in a text: a run of
-/// letters, marks, digits, `_` and `$`.
+/// letters, marks, digits, `_` and `$`, beyond the basic plane too.
 public func identifier(at index: Int, in text: NSString) -> NSRange? {
     guard text.length > 0 else { return nil }
-    func isIdentifier(_ i: Int) -> Bool { i >= 0 && i < text.length && isIdentifierUnit(text.character(at: i)) }
+    func isIdentifier(_ i: Int) -> Bool { isIdentifierCharacter(in: text, at: i) }
     var i = min(index, text.length - 1)
     if !isIdentifier(i) { i -= 1 }
     guard isIdentifier(i) else { return nil }
@@ -209,8 +253,8 @@ public func wholeWordMatches(of word: String, in text: String) -> [NSRange] {
     while from < s.length {
         let r = s.range(of: word, options: .literal, range: NSRange(location: from, length: s.length - from))
         guard r.location != NSNotFound else { break }
-        let before = r.location > 0 && isIdentifierUnit(s.character(at: r.location - 1))
-        let after = NSMaxRange(r) < s.length && isIdentifierUnit(s.character(at: NSMaxRange(r)))
+        let before = isIdentifierCharacter(in: s, at: r.location - 1)
+        let after = isIdentifierCharacter(in: s, at: NSMaxRange(r))
         if !before && !after { out.append(r) }
         from = r.location + 1
     }
