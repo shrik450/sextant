@@ -30,9 +30,9 @@ final class ReviewStore {
         func load<T: Decodable>(_ url: URL, as: T.Type) -> T? {
             (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode(T.self, from: $0) }
         }
-        let reviewed = load(directory.appendingPathComponent("reviewed.json"), as: [String].self) ?? []
+        let reviewed = load(directory.appendingPathComponent("reviewed.json"), as: [String: String].self) ?? [:]
         let read = load(directory.appendingPathComponent("read.json"), as: [String: ReadingState.Read].self) ?? [:]
-        state = ReadingState(reviewed: Set(reviewed), read: read)
+        state = ReadingState(reviewed: reviewed, read: read)
     }
 
     func isReviewed(_ c: RawChange) -> Bool { state.isReviewed(c) }
@@ -64,10 +64,13 @@ final class ReviewStore {
         update { $0.setRead(change, in: c, all: all, to: value, by: review.readingOwner) }
     }
 
-    /// Drops the changes a review read in files it no longer starts from, once it has loaded
-    /// its changes again. Nothing shows them then, so it tells no one.
-    func prune(_ review: Review, keeping changes: [RawChange]) {
-        update(notifying: false) { $0.prune(owner: review.readingOwner, keeping: Set(changes.map(\.readingKey))) }
+    /// Drops the changes a review read in files it no longer starts from, and the files it
+    /// reviewed that it no longer shows, once it has loaded its changes again. Nothing shows
+    /// them then, so it tells no one.
+    ///
+    /// - Parameter changes: The changes the review shows: its files' and its commits'.
+    func prune(_ review: Review, showing changes: [RawChange]) {
+        update(notifying: false) { $0.prune(owner: review.readingOwner, showing: changes) }
     }
 
     /// Returns how many of a commit's changes are reviewed, out of how many in total.
@@ -81,7 +84,7 @@ final class ReviewStore {
         guard s != state else { return }
         let old = state
         state = s
-        if s.reviewed != old.reviewed { save(s.reviewed.sorted(), to: reviewedURL) }
+        if s.reviewed != old.reviewed { save(s.reviewed, to: reviewedURL) }
         if s.read != old.read { save(s.read, to: readURL) }
         if notifying { NotificationCenter.default.post(name: ReviewStore.didChange, object: self) }
     }

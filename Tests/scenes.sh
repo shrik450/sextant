@@ -758,6 +758,7 @@ EOF
   expect read "runs read once a reviewed file changes elsewhere" "$(plutil -extract read json -o - "$dir/reviewed-edited.json" 2>/dev/null)" '[false,true,true,true]'
   expect read "file reviewed once it changes elsewhere" "$(value "$dir/reviewed-edited.json" files.0.reviewed)" false
   expect read "files with changes read once the work is committed" "$(plutil -convert json -o - "$repo/.git/sextant/read.json" 2>/dev/null)" '{}'
+  expect read "files reviewed once the work is committed" "$(plutil -convert json -o - "$repo/.git/sextant/reviewed.json" 2>/dev/null)" '{}'
 }
 
 #######################################

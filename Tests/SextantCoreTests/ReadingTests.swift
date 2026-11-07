@@ -273,14 +273,27 @@ private func file(_ newOid: String, path: String = "f") -> RawChange {
     s.setRead("1", in: kept, all: ["1", "2"], to: true, by: "branch")
     s.setRead("1", in: moved, all: ["1", "2"], to: true, by: "branch")
     s.setRead("1", in: other, all: ["1", "2"], to: true, by: "commit")
-    s.prune(owner: "branch", keeping: [kept.readingKey])
+    s.prune(owner: "branch", showing: [kept])
     #expect(s.isRead("1", in: kept))
     #expect(!s.isRead("1", in: moved))
     #expect(s.isRead("1", in: other))
     s.setRead("2", in: kept, all: ["1", "2", "3"], to: true, by: "commit")
-    s.prune(owner: "branch", keeping: [])
+    s.prune(owner: "branch", showing: [])
     #expect(s.isRead("1", in: kept) && s.isRead("2", in: kept))
 }
+
+@Test func aReviewDropsTheFilesItReviewedThatItNoLongerShows() {
+    var s = ReadingState()
+    let shown = file("v1"), gone = file("v1", path: "g"), inCommit = file("v1", path: "c"), other = file("v1", path: "h")
+    s.setReviewed([shown, gone, inCommit], to: true, by: "branch")
+    s.setReviewed([other], to: true, by: "commit")
+    s.prune(owner: "branch", showing: [shown, inCommit])
+    #expect(s.isReviewed(shown) && s.isReviewed(inCommit))
+    #expect(!s.isReviewed(gone))
+    #expect(s.isReviewed(other))
+    #expect(s.reviewed.count == 3)
+}
+
 
 @Test func aReviewOwnsWhatItReadWhateverItsBaseAndCommits() {
     let path = CanonicalPath(path: "/r")

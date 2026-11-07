@@ -344,8 +344,9 @@ public func changeKeys(_ lines: [DiffLine], runs: [ChangeRun]) -> [String] {
 /// Changes are read in the file a change starts from (`RawChange.readingKey`) rather than in
 /// the change, so once the file changes elsewhere, as it does while an agent works on it, it's
 /// no longer reviewed but the changes read in it stay read. The review that last read changes
-/// in a file owns them (`Review.readingOwner`), and drops them once it no longer starts from
-/// that file (`prune(owner:keeping:)`), so what's kept follows what reviews show.
+/// in a file owns them (`Review.readingOwner`), as the review that last reviewed a file owns
+/// that, and drops them once it no longer shows them (`prune(owner:showing:)`), so what's kept
+/// follows what reviews show.
 public struct ReadingState: Equatable, Sendable {
     /// The changes read in one file, and the review that owns them.
     public struct Read: Equatable, Sendable, Codable {
@@ -358,17 +359,17 @@ public struct ReadingState: Equatable, Sendable {
         }
     }
 
-    /// The review keys of reviewed files.
-    public private(set) var reviewed: Set<String>
+    /// The review keys of reviewed files, with the review that owns each.
+    public private(set) var reviewed: [String: String]
     /// The changes read, by the reading key of the file they're in.
     public private(set) var read: [String: Read]
 
-    public init(reviewed: Set<String> = [], read: [String: Read] = [:]) {
+    public init(reviewed: [String: String] = [:], read: [String: Read] = [:]) {
         self.reviewed = reviewed
         self.read = read
     }
 
-    public func isReviewed(_ file: RawChange) -> Bool { reviewed.contains(file.reviewKey) }
+    public func isReviewed(_ file: RawChange) -> Bool { reviewed[file.reviewKey] != nil }
 
     public func isRead(_ change: String, in file: RawChange) -> Bool {
         isReviewed(file) || read[file.readingKey]?.keys.contains(change) == true
@@ -385,9 +386,9 @@ public struct ReadingState: Equatable, Sendable {
         let key = file.readingKey
         if value {
             add([change], to: key, by: owner)
-            if !all.isEmpty, all.allSatisfy({ read[key]?.keys.contains($0) == true }) { reviewed.insert(file.reviewKey) }
+            if !all.isEmpty, all.allSatisfy({ read[key]?.keys.contains($0) == true }) { reviewed[file.reviewKey] = owner }
         } else {
-            if reviewed.remove(file.reviewKey) != nil { add(all, to: key, by: owner) }
+            if reviewed.removeValue(forKey: file.reviewKey) != nil { add(all, to: key, by: owner) }
             read[key]?.keys.remove(change)
             if read[key]?.keys.isEmpty == true { read[key] = nil }
         }
@@ -405,23 +406,26 @@ public struct ReadingState: Equatable, Sendable {
     public mutating func setReviewed(_ files: [RawChange], to value: Bool, changes: [RawChange: [String]] = [:], by owner: String) {
         for f in files {
             if value {
-                reviewed.insert(f.reviewKey)
+                reviewed[f.reviewKey] = owner
                 if let keys = changes[f], !keys.isEmpty { add(keys, to: f.readingKey, by: owner) }
             } else {
-                reviewed.remove(f.reviewKey)
+                reviewed.removeValue(forKey: f.reviewKey)
                 read[f.readingKey] = nil
             }
         }
     }
 
-    /// Drops the changes a review read in files it no longer starts from, as when its base
-    /// moved or a commit took in what wasn't committed.
+    /// Drops the changes a review read in files it no longer starts from, and the files it
+    /// reviewed that it no longer shows, as when its base moved or a commit took in what wasn't
+    /// committed.
     ///
     /// - Parameters:
     ///   - owner: The review.
-    ///   - keeping: The reading keys of the files the review's changes start from now.
-    public mutating func prune(owner: String, keeping: Set<String>) {
-        read = read.filter { $0.value.owner != owner || keeping.contains($0.key) }
+    ///   - changes: The changes the review shows now: its files' and its commits'.
+    public mutating func prune(owner: String, showing changes: [RawChange]) {
+        let starts = Set(changes.map(\.readingKey)), shown = Set(changes.map(\.reviewKey))
+        read = read.filter { $0.value.owner != owner || starts.contains($0.key) }
+        reviewed = reviewed.filter { $0.value != owner || shown.contains($0.key) }
     }
 
     private mutating func add(_ keys: [String], to file: String, by owner: String) {

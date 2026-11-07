@@ -424,7 +424,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
             f.conflicted = conflicts.contains(d.path)
             return f
         }
-        repository.reviews.prune(res.review, keeping: diffs.map(\.change))
+        repository.reviews.prune(res.review, showing: diffs.map(\.change) + res.commits.flatMap(\.changes))
         if let firstWhole { s.changes.first?.offerWhole(firstWhole) }
         if keepPosition, res.target.snapshot == .worktree {
             s.explored = [:]
