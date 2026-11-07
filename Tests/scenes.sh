@@ -33,7 +33,7 @@ bundle_id=${SEXTANT_SCENES_BUNDLE:-com.shrikanthup.Sextant.scenes}
 main_checkout=$(cd "$(git -C "$here" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
 lock=${SEXTANT_PERF_LOCK:-$main_checkout/scratch/gui-lock}
 real_git=$(command -v git)
-scenes=(page symlink find reload close base status shared showall columns rename read endings removed notes reference harness fields frames reopen)
+scenes=(page symlink find reload close base status shared showall columns rename read endings removed notes reference harness fields frames reopen lookups)
 failed=0
 holding_lock=0
 
@@ -52,14 +52,15 @@ build_app() {
 #######################################
 # Writes the git the app runs in a scene: it logs each command line to $SCENE_GIT_LOG, and
 # waits $SCENE_GREP_DELAY seconds before a grep when that's set, so a scene can act while a
-# search runs, and $SCENE_SLOW_DELAY seconds before any git run in $SCENE_SLOW_REPO, so one
-# repository loads slowly.
+# search runs (or fails it when that's `fail`), and $SCENE_SLOW_DELAY seconds before any git
+# run in $SCENE_SLOW_REPO, so one repository loads slowly.
 #######################################
 write_git() {
   cat > "$work/git" <<'EOF'
 #!/bin/bash
 printf '%s\n' "$*" >> "$SCENE_GIT_LOG"
-if [[ -n $SCENE_GREP_DELAY && " $* " == *" grep "* ]]; then sleep "$SCENE_GREP_DELAY"; fi
+if [[ $SCENE_GREP_DELAY == fail && " $* " == *" grep "* ]]; then echo "fatal: the scene fails every grep" >&2; exit 128; fi
+if [[ -n $SCENE_GREP_DELAY && $SCENE_GREP_DELAY != fail && " $* " == *" grep "* ]]; then sleep "$SCENE_GREP_DELAY"; fi
 if [[ -n $SCENE_SLOW_REPO && $(pwd -P)/ == "$SCENE_SLOW_REPO"/* ]]; then sleep "$SCENE_SLOW_DELAY"; fi
 exec "$SCENE_GIT" "$@"
 EOF
@@ -86,7 +87,7 @@ trap release_lock EXIT
 # Arguments:
 #   The folder to run in, holding script.txt; the log goes to run.log and the gits to git.log.
 #   Seconds before the app is killed (default 120).
-#   Seconds each grep waits first (default none).
+#   Seconds each grep waits first, or `fail` to fail each (default none).
 #   A repository whose gits each wait first, then how many seconds (default none).
 #######################################
 run_app() {
@@ -1058,6 +1059,75 @@ quit
 EOF
   run_app "$dir" 120 "" "$repo" 0.3
   expect reopen "subject once both opens are done" "$(value "$dir/after.json" subject)" branch:feature
+}
+
+#######################################
+# Looks names up when git fails, and when the answer comes after the reader moved on: Find
+# References must say what failed, and a Peek or a file's history that comes once another file
+# or no pane shows must not pop up.
+#######################################
+scene_lookups() {
+  local dir repo slow
+  dir=$(scene_dir lookups)
+  repo="$dir/repo"
+  slow="$dir/slow"
+  for r in "$repo" "$slow"; do
+    mkdir -p "$r"
+    g init -q -b main "$r"
+    printf 'func alpha() -> Int {\n    1\n}\n' > "$r/a.swift"
+    printf 'func beta() -> Int {\n    alpha()\n}\n' > "$r/b.swift"
+    g -C "$r" add -A
+    g -C "$r" commit -qm base
+    printf 'func alpha() -> Int {\n    alpha() + 2\n}\n' > "$r/a.swift"
+    printf 'func beta() -> Int {\n    alpha() + 3\n}\n' > "$r/b.swift"
+  done
+  mkdir -p "$dir/failing" "$dir/late"
+  cat > "$dir/failing/script.txt" <<EOF
+defaults readerMode file
+open $repo
+wait
+key w
+menu Find References
+wait
+dump $dir/failing/after.json
+quit
+EOF
+  run_app "$dir/failing" 120 fail
+  expect lookups "Find References when git fails" "$(value "$dir/failing/after.json" searchStatus)" "fatal: the scene fails every grep"
+  slow=$(cd "$slow" && pwd -P)
+  cat > "$dir/late/script.txt" <<EOF
+defaults readerMode file
+open $slow
+wait
+key w
+nowait menu Peek Definition
+sleep 100
+menu Next File
+sleep 2500
+dump $dir/late/peek.json
+nowait menu File History
+sleep 100
+menu Previous File
+sleep 2500
+dump $dir/late/history.json
+menu Go to Anything…
+type b.swift
+key cmd+return
+wait
+key w
+nowait menu Peek Definition
+sleep 100
+menu Close Pane
+sleep 2500
+dump $dir/late/closed.json
+log END
+quit
+EOF
+  run_app "$dir/late" 120 "" "$slow" 1
+  expect lookups "popovers after a Peek answered once another file shows" "$(value "$dir/late/peek.json" popovers)" 0
+  expect lookups "menus after a history answered once another file shows" "$(grep -c '^MENU History' "$dir/late/run.log")" 0
+  expect lookups "popovers after a Peek answered once its pane closed" "$(value "$dir/late/closed.json" popovers)" 0
+  expect lookups "scene finished" "$(grep -cx END "$dir/late/run.log")" 1
 }
 
 if [[ ${1:-} == list ]]; then

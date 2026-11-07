@@ -240,6 +240,20 @@ extension RepoWindowController: NSMenuItemValidation {
         }
     }
 
+    /// Where a lookup was asked for: the pane, the file it showed and the name at its caret.
+    ///
+    /// A lookup's answer pops up only where it was asked for, not wherever the reader went while
+    /// git searched.
+    private struct LookupPlace: Equatable {
+        weak var pane: Pane?
+        weak var file: FileState?
+        var word: String?
+
+        static func == (a: LookupPlace, b: LookupPlace) -> Bool { a.pane === b.pane && a.file === b.file && a.word == b.word }
+    }
+
+    private func lookupPlace() -> LookupPlace { LookupPlace(pane: pane, file: focusedFile?.file, word: reader.wordAtCaret) }
+
     /// Finds a name's uses and definitions in the snapshot the review reads.
     private func lookUp(_ word: String, in t: Target) async throws -> (matches: [GrepMatch], definitions: [GrepMatch]) {
         try await repository.definitions.lookUp(word, in: t.snapshot, git: git)
@@ -263,11 +277,12 @@ extension RepoWindowController: NSMenuItemValidation {
     /// listing every use in Find when there are none.
     func jumpToDefinition(_ word: String, from path: String?) {
         guard let t = target else { return }
+        let asked = lookupPlace()
         definitionTask?.cancel()
         busy += 1
         definitionTask = Task {
             defer { busy -= 1 }
-            guard let (matches, definitions) = try? await lookUp(word, in: t), !Task.isCancelled else { return }
+            guard let (matches, definitions) = try? await lookUp(word, in: t), !Task.isCancelled, lookupPlace() == asked else { return }
             let defs = nearest(definitions, to: path)
             if defs.count == 1 {
                 openBeside(defs[0].path, line: defs[0].line)
@@ -320,7 +335,15 @@ extension RepoWindowController: NSMenuItemValidation {
         busy += 1
         findTask = Task {
             defer { busy -= 1 }
-            guard let (matches, definitions) = try? await lookUp(word, in: t), !Task.isCancelled else { return }
+            let found: (matches: [GrepMatch], definitions: [GrepMatch])
+            do {
+                found = try await lookUp(word, in: t)
+            } catch {
+                if !Task.isCancelled { navigator.search.summary = error.localizedDescription }
+                return
+            }
+            guard !Task.isCancelled else { return }
+            let (matches, definitions) = found
             let defLines = Dictionary(grouping: definitions, by: \.path).mapValues { Set($0.map(\.line)) }
             navigator.search.show(Array(matches.prefix(5000)), title: word, definitions: defLines, capped: matches.count > 5000)
             takeKeyboardToResults()
@@ -381,10 +404,12 @@ extension RepoWindowController: NSMenuItemValidation {
         }
         let path = f.path
         let git = self.git
+        let asked = lookupPlace()
         busy += 1
         Task {
             defer { busy -= 1 }
             let commits = (try? await git.history(of: path, from: from, count: 100)) ?? []
+            guard lookupPlace().pane === asked.pane, lookupPlace().file === asked.file else { return }
             let m = NSMenu()
             m.addItem(withTitle: "History of \((path as NSString).lastPathComponent)", action: nil, keyEquivalent: "").isEnabled = false
             if commits.isEmpty { m.addItem(withTitle: "No commits", action: nil, keyEquivalent: "").isEnabled = false }
@@ -542,13 +567,14 @@ extension RepoWindowController: NSMenuItemValidation {
 
     /// Shows the definition of the name at the caret in a popover, without leaving the file.
     @objc func peekDefinition(_ sender: Any?) {
-        guard let t = target, let word = reader.wordAtCaret, let anchor = reader.caretAnchor else { beep(); return }
+        guard let t = target, let word = reader.wordAtCaret, reader.caretAnchor != nil else { beep(); return }
         let from = reader.selection.map { reader.files[$0.file].file.path }
+        let asked = lookupPlace()
         definitionTask?.cancel()
         busy += 1
         definitionTask = Task {
             defer { busy -= 1 }
-            guard let (_, definitions) = try? await lookUp(word, in: t), !Task.isCancelled else { return }
+            guard let (_, definitions) = try? await lookUp(word, in: t), !Task.isCancelled, lookupPlace() == asked, let anchor = reader.caretAnchor else { return }
             let defs = nearest(definitions, to: from)
             let git = self.git
             let peek = Peek(word: word, definitions: defs, snapshot: t.snapshot, git: git, analysis: repository.analysis, style: reader.activeCode.style)

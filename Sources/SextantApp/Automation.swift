@@ -79,6 +79,10 @@ final class Automation {
     func start() {
         Self.running = self
         if app.inBackground { Self.silenceUnhandledKeys() }
+        NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { n in
+            let title = (n.object as? NSMenu)?.items.first?.title ?? ""
+            MainActor.assumeIsolated { Automation.running?.log("MENU \(title)") }
+        }
         activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical], reason: "Automation")
         Task {
             for line in lines where !line.isEmpty && !line.hasPrefix("#") {
@@ -793,6 +797,7 @@ extension RepoWindowController {
             "firstResponder": focusName,
             "windowFrame": NSStringFromRect(window?.frame ?? .zero),
             "frameName": window?.frameAutosaveName ?? "",
+            "popovers": NSApp.windows.filter { $0.isVisible && String(describing: type(of: $0)).contains("Popover") }.count,
             "isKey": window?.isKeyWindow ?? false,
             "navigatorCollapsed": !isShown(.navigator),
             "inspectorCollapsed": !isShown(.inspector),
