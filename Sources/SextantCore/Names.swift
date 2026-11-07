@@ -173,6 +173,12 @@ public struct NameIndex: Sendable {
     /// The binding of each spelling shared by the names that aren't local.
     private let globals: [String: Int]
 
+    /// About how much memory the index holds.
+    public var byteCount: Int {
+        names.count * MemoryLayout<Name>.stride + (lineStarts.count + byBinding.count + bindingStarts.count) * 4
+            + globals.reduce(0) { $0 + 48 + $1.key.utf8.count }
+    }
+
     /// A name before its binding is known.
     struct Candidate {
         /// The zero-based line the name is on.

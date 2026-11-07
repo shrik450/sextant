@@ -1,5 +1,6 @@
 import AppKit
 import SextantCore
+import Synchronization
 
 /// A file in a review: one of the target's changes, or a file opened while exploring.
 ///
@@ -24,7 +25,28 @@ final class FileState {
     /// file too.
     let hunks: FileText
     /// The whole file once it's read: the hunks with the unchanged lines around them filled in.
-    private(set) var whole: FileText?
+    ///
+    /// The memory cache keeps it while nothing shows it, and drops it when it needs the room;
+    /// a pane showing it keeps it, and it goes back in the cache when it's asked for again.
+    private(set) var whole: FileText? {
+        get {
+            if hunks.isWhole { return hunks }
+            if let kept = MemoryCache.shared.value(for: wholeKey) as? FileText { return kept }
+            guard let shown = wholeShown else { return nil }
+            MemoryCache.shared.insert(shown, for: wholeKey, bytes: shown.byteCount)
+            return shown
+        }
+        set {
+            wholeShown = newValue
+            guard let newValue, newValue !== hunks else { return MemoryCache.shared.remove(wholeKey) }
+            newValue.cacheKey = wholeKey
+            MemoryCache.shared.insert(newValue, for: wholeKey, bytes: newValue.byteCount)
+        }
+    }
+    /// The whole text while anything holds it, the memory cache or a pane showing it.
+    private weak var wholeShown: FileText?
+    /// The key the whole text is kept under in the memory cache, unique to this file.
+    private let wholeKey = CacheKey(WholeText(id: WholeText.next()))
     private let wholeLoad = SharedWork<WholeRead>()
     /// The largest limit a read of the whole file found its old side larger than.
     private var largerThan = 0
@@ -46,7 +68,10 @@ final class FileState {
         let sidesAreBlobs = (diff.change.isAdded || diff.change.isDeleted) && diff.hunks.count == 1 && diff.notes.isEmpty
         hunks = FileText(all, isWhole: isWhole, gapsBefore: gaps, blobs: sidesAreBlobs ? FileText.blobs(of: diff.change) : (nil, nil),
                          path: diff.path, change: diff.change, isChange: isChange, hasLanguage: hasLanguage, contentAnalysis: contentAnalysis)
-        whole = isWhole ? hunks : nil
+    }
+
+    deinit {
+        MemoryCache.shared.remove(wholeKey)
     }
 
     /// Creates a file opened for reading, outside the change being reviewed.
@@ -102,7 +127,11 @@ final class FileState {
             let diff = self.diff
             guard let read = await wholeLoad.value(starting: { await FileState.readWhole(diff, git: git, limit: limit) }) else { return false }
             switch read {
-            case .lines(let all): if whole == nil { whole = wholeText(all) }
+            case .lines(let all):
+                guard whole == nil else { return true }
+                let read = wholeText(all)
+                whole = read
+                return whole === read
             case .tooLarge(let tried): largerThan = max(largerThan, tried)
             }
         }
@@ -139,6 +168,15 @@ final class FileState {
         FileText(all, isWhole: true, gapsBefore: [:], blobs: FileText.blobs(of: diff.change),
                  path: path, change: diff.change, isChange: isChange, hasLanguage: hasLanguage, contentAnalysis: contentAnalysis)
     }
+}
+
+/// Names a file's whole text in the memory cache.
+private struct WholeText: Hashable, Sendable {
+    var id: Int
+
+    private static let last = Mutex(0)
+
+    static func next() -> Int { last.withLock { $0 += 1; return $0 } }
 }
 
 /// One of a file's texts: its hunks, or the whole file.
@@ -195,6 +233,27 @@ final class FileText {
 
     /// Where the lines are by their line numbers, and where each stands on the new side.
     private(set) lazy var positions = LinePositions(lines)
+
+    /// The key the text is kept under in the memory cache, if it's kept there.
+    var cacheKey: CacheKey?
+
+    /// About how much memory the lines take.
+    private lazy var linesByteCount = lines.reduce(0) { $0 + MemoryLayout<DiffLine>.stride + $1.text.utf8.count }
+
+    /// About how much memory the text holds: its lines, and what's worked out from them so far.
+    private(set) lazy var byteCount = countBytes()
+
+    private func countBytes() -> Int {
+        linesByteCount + (tokens.map(tokensByteCount) ?? 0) + symbolsByteCount(definitions ?? [])
+            + (outline?.count ?? 0) * 128 + (names.map { $0.new.index.byteCount + ($0.old?.index.byteCount ?? 0) + lines.count * 8 } ?? 0)
+    }
+
+    /// Counts what the text holds again, now that more is worked out from it, and tells the
+    /// memory cache.
+    private func resized() {
+        byteCount = countBytes()
+        if let cacheKey { MemoryCache.shared.resize(cacheKey, bytes: byteCount) }
+    }
 
     /// The size of the larger of the text's two sides, in UTF-8 bytes with a line ending for
     /// each line: about what analyzing it parses.
@@ -304,6 +363,7 @@ final class FileText {
         if let d = a.definitions { definitions = d }
         if let o = a.outline { outline = o }
         hasTags = a.hasTags
+        resized()
     }
 
     /// Returns the blob IDs of a change's sides, for the sides that are regular files.
@@ -401,6 +461,7 @@ final class FileText {
         let lines = self.lines, path = self.path
         guard let found = await naming.value(starting: { await FileText.indexNames(lines, tokens: tokens, path: path) }) else { return }
         if names == nil { names = found }
+        resized()
     }
 
     @concurrent nonisolated private static func indexNames(_ lines: [DiffLine], tokens: [[Token]], path: String) async -> Names? {

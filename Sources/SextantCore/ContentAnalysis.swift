@@ -20,29 +20,50 @@ public struct BlobAnalysis: Sendable {
     public var tokens: [[Token]]
     /// Its definitions, if it was analyzed for them.
     public var definitions: [Symbol]?
+
+    /// About how much memory it holds.
+    public var byteCount: Int { tokensByteCount(tokens) + symbolsByteCount(definitions ?? []) }
+}
+
+/// About how much memory tokens per line hold.
+public func tokensByteCount(_ tokens: [[Token]]) -> Int {
+    tokens.reduce(tokens.count * 32) { $0 + $1.count * MemoryLayout<Token>.stride }
+}
+
+/// About how much memory symbols hold, their names included.
+public func symbolsByteCount(_ symbols: [Symbol]) -> Int {
+    symbols.reduce(0) { $0 + MemoryLayout<Symbol>.stride + $1.name.utf8.count }
 }
 
 /// The syntax of file contents, analyzed once per version of the contents and grammar.
 ///
 /// Contents are named by blob ID, so a version is analyzed once whichever snapshot, review or
 /// reader shows it. Definitions are saved between launches; tokens are kept for the versions
-/// used most recently.
+/// used most recently, in the memory cache.
 public actor ContentAnalysis {
     private let cache: URL?
+    private let memory: MemoryCache
     private var definitions: [ContentKey: [Definition]] = [:]
     private var loaded = false
     private var unsaved = false
     private var saveScheduled = false
     private var saving: Task<Void, Never>?
-    private var recent = RecentlyUsed<ContentKey, BlobAnalysis>(budget: 1_000_000)
     private var running: [ContentKey: (task: Task<BlobAnalysis, Never>, definitions: Bool)] = [:]
 
     /// Changes when what's saved changes shape or meaning, so older saves are dropped.
     static let format = 2
 
-    /// - Parameter cache: Where definitions are saved, or nil to keep them in memory.
-    public init(cache: URL?) {
+    /// - Parameters:
+    ///   - cache: Where definitions are saved, or nil to keep them in memory.
+    ///   - memory: Where analyses are kept while they may be asked for again.
+    public init(cache: URL?, memory: MemoryCache = .shared) {
         self.cache = cache
+        self.memory = memory
+    }
+
+    /// The key an analysis is kept under in the memory cache.
+    private struct Kept: Hashable {
+        var content: ContentKey
     }
 
     /// Returns the tokens of a version of a file, and its definitions if asked for, analyzing it
@@ -56,13 +77,13 @@ public actor ContentAnalysis {
     public func analysis(of lines: [String], oid: String, language: SyntaxLanguage, definitions wanted: Bool) async -> BlobAnalysis {
         let key = ContentKey(oid: oid, grammar: language.version)
         let needsDefinitions = wanted && language.hasTags
-        if let hit = recent.value(for: key), !needsDefinitions || hit.definitions != nil { return hit }
+        if let hit = memory.value(for: CacheKey(Kept(content: key))) as? BlobAnalysis, !needsDefinitions || hit.definitions != nil { return hit }
         if let r = running[key], r.definitions || !needsDefinitions { return await r.task.value }
         let task = Task.detached(priority: .userInitiated) { language.analysis(of: lines, definitions: needsDefinitions) }
         running[key] = (task, needsDefinitions)
         let found = await task.value
         if running[key]?.task == task { running[key] = nil }
-        recent.insert(found, for: key, cost: found.tokens.reduce(found.tokens.count) { $0 + $1.count })
+        memory.insert(found, for: CacheKey(Kept(content: key)), bytes: found.byteCount)
         if let d = found.definitions {
             self.definitions[key] = indexedDefinitions(d)
             saveSoon()
@@ -228,44 +249,6 @@ public func blobID(of data: Data) -> String {
     hash.update(data: Data("blob \(data.count)\0".utf8))
     hash.update(data: data)
     return hash.finalize().map { String(format: "%02x", $0) }.joined()
-}
-
-/// Values kept while their total cost stays within a budget, dropping the least recently used
-/// first.
-struct RecentlyUsed<Key: Hashable, Value> {
-    private var entries: [Key: (value: Value, cost: Int, used: Int)] = [:]
-    private var clock = 0
-    /// The total cost of the values kept.
-    private(set) var cost = 0
-    let budget: Int
-
-    init(budget: Int) {
-        self.budget = budget
-    }
-
-    /// Returns a value, counting it as used.
-    mutating func value(for key: Key) -> Value? {
-        guard var e = entries[key] else { return nil }
-        clock += 1
-        e.used = clock
-        entries[key] = e
-        return e.value
-    }
-
-    /// Keeps a value, dropping the least recently used ones until the total fits the budget.
-    ///
-    /// A value that costs more than the whole budget isn't kept.
-    mutating func insert(_ value: Value, for key: Key, cost c: Int) {
-        if let old = entries.removeValue(forKey: key) { cost -= old.cost }
-        guard c <= budget else { return }
-        clock += 1
-        entries[key] = (value, c, clock)
-        cost += c
-        while cost > budget, let oldest = entries.min(by: { $0.value.used < $1.value.used }) {
-            entries[oldest.key] = nil
-            cost -= oldest.value.cost
-        }
-    }
 }
 
 extension SyntaxLanguage {

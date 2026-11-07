@@ -625,7 +625,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     /// The file at a path if it can be shown without waiting: once it's read whole, or if it
     /// can't be.
     private func readyFile(_ path: String, in s: Session) -> FileState? {
-        guard let f = s.changes.first(where: { $0.path == path }) else { return s.explored[path] }
+        guard let f = s.changes.first(where: { $0.path == path }) else { return explored(path, in: s) }
         return f.whole != nil || f.diff.isBinary ? f : nil
     }
 
@@ -635,7 +635,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
             await f.loadWhole(git: git)
             return f
         }
-        if let f = s.explored[path] { return f }
+        if let f = explored(path, in: s) { return f }
         guard let data = await git.contents(of: path, in: t.snapshot) else { return nil }
         let binary = data.prefix(8000).contains(0)
         let f = FileState(path: path, contents: binary ? nil : splitLines(data), oid: blobID(of: data), contentAnalysis: repository.analysis)
@@ -646,6 +646,16 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     /// The most bytes of a neighbour's old side read to prepare it, and of each of its sides
     /// analyzed: a larger one is left until it's opened.
     static let neighbourBytes = 1 << 20
+
+    /// A file read while exploring a review, while its text is still kept or shown.
+    private func explored(_ path: String, in s: Session) -> FileState? {
+        guard let f = s.explored[path] else { return nil }
+        guard f.whole != nil || f.diff.isBinary else {
+            s.explored[path] = nil
+            return nil
+        }
+        return f
+    }
 
     /// Reads and analyzes the change after a file in the direction the pane reads in, so
     /// stepping to it shows it at once, and stops preparing the one before.

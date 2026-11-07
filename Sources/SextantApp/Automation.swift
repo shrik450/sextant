@@ -835,6 +835,7 @@ extension RepoWindowController {
             "indexing": session?.indexing.map { "\($0.done)/\($0.total)" } ?? "",
             "readers": Reader.live.withLock { $0 },
             "processes": RunningProcesses.count,
+            "cacheMB": MemoryCache.shared.bytes / 1_048_576,
         ]
     }
 

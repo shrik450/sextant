@@ -93,16 +93,3 @@ import Testing
         GrepMatch(path: "b.swift", line: 7, column: 1, text: "run"),
     ])
 }
-
-@Test func recentlyUsedDropsTheLeastRecentlyUsedOverBudget() {
-    var kept = RecentlyUsed<String, Int>(budget: 10)
-    kept.insert(1, for: "a", cost: 4)
-    kept.insert(2, for: "b", cost: 4)
-    #expect(kept.value(for: "a") == 1)
-    kept.insert(3, for: "c", cost: 4)
-    #expect(kept.value(for: "b") == nil)
-    #expect(kept.value(for: "a") == 1 && kept.value(for: "c") == 3)
-    #expect(kept.cost == 8)
-    kept.insert(4, for: "huge", cost: 11)
-    #expect(kept.value(for: "huge") == nil && kept.cost == 8)
-}
