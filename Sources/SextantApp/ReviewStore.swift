@@ -31,8 +31,8 @@ final class ReviewStore {
             (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode(T.self, from: $0) }
         }
         let reviewed = load(directory.appendingPathComponent("reviewed.json"), as: [String].self) ?? []
-        let read = load(directory.appendingPathComponent("read.json"), as: [String: [String]].self) ?? [:]
-        state = ReadingState(reviewed: Set(reviewed), read: read.mapValues(Set.init))
+        let read = load(directory.appendingPathComponent("read.json"), as: [String: ReadingState.Read].self) ?? [:]
+        state = ReadingState(reviewed: Set(reviewed), read: read)
     }
 
     func isReviewed(_ c: RawChange) -> Bool { state.isReviewed(c) }
@@ -46,22 +46,28 @@ final class ReviewStore {
     ///   - reviewed: Whether they're reviewed.
     ///   - keys: The keys of the runs of changes in each file, where they're known, so they stay
     ///     read once the file changes elsewhere.
-    func set(_ changes: [RawChange], reviewed: Bool, keys: [RawChange: [String]] = [:]) {
-        update { $0.setReviewed(changes, to: reviewed, changes: keys) }
+    func set(_ changes: [RawChange], reviewed: Bool, keys: [RawChange: [String]] = [:], in review: Review) {
+        update { $0.setReviewed(changes, to: reviewed, changes: keys, by: review.readingOwner) }
     }
 
     /// Marks a review's files reviewed or not, keeping the runs of changes in each file read once
     /// it changes elsewhere.
-    func set(_ files: [FileState], reviewed: Bool) {
+    func set(_ files: [FileState], reviewed: Bool, in review: Review) {
         let keys = reviewed ? Dictionary(files.map { ($0.diff.change, $0.changeKeys) }, uniquingKeysWith: { a, _ in a }) : [:]
-        set(files.map(\.diff.change), reviewed: reviewed, keys: keys)
+        set(files.map(\.diff.change), reviewed: reviewed, keys: keys, in: review)
     }
 
     /// Marks one run of a file's changes read or unread.
     ///
     /// - Parameter all: The keys of every run of changes in the file.
-    func setRead(_ change: String, in c: RawChange, all: [String], to value: Bool) {
-        update { $0.setRead(change, in: c, all: all, to: value) }
+    func setRead(_ change: String, in c: RawChange, all: [String], to value: Bool, in review: Review) {
+        update { $0.setRead(change, in: c, all: all, to: value, by: review.readingOwner) }
+    }
+
+    /// Drops the changes a review read in files it no longer starts from, once it has loaded
+    /// its changes again. Nothing shows them then, so it tells no one.
+    func prune(_ review: Review, keeping changes: [RawChange]) {
+        update(notifying: false) { $0.prune(owner: review.readingOwner, keeping: Set(changes.map(\.readingKey))) }
     }
 
     /// Returns how many of a commit's changes are reviewed, out of how many in total.
@@ -69,15 +75,15 @@ final class ReviewStore {
         (changes.reduce(0) { $0 + (state.isReviewed($1) ? 1 : 0) }, changes.count)
     }
 
-    private func update(_ change: (inout ReadingState) -> Void) {
+    private func update(notifying: Bool = true, _ change: (inout ReadingState) -> Void) {
         var s = state
         change(&s)
         guard s != state else { return }
         let old = state
         state = s
         if s.reviewed != old.reviewed { save(s.reviewed.sorted(), to: reviewedURL) }
-        if s.read != old.read { save(s.read.mapValues { $0.sorted() }, to: readURL) }
-        NotificationCenter.default.post(name: ReviewStore.didChange, object: self)
+        if s.read != old.read { save(s.read, to: readURL) }
+        if notifying { NotificationCenter.default.post(name: ReviewStore.didChange, object: self) }
     }
 
     private func save(_ value: some Encodable, to url: URL) {

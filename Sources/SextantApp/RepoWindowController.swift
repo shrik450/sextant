@@ -408,6 +408,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
             f.conflicted = conflicts.contains(d.path)
             return f
         }
+        repository.reviews.prune(res.review, keeping: diffs.map(\.change))
         if let firstWhole { s.changes.first?.offerWhole(firstWhole) }
         if keepPosition, res.target.snapshot == .worktree {
             s.explored = [:]
@@ -952,7 +953,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         guard !idx.isEmpty else { return }
         let newValue = !idx.allSatisfy { changes[$0].reviewed }
         for i in idx { changes[i].reviewed = newValue }
-        repository.reviews.set(idx.map { changes[$0] }, reviewed: newValue)
+        if let review { repository.reviews.set(idx.map { changes[$0] }, reviewed: newValue, in: review) }
         if newValue, advance, let last = idx.max() {
             let next = changes.indices.first { $0 > last && !changes[$0].reviewed } ?? changes.indices.first { !changes[$0].reviewed }
             if let next {

@@ -206,7 +206,7 @@ private func file(_ newOid: String, path: String = "f") -> RawChange {
 @Test func readingOneOfIdenticalRunsLeavesTheOtherUnread() {
     var s = ReadingState()
     let k = keys(guards.whole), f = file("v1")
-    s.setRead(k[0], in: f, all: k, to: true)
+    s.setRead(k[0], in: f, all: k, to: true, by: "r")
     #expect(s.isRead(k[0], in: f))
     #expect(!s.isRead(k[1], in: f))
     #expect(!s.isReviewed(f))
@@ -215,22 +215,22 @@ private func file(_ newOid: String, path: String = "f") -> RawChange {
 @Test func readingEveryChangeReviewsTheFile() {
     var s = ReadingState()
     let f = file("v1")
-    s.setRead("1", in: f, all: ["1", "2"], to: true)
+    s.setRead("1", in: f, all: ["1", "2"], to: true, by: "r")
     #expect(s.isRead("1", in: f))
     #expect(!s.isReviewed(f))
-    s.setRead("2", in: f, all: ["1", "2"], to: true)
+    s.setRead("2", in: f, all: ["1", "2"], to: true, by: "r")
     #expect(s.isReviewed(f))
 }
 
 @Test func readingAChangeOfAFileWithoutChangesDoesNotReviewIt() {
     var s = ReadingState()
-    s.setRead("1", in: file("v1"), all: [], to: true)
+    s.setRead("1", in: file("v1"), all: [], to: true, by: "r")
     #expect(!s.isReviewed(file("v1")))
 }
 
 @Test func changesReadStayReadWhenTheFileChangesElsewhere() {
     var s = ReadingState()
-    s.setRead("1", in: file("v1"), all: ["1", "2"], to: true)
+    s.setRead("1", in: file("v1"), all: ["1", "2"], to: true, by: "r")
     #expect(s.isRead("1", in: file("v2")))
     #expect(!s.isRead("2", in: file("v2")))
     #expect(!s.isRead("1", in: file("v1", path: "g")))
@@ -238,7 +238,7 @@ private func file(_ newOid: String, path: String = "f") -> RawChange {
 
 @Test func reviewingAFileReadsItsChangesForItsNextVersion() {
     var s = ReadingState()
-    s.setReviewed([file("v1")], to: true, changes: [file("v1"): ["1", "2"]])
+    s.setReviewed([file("v1")], to: true, changes: [file("v1"): ["1", "2"]], by: "r")
     #expect(s.isReviewed(file("v1")))
     #expect(!s.isReviewed(file("v2")))
     #expect(s.isRead("1", in: file("v2")) && s.isRead("2", in: file("v2")))
@@ -248,8 +248,8 @@ private func file(_ newOid: String, path: String = "f") -> RawChange {
 @Test func unreadingAChangeUnreviewsTheFileButKeepsTheOthersRead() {
     var s = ReadingState()
     let f = file("v1")
-    s.setReviewed([f], to: true)
-    s.setRead("1", in: f, all: ["1", "2"], to: false)
+    s.setReviewed([f], to: true, by: "r")
+    s.setRead("1", in: f, all: ["1", "2"], to: false, by: "r")
     #expect(!s.isReviewed(f))
     #expect(!s.isRead("1", in: f))
     #expect(s.isRead("2", in: f))
@@ -258,13 +258,36 @@ private func file(_ newOid: String, path: String = "f") -> RawChange {
 @Test func unreviewingAFileUnreadsItsChanges() {
     var s = ReadingState()
     let f = file("v1"), g = file("v1", path: "g")
-    s.setRead("1", in: f, all: ["1", "2"], to: true)
-    s.setRead("1", in: g, all: ["1", "2"], to: true)
-    s.setReviewed([f], to: true)
+    s.setRead("1", in: f, all: ["1", "2"], to: true, by: "r")
+    s.setRead("1", in: g, all: ["1", "2"], to: true, by: "r")
+    s.setReviewed([f], to: true, by: "r")
     #expect(s.isRead("2", in: f))
-    s.setReviewed([f], to: false)
+    s.setReviewed([f], to: false, by: "r")
     #expect(!s.isRead("1", in: f) && !s.isRead("1", in: file("v2")))
     #expect(s.isRead("1", in: g))
+}
+
+@Test func aReviewDropsTheChangesItReadInFilesItNoLongerStartsFrom() {
+    var s = ReadingState()
+    let kept = file("v1"), moved = file("v1", path: "g"), other = file("v1", path: "h")
+    s.setRead("1", in: kept, all: ["1", "2"], to: true, by: "branch")
+    s.setRead("1", in: moved, all: ["1", "2"], to: true, by: "branch")
+    s.setRead("1", in: other, all: ["1", "2"], to: true, by: "commit")
+    s.prune(owner: "branch", keeping: [kept.readingKey])
+    #expect(s.isRead("1", in: kept))
+    #expect(!s.isRead("1", in: moved))
+    #expect(s.isRead("1", in: other))
+    s.setRead("2", in: kept, all: ["1", "2", "3"], to: true, by: "commit")
+    s.prune(owner: "branch", keeping: [])
+    #expect(s.isRead("1", in: kept) && s.isRead("2", in: kept))
+}
+
+@Test func aReviewOwnsWhatItReadWhateverItsBaseAndCommits() {
+    let path = CanonicalPath(path: "/r")
+    let a = Review(subject: .worktree(path), base: "main"), b = Review(subject: .worktree(path), base: "develop")
+    #expect(a.readingOwner == b.readingOwner)
+    #expect(a.readingOwner != Review(subject: .worktree(path), scope: .uncommitted).readingOwner)
+    #expect(Review(subject: .branch("x"), scope: .commits(newest: "b", oldest: "a")).readingOwner != Review(subject: .branch("x")).readingOwner)
 }
 
 @Test func subjectKeysNameTheSubject() {

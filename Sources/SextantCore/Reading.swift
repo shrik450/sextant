@@ -343,14 +343,27 @@ public func changeKeys(_ lines: [DiffLine], runs: [ChangeRun]) -> [String] {
 ///
 /// Changes are read in the file a change starts from (`RawChange.readingKey`) rather than in
 /// the change, so once the file changes elsewhere, as it does while an agent works on it, it's
-/// no longer reviewed but the changes read in it stay read.
+/// no longer reviewed but the changes read in it stay read. The review that last read changes
+/// in a file owns them (`Review.readingOwner`), and drops them once it no longer starts from
+/// that file (`prune(owner:keeping:)`), so what's kept follows what reviews show.
 public struct ReadingState: Equatable, Sendable {
+    /// The changes read in one file, and the review that owns them.
+    public struct Read: Equatable, Sendable, Codable {
+        public var owner: String
+        public var keys: Set<String>
+
+        public init(owner: String, keys: Set<String>) {
+            self.owner = owner
+            self.keys = keys
+        }
+    }
+
     /// The review keys of reviewed files.
     public private(set) var reviewed: Set<String>
-    /// The keys of read changes, by the reading key of the file they're in.
-    public private(set) var read: [String: Set<String>]
+    /// The changes read, by the reading key of the file they're in.
+    public private(set) var read: [String: Read]
 
-    public init(reviewed: Set<String> = [], read: [String: Set<String>] = [:]) {
+    public init(reviewed: Set<String> = [], read: [String: Read] = [:]) {
         self.reviewed = reviewed
         self.read = read
     }
@@ -358,7 +371,7 @@ public struct ReadingState: Equatable, Sendable {
     public func isReviewed(_ file: RawChange) -> Bool { reviewed.contains(file.reviewKey) }
 
     public func isRead(_ change: String, in file: RawChange) -> Bool {
-        isReviewed(file) || read[file.readingKey]?.contains(change) == true
+        isReviewed(file) || read[file.readingKey]?.keys.contains(change) == true
     }
 
     /// Marks one change of a file read or unread.
@@ -367,15 +380,16 @@ public struct ReadingState: Equatable, Sendable {
     ///   - change: The change's key, from `changeKeys(_:runs:)`.
     ///   - file: The file's change.
     ///   - all: The keys of every change in the file.
-    public mutating func setRead(_ change: String, in file: RawChange, all: [String], to value: Bool) {
+    ///   - owner: The review it's read in.
+    public mutating func setRead(_ change: String, in file: RawChange, all: [String], to value: Bool, by owner: String) {
         let key = file.readingKey
         if value {
-            read[key, default: []].insert(change)
-            if !all.isEmpty, all.allSatisfy({ read[key]?.contains($0) == true }) { reviewed.insert(file.reviewKey) }
+            add([change], to: key, by: owner)
+            if !all.isEmpty, all.allSatisfy({ read[key]?.keys.contains($0) == true }) { reviewed.insert(file.reviewKey) }
         } else {
-            if reviewed.remove(file.reviewKey) != nil { read[key, default: []].formUnion(all) }
-            read[key]?.remove(change)
-            if read[key]?.isEmpty == true { read[key] = nil }
+            if reviewed.remove(file.reviewKey) != nil { add(all, to: key, by: owner) }
+            read[key]?.keys.remove(change)
+            if read[key]?.keys.isEmpty == true { read[key] = nil }
         }
     }
 
@@ -387,16 +401,34 @@ public struct ReadingState: Equatable, Sendable {
     ///   - changes: The keys of the changes in each file, where they're known, which a file
     ///     reviewed keeps read once it changes elsewhere. Files that can't change, such as a
     ///     commit's, don't need them.
-    public mutating func setReviewed(_ files: [RawChange], to value: Bool, changes: [RawChange: [String]] = [:]) {
+    ///   - owner: The review they're reviewed in.
+    public mutating func setReviewed(_ files: [RawChange], to value: Bool, changes: [RawChange: [String]] = [:], by owner: String) {
         for f in files {
             if value {
                 reviewed.insert(f.reviewKey)
-                if let keys = changes[f], !keys.isEmpty { read[f.readingKey, default: []].formUnion(keys) }
+                if let keys = changes[f], !keys.isEmpty { add(keys, to: f.readingKey, by: owner) }
             } else {
                 reviewed.remove(f.reviewKey)
                 read[f.readingKey] = nil
             }
         }
+    }
+
+    /// Drops the changes a review read in files it no longer starts from, as when its base
+    /// moved or a commit took in what wasn't committed.
+    ///
+    /// - Parameters:
+    ///   - owner: The review.
+    ///   - keeping: The reading keys of the files the review's changes start from now.
+    public mutating func prune(owner: String, keeping: Set<String>) {
+        read = read.filter { $0.value.owner != owner || keeping.contains($0.key) }
+    }
+
+    private mutating func add(_ keys: [String], to file: String, by owner: String) {
+        var r = read[file] ?? Read(owner: owner, keys: [])
+        r.owner = owner
+        r.keys.formUnion(keys)
+        read[file] = r
     }
 }
 

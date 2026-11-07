@@ -713,7 +713,8 @@ EOF
 #######################################
 # Reads one of two runs of changes with the same lines, then edits the file elsewhere twice, as
 # an agent would, once before and once after marking it reviewed: only the run read must read,
-# and the runs read or reviewed must stay read once the file changes elsewhere.
+# and the runs read or reviewed must stay read once the file changes elsewhere. Once the work is
+# committed, nothing starts from that file any more, and what was read in it must go.
 #######################################
 scene_read() {
   local dir repo
@@ -741,6 +742,9 @@ sh { printf '// two\n'; cat $repo/a.swift; } > $dir/a.tmp && mv $dir/a.tmp $repo
 sleep 2500
 wait
 dump $dir/reviewed-edited.json
+sh git -C $repo -c commit.gpgsign=false -c user.name=Scenes -c user.email=scenes@example.com commit -qam work
+sleep 2500
+wait
 quit
 EOF
   run_app "$dir"
@@ -749,6 +753,7 @@ EOF
   expect read "runs read once the file changes elsewhere" "$(plutil -extract read json -o - "$dir/edited.json" 2>/dev/null)" '[true,false,false]'
   expect read "runs read once a reviewed file changes elsewhere" "$(plutil -extract read json -o - "$dir/reviewed-edited.json" 2>/dev/null)" '[false,true,true,true]'
   expect read "file reviewed once it changes elsewhere" "$(value "$dir/reviewed-edited.json" files.0.reviewed)" false
+  expect read "files with changes read once the work is committed" "$(plutil -convert json -o - "$repo/.git/sextant/read.json" 2>/dev/null)" '{}'
 }
 
 #######################################

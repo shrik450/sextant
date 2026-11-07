@@ -178,8 +178,8 @@ extension RepoWindowController: NSMenuItemValidation {
 
     @objc func markCommit(_ sender: NSMenuItem) {
         guard let arr = sender.representedObject as? [Any], let oid = arr[0] as? String, let v = arr[1] as? Bool,
-              let c = resolved?.commits.first(where: { $0.oid == oid }) else { return }
-        repository.reviews.set(c.changes, reviewed: v)
+              let c = resolved?.commits.first(where: { $0.oid == oid }), let review else { return }
+        repository.reviews.set(c.changes, reviewed: v, in: review)
     }
 
     @objc func reviewCommit(_ sender: NSMenuItem) {
@@ -527,10 +527,10 @@ extension RepoWindowController: NSMenuItemValidation {
     ///
     /// Reading the last unread run marks the file reviewed.
     @objc func toggleChangeRead(_ sender: Any?) {
-        guard let (f, text, run) = reader.caretRun else { beep(); return }
+        guard let (f, text, run) = reader.caretRun, let review else { beep(); return }
         let reviews = repository.reviews
         let read = !reviews.isRead(run.key, in: f.diff.change)
-        reviews.setRead(run.key, in: f.diff.change, all: text.keyedRuns.map(\.key), to: read)
+        reviews.setRead(run.key, in: f.diff.change, all: text.keyedRuns.map(\.key), to: read, in: review)
         guard read, let fi = reader.files.firstIndex(where: { $0.text === text }) else { return }
         let unread = text.keyedRuns.filter { !reviews.isRead($0.key, in: f.diff.change) }
         if let next = unread.first(where: { $0.run.lines.lowerBound > run.run.lines.lowerBound }) ?? unread.first {
@@ -612,13 +612,13 @@ extension RepoWindowController: NSMenuItemValidation {
     }
 
     @objc func markAllReviewed(_ sender: Any?) {
-        guard !changes.isEmpty else { return }
-        repository.reviews.set(changes, reviewed: true)
+        guard !changes.isEmpty, let review else { return }
+        repository.reviews.set(changes, reviewed: true, in: review)
     }
 
     @objc func markAllNotReviewed(_ sender: Any?) {
-        guard !changes.isEmpty else { return }
-        repository.reviews.set(changes, reviewed: false)
+        guard !changes.isEmpty, let review else { return }
+        repository.reviews.set(changes, reviewed: false, in: review)
     }
 
     @objc func nextUnreviewed(_ sender: Any?) {

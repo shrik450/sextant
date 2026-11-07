@@ -59,6 +59,22 @@ public struct Review: Sendable, Hashable {
         self.base = base
         self.scope = scope
     }
+
+    /// A string naming the subject and the part read, which owns the changes read in it (see
+    /// `ReadingState`).
+    ///
+    /// It leaves out the base and the commits it resolves to, so a review owns what it read as
+    /// they move.
+    public var readingOwner: String {
+        let part = switch scope {
+        case .everything: "everything"
+        case .uncommitted: "uncommitted"
+        case .staged: "staged"
+        case .unstaged: "unstaged"
+        case .commits(let newest, let oldest): "commits:" + oldest + ".." + newest
+        }
+        return subject.key + "\t" + part
+    }
 }
 
 /// What a typed revision expression asks for.
