@@ -25,7 +25,9 @@ final class FileState {
     let hunks: FileText
     /// The whole file once it's read: the hunks with the unchanged lines around them filled in.
     private(set) var whole: FileText?
-    private var wholeLoad: Task<Void, Never>?
+    private let wholeLoad = SharedWork<WholeRead>()
+    /// The largest limit a read of the whole file found its old side larger than.
+    private var largerThan = 0
     private let contentAnalysis: ContentAnalysis?
 
     init(diff: FileDiff, isChange: Bool = true, contentAnalysis: ContentAnalysis?) {
@@ -89,19 +91,42 @@ final class FileState {
     ///
     /// Panes go on showing the text they show; a pane shows the whole file when it next shows
     /// the file. A file that can't be read stays unread, so the next call tries again. Reading
-    /// doesn't analyze the file, so a pane waiting to show it waits only for the read.
-    func loadWhole(git: Git) async {
-        guard whole == nil, !diff.isBinary else { return }
-        if let wholeLoad { return await wholeLoad.value }
-        let diff = self.diff
-        let task = Task {
-            guard let old = try? await git.oldLines(of: diff) else { return }
-            let all = await Task.detached(priority: .userInitiated) { wholeFile(diff.hunks, oldLines: old) }.value
-            if whole == nil { whole = wholeText(all) }
+    /// doesn't analyze the file, so a pane waiting to show it waits only for the read. Callers
+    /// share one read, which stops once every caller's task is cancelled.
+    ///
+    /// - Parameter limit: The most bytes of the old side the caller wants read.
+    /// - Returns: Whether the file is read whole.
+    @discardableResult
+    func loadWhole(git: Git, limit: Int = Git.Limit.blob) async -> Bool {
+        while whole == nil, !diff.isBinary, limit > largerThan {
+            let diff = self.diff
+            guard let read = await wholeLoad.value(starting: { await FileState.readWhole(diff, git: git, limit: limit) }) else { return false }
+            switch read {
+            case .lines(let all): if whole == nil { whole = wholeText(all) }
+            case .tooLarge(let tried): largerThan = max(largerThan, tried)
+            }
         }
-        wholeLoad = task
-        await task.value
-        wholeLoad = nil
+        return whole != nil
+    }
+
+    /// What reading a whole file found.
+    enum WholeRead: Sendable {
+        case lines([DiffLine])
+        /// The old side is larger than the read's limit.
+        case tooLarge(limit: Int)
+    }
+
+    /// Reads a file's old side and fills in the unchanged lines around its hunks.
+    ///
+    /// - Returns: Nil if the old side couldn't be read.
+    @concurrent nonisolated private static func readWhole(_ diff: FileDiff, git: Git, limit: Int) async -> WholeRead? {
+        do {
+            return .lines(wholeFile(diff.hunks, oldLines: try await git.oldLines(of: diff, limit: limit)))
+        } catch let e as GitError where e.reason == .outputTooLarge(limit: limit) {
+            return .tooLarge(limit: limit)
+        } catch {
+            return nil
+        }
     }
 
     /// Takes the whole file read elsewhere, if it isn't read yet.
@@ -152,7 +177,8 @@ final class FileText {
     /// The file's definitions with what changed in each, once analyzed with symbols.
     private(set) var outline: [OutlineItem]?
     private var words: [Int: [NSRange]]?
-    private var analysis: (task: Task<Void, Never>, symbols: Bool)?
+    /// Analyzing the text for its tokens alone, and with its definitions and outline.
+    private let tokensWork = SharedWork<Analysis>(), symbolsWork = SharedWork<Analysis>()
 
     fileprivate init(_ lines: [DiffLine], isWhole: Bool, gapsBefore: [Int: Int], blobs: (old: String?, new: String?),
                      path: String, change: RawChange, isChange: Bool, hasLanguage: Bool, contentAnalysis: ContentAnalysis?) {
@@ -169,6 +195,18 @@ final class FileText {
 
     /// Where the lines are by their line numbers, and where each stands on the new side.
     private(set) lazy var positions = LinePositions(lines)
+
+    /// The size of the larger of the text's two sides, in UTF-8 bytes with a line ending for
+    /// each line: about what analyzing it parses.
+    private(set) lazy var largestSide: Int = {
+        var old = 0, new = 0
+        for l in lines {
+            let n = l.text.utf8.count + 1
+            if l.kind != .added { old += n }
+            if l.kind != .deleted { new += n }
+        }
+        return max(old, new)
+    }()
 
     /// Returns the index of a 1-based line number on one side, or of the nearest line after it.
     func index(ofLine n: Int, old: Bool = false) -> Int? {
@@ -249,22 +287,23 @@ final class FileText {
 
     /// Analyzes the lines off the main thread, once.
     ///
+    /// Callers share one analysis, which stops once every caller's task is cancelled.
+    ///
     /// - Parameter symbols: Whether to find definitions and the outline too, which the overview
     ///   doesn't need.
     func analyze(symbols: Bool) async {
         guard hasLanguage else { return }
         if tokens != nil, !symbols || outline != nil { return }
-        if let a = analysis, a.symbols || !symbols { return await a.task.value }
+        let withSymbols = symbols || symbolsWork.isRunning
         let lines = self.lines, isChange = self.isChange, path = self.path, blobs = self.blobs, contentAnalysis = self.contentAnalysis
-        let task = Task {
-            let a = await FileText.analyze(lines, path: path, isChange: isChange, symbols: symbols, blobs: blobs, contentAnalysis: contentAnalysis)
-            tokens = a.tokens
-            if let d = a.definitions { definitions = d }
-            if let o = a.outline { outline = o }
-            hasTags = a.hasTags
-        }
-        analysis = (task, symbols)
-        await task.value
+        let work = withSymbols ? symbolsWork : tokensWork
+        guard let a = await work.value(starting: {
+            await FileText.analyze(lines, path: path, isChange: isChange, symbols: withSymbols, blobs: blobs, contentAnalysis: contentAnalysis)
+        }) else { return }
+        tokens = a.tokens
+        if let d = a.definitions { definitions = d }
+        if let o = a.outline { outline = o }
+        hasTags = a.hasTags
     }
 
     /// Returns the blob IDs of a change's sides, for the sides that are regular files.
@@ -329,10 +368,16 @@ final class FileText {
         var sideLines: [Int32]
     }
 
-    /// The names in each side of the text, once indexed: the new side, and the old side if the
-    /// text has removed lines.
-    private var names: (new: SideNames, old: SideNames?)?
-    private var naming: Task<Void, Never>?
+    /// The names in each side of a text: the new side, and the old side if the text has removed
+    /// lines.
+    struct Names: Sendable {
+        var new: SideNames
+        var old: SideNames?
+    }
+
+    /// The names in each side of the text, once indexed.
+    private var names: Names?
+    private let naming = SharedWork<Names>()
 
     /// Whether the text's names are indexed, so `occurrences(atLine:column:)` can find them.
     var hasNames: Bool { names != nil }
@@ -349,18 +394,16 @@ final class FileText {
 
     /// Indexes the names in each side of the text off the main thread, once its tokens have
     /// arrived, since they tell names from keywords.
+    ///
+    /// Callers share one indexing, which stops once every caller's task is cancelled.
     func indexNames() async {
         guard hasLanguage, names == nil, let tokens else { return }
-        if let naming { return await naming.value }
         let lines = self.lines, path = self.path
-        let task = Task(priority: .utility) {
-            names = await FileText.indexNames(lines, tokens: tokens, path: path)
-        }
-        naming = task
-        await task.value
+        guard let found = await naming.value(starting: { await FileText.indexNames(lines, tokens: tokens, path: path) }) else { return }
+        if names == nil { names = found }
     }
 
-    @concurrent nonisolated private static func indexNames(_ lines: [DiffLine], tokens: [[Token]], path: String) async -> (new: SideNames, old: SideNames?)? {
+    @concurrent nonisolated private static func indexNames(_ lines: [DiffLine], tokens: [[Token]], path: String) async -> Names? {
         guard let language = SyntaxRuntime.shared?.language(forPath: path) else { return nil }
         func side(_ old: Bool) -> SideNames {
             let indices = lines.indices.filter { old ? lines[$0].kind != .added : lines[$0].kind != .deleted }
@@ -370,7 +413,7 @@ final class FileText {
             return SideNames(index: index, lines: indices, sideLines: sideLines)
         }
         let hasOld = lines.contains { $0.kind == .deleted }
-        return (side(false), hasOld ? side(true) : nil)
+        return Names(new: side(false), old: hasOld ? side(true) : nil)
     }
 
     /// Returns where the name at a place in the text is used, and the places of the names that

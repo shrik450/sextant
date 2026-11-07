@@ -35,7 +35,7 @@ source "$here/lib/fixtures.sh"
 for f in "$here"/scenarios/*.sh; do source "$f"; done
 
 QUICK=(probe launch idle reading bigfile overview agents synth goto-work)
-FULL=("${QUICK[@]}" linux goto-linux lookups patho worktrees soak)
+FULL=("${QUICK[@]}" linux goto-linux lookups patho neighbours worktrees soak)
 
 #######################################
 # Prints the budget table for a results folder and says whether every budget was met.

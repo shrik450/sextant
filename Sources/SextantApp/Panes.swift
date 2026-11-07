@@ -49,6 +49,12 @@ final class Pane {
     var loadingChanged: () -> Void = {}
     /// Whether search results open in this pane, as they do in the pane opened for the first.
     var showsResults = false
+    /// Reading and analyzing the next change in the direction the pane reads in, so stepping to
+    /// it shows it at once.
+    var preparingNeighbour: Task<Void, Never>?
+    /// The change the pane opened last, by its index in the session it showed then, which says
+    /// which way the pane reads.
+    var lastOpened: (session: ObjectIdentifier, index: Int)?
 
     init(look: any Look) {
         reader = Reader(look: look)

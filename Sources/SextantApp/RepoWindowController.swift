@@ -594,7 +594,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         if let f = readyFile(path, in: s) {
             p.loadingGeneration = nil
             present(f, at: anchor, in: p)
-            prepareNeighbors(of: path, in: s)
+            prepareNeighbour(of: path, in: s, for: p)
             return
         }
         busy += 1
@@ -612,7 +612,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
                 return
             }
             present(f, at: anchor, in: p)
-            prepareNeighbors(of: path, in: s)
+            prepareNeighbour(of: path, in: s, for: p)
         }
     }
 
@@ -637,18 +637,31 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         return f
     }
 
-    /// Reads and analyzes the changes around a file, so stepping to them shows them at once.
+    /// The most bytes of a neighbour's old side read to prepare it, and of each of its sides
+    /// analyzed: a larger one is left until it's opened.
+    static let neighbourBytes = 1 << 20
+
+    /// Reads and analyzes the change after a file in the direction the pane reads in, so
+    /// stepping to it shows it at once, and stops preparing the one before.
     ///
-    /// Each is read, then analyzed, so a pane opening one waits only for the read.
-    private func prepareNeighbors(of path: String, in s: Session) {
+    /// The pane reads backwards when the file comes before the change it opened last. The
+    /// neighbour is read, then analyzed, so a pane opening it waits only for the read. A
+    /// neighbour larger than `neighbourBytes` isn't prepared, and stopping a preparation leaves
+    /// the read or analysis running for any pane that waits on it.
+    private func prepareNeighbour(of path: String, in s: Session, for p: Pane) {
+        p.preparingNeighbour?.cancel()
+        p.preparingNeighbour = nil
         guard let i = s.changes.firstIndex(where: { $0.path == path }) else { return }
+        let backwards = p.lastOpened.map { $0.session == ObjectIdentifier(s) && i < $0.index } ?? false
+        p.lastOpened = (ObjectIdentifier(s), i)
+        let j = backwards ? i - 1 : i + 1
+        guard s.changes.indices.contains(j) else { return }
+        let f = s.changes[j]
         let git = s.resolved?.git ?? repository.git
-        for j in [i + 1, i - 1, i + 2] where s.changes.indices.contains(j) {
-            let f = s.changes[j]
-            Task {
-                await f.loadWhole(git: git)
-                await f.whole?.analyze(symbols: true)
-            }
+        p.preparingNeighbour = Task {
+            guard await f.loadWhole(git: git, limit: Self.neighbourBytes), !Task.isCancelled, let whole = f.whole,
+                  whole.largestSide <= Self.neighbourBytes else { return }
+            await whole.analyze(symbols: true)
         }
     }
 
