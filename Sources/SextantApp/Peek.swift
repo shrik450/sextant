@@ -110,7 +110,7 @@ final class Peek: NSViewController {
         let oid = blobID(of: data)
         let lines = AdmittedLines(data).lines
         guard Admissions.shared.measure(data, oid: oid).analyzes, let language = SyntaxRuntime.shared?.language(forPath: path) else { return (lines, nil) }
-        return (lines, await analysis.analysis(of: lines, oid: oid, language: language, definitions: false).tokens)
+        return (lines, await analysis.analysis(of: lines, oid: oid, language: language, definitions: false)?.tokens)
     }
 
     private static func render(_ lines: [String], tokens: [[Token]]?, focus: Int, style: Style) -> NSAttributedString {

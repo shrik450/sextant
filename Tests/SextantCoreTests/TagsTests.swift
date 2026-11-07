@@ -20,7 +20,7 @@ struct TagsSample: Sendable, CustomTestStringConvertible {
     func definitions(_ path: String, _ text: String) throws -> [Symbol] {
         let lang = try #require(runtime?.language(forPath: path), "\(path) has no grammar")
         #expect(lang.hasTags, "\(path) has no tags query")
-        return lang.symbols(text).filter(\.isDefinition)
+        return try lang.symbols(text).filter(\.isDefinition)
     }
 
     static let samples: [TagsSample] = [

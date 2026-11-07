@@ -56,7 +56,7 @@ import Testing
 
         fn helper(x: u64) -> u64 { x }
         """
-        let syms = rust.symbols(text)
+        let syms = try rust.symbols(text)
         let defs = syms.filter(\.isDefinition)
         #expect(defs.contains { $0.name == "Cache" && $0.lines.lowerBound == 0 })
         let get = try #require(defs.first { $0.name == "get" })
@@ -68,10 +68,10 @@ import Testing
     @Test func analyzingParsesOnceForTokensAndSymbols() throws {
         let rust = try #require(runtime?.language(forPath: "lib.rs"))
         let text = "struct Cache { n: u64 }\n\nfn helper(x: u64) -> u64 { x } // done\n"
-        let both = rust.analyze(text, symbols: true)
+        let both = try rust.analyze(text, symbols: true)
         #expect(both.tokens == rust.tokens(text))
-        #expect(both.symbols == rust.symbols(text))
-        #expect(rust.analyze(text, symbols: false).symbols.isEmpty)
+        #expect(try both.symbols == rust.symbols(text))
+        #expect(try rust.analyze(text, symbols: false).symbols.isEmpty)
     }
 
     @Test func membersSpanTheirOwnLinesNotTheTypeAroundThem() throws {
@@ -85,7 +85,7 @@ import Testing
             }
         }
         """
-        let defs = swift.symbols(text).filter(\.isDefinition)
+        let defs = try swift.symbols(text).filter(\.isDefinition)
         #expect(defs.first { $0.name == "Parser" }?.lines == 0...6)
         #expect(defs.first { $0.name == "tokens" }?.lines == 1...1)
         #expect(defs.first { $0.name == "next" }?.lines == 3...5)
@@ -109,7 +109,7 @@ import Testing
         func helper() -> Int { let x = 1; return x }
         let limit = 3
         """
-        let names = outlineDefinitions(swift.symbols(text).filter(\.isDefinition)).map(\.name)
+        let names = outlineDefinitions(try swift.symbols(text).filter(\.isDefinition)).map(\.name)
         #expect(names == ["Parser", "tokens", "next", "helper", "limit"])
     }
 }
@@ -142,7 +142,7 @@ private func liveHeapMB() -> Int {
     let rust = try #require(SyntaxRuntime.shared?.language(forPath: "lib.rs"))
     let text = (0..<600).map { "fn f\($0)(x: u64) -> u64 { let y = \"s\($0)\"; x + \($0) } // c\($0)" }.joined(separator: "\n")
     let grown = await Task.detached {
-        func parse(_ n: Int) { for _ in 0..<n { _ = rust.tokens(text); _ = rust.symbols(text) } }
+        func parse(_ n: Int) { for _ in 0..<n { _ = rust.tokens(text); _ = try? rust.symbols(text) } }
         parse(20)
         let warm = liveHeapMB()
         parse(100)

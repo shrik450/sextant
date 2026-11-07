@@ -403,6 +403,8 @@ final class FileText {
         var definitions: [Symbol]?
         var outline: [OutlineItem]?
         var hasTags = false
+        /// Why the analysis was given up, leaving the text plain, if it was.
+        var abandoned: AnalysisStop?
     }
 
     /// Analyzes the lines off the main thread, once.
@@ -421,6 +423,10 @@ final class FileText {
         guard let a = await work.value(starting: {
             await FileText.analyze(lines, path: path, isChange: isChange, symbols: withSymbols, blobs: blobs, contentAnalysis: contentAnalysis)
         }) else { return }
+        if let stop = a.abandoned {
+            abandoned = stop
+            return showPlain()
+        }
         tokens = a.tokens
         if let d = a.definitions { definitions = d }
         if let o = a.outline { outline = o }
@@ -428,8 +434,11 @@ final class FileText {
         resized()
     }
 
-    /// Gives a text its admission doesn't let be analyzed no tokens, definitions or outline, so
-    /// it shows as plain text and nothing waits for it.
+    /// Why analyzing the text was given up, so it shows as plain text, if it was.
+    private(set) var abandoned: AnalysisStop?
+
+    /// Gives a text that isn't analyzed, by its admission or because its analysis was given up,
+    /// no tokens, definitions or outline, so it shows as plain text and nothing waits for it.
     private func showPlain() {
         tokens = [[Token]](repeating: [], count: lines.count)
         definitions = []
@@ -459,35 +468,41 @@ final class FileText {
     ///
     /// - Parameter blobs: The blob IDs of the sides whose lines are the whole blob.
     @concurrent nonisolated static func analyze(_ lines: [DiffLine], path: String, isChange: Bool, symbols: Bool,
-                                                blobs: (old: String?, new: String?), contentAnalysis: ContentAnalysis?) async -> Analysis {
+                                                blobs: (old: String?, new: String?), contentAnalysis: ContentAnalysis?) async -> Analysis? {
         guard let language = SyntaxRuntime.shared?.language(forPath: path) else {
             return Analysis(tokens: [[Token]](repeating: [], count: lines.count), definitions: symbols ? [] : nil, outline: symbols ? [] : nil)
         }
         let wantSymbols = symbols && language.hasTags
-        @Sendable func side(_ old: Bool) async -> (indices: [Int], tokens: [[Token]], definitions: [Symbol]) {
+        @Sendable func side(_ old: Bool) async -> (indices: [Int], found: BlobAnalysis)? {
             let idx = lines.indices.filter { old ? lines[$0].kind != .added : lines[$0].kind != .deleted }
             let text = idx.map { lines[$0].text }
             let found = if let oid = old ? blobs.old : blobs.new, let contentAnalysis {
                 await contentAnalysis.analysis(of: text, oid: oid, language: language, definitions: wantSymbols)
             } else {
-                language.analysis(of: text, definitions: wantSymbols)
+                await ContentAnalysis.analyze(text, language: language, definitions: wantSymbols)
             }
-            return (idx, found.tokens, outlineDefinitions(found.definitions ?? []))
+            return found.map { (idx, $0) }
         }
         let hasOldSide = lines.contains(where: { $0.kind == .deleted })
         async let newSide = side(false)
         async let oldSide = hasOldSide ? side(true) : nil
-        let new = await newSide
+        guard let new = await newSide else { return nil }
+        let old = await oldSide
+        if hasOldSide, old == nil { return nil }
+        if let stop = new.found.abandoned ?? old?.found.abandoned {
+            return Analysis(tokens: [[Token]](repeating: [], count: lines.count), definitions: symbols ? [] : nil, outline: symbols ? [] : nil, abandoned: stop)
+        }
         var tokens = [[Token]](repeating: [], count: lines.count)
-        for (k, i) in new.indices.enumerated() { tokens[i] = new.tokens[k] }
-        var oldDefinitions = new.definitions
-        if let old = await oldSide {
-            for (k, i) in old.indices.enumerated() where lines[i].kind == .deleted { tokens[i] = old.tokens[k] }
-            if isChange { oldDefinitions = old.definitions }
+        for (k, i) in new.indices.enumerated() { tokens[i] = new.found.tokens[k] }
+        let newDefinitions = outlineDefinitions(new.found.definitions ?? [])
+        var oldDefinitions = newDefinitions
+        if let old {
+            for (k, i) in old.indices.enumerated() where lines[i].kind == .deleted { tokens[i] = old.found.tokens[k] }
+            if isChange { oldDefinitions = outlineDefinitions(old.found.definitions ?? []) }
         }
         guard symbols else { return Analysis(tokens: tokens, hasTags: language.hasTags) }
-        return Analysis(tokens: tokens, definitions: new.definitions,
-                        outline: wantSymbols ? SextantCore.outline(lines: lines, new: new.definitions, old: oldDefinitions) : [],
+        return Analysis(tokens: tokens, definitions: newDefinitions,
+                        outline: wantSymbols ? SextantCore.outline(lines: lines, new: newDefinitions, old: oldDefinitions) : [],
                         hasTags: language.hasTags)
     }
 
@@ -536,17 +551,27 @@ final class FileText {
         resized()
     }
 
+    /// Finds the names in each side of some lines, through the analysis gate.
+    ///
+    /// - Returns: The names, or nil if the task was cancelled or finding them ran out of budget.
     @concurrent nonisolated private static func indexNames(_ lines: [DiffLine], tokens: [[Token]], path: String) async -> Names? {
         guard let language = SyntaxRuntime.shared?.language(forPath: path) else { return nil }
-        func side(_ old: Bool) -> SideNames {
+        func side(_ old: Bool) throws(AnalysisStop) -> SideNames {
             let indices = lines.indices.filter { old ? lines[$0].kind != .added : lines[$0].kind != .deleted }
             var sideLines = [Int32](repeating: -1, count: lines.count)
             for (k, i) in indices.enumerated() { sideLines[i] = Int32(k) }
-            let index = language.names(of: indices.map { lines[$0].text }, tokens: indices.map { tokens[$0] })
+            let index = try language.names(of: indices.map { lines[$0].text }, tokens: indices.map { tokens[$0] })
             return SideNames(index: index, lines: indices, sideLines: sideLines)
         }
         let hasOld = lines.contains { $0.kind == .deleted }
-        return Names(new: side(false), old: hasOld ? side(true) : nil)
+        let bytes = lines.reduce(0) { $0 + $1.text.utf8.count + 1 }
+        return await AnalysisGate.shared.run(bytes: bytes) { () -> Names? in
+            do throws(AnalysisStop) {
+                return Names(new: try side(false), old: hasOld ? try side(true) : nil)
+            } catch {
+                return nil
+            }
+        } ?? nil
     }
 
     /// Returns where the name at a place in the text is used, and the places of the names that
@@ -754,7 +779,7 @@ func admissionNotices(_ f: FileState, shown t: FileText) -> [Row.Kind] {
         let why = a.reason ?? ""
         out.append(.limit(t === f.preview ? "Too large to show whole: \(why). \(first) \(openIt)" : "Only the changes show: \(why). \(openIt)"))
     }
-    if f.hasLanguage, !t.lines.isEmpty, t.admission.verdict == .plain, let why = t.admission.reason {
+    if f.hasLanguage, !t.lines.isEmpty, let why = t.admission.verdict == .plain ? t.admission.reason : t.abandoned?.reason {
         let cut = t.hasCutLines ? " Longer lines show their first \(ContentLimits.lineWidth.formatted(.number)) characters." : ""
         out.append(.notice("Plain text, without colours or definitions: \(why).\(cut)"))
     }

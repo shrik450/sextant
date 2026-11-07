@@ -137,7 +137,7 @@ struct LocalsSample: Sendable, CustomTestStringConvertible {
         let lang = try #require(runtime?.language(forPath: path), "\(path) has no grammar")
         #expect(lang.hasLocals, "\(path) has no locals query")
         let lines = text.components(separatedBy: "\n")
-        return (lang.names(of: lines, tokens: tokensPerLine(lang.tokens(text), lines: lines)), lines)
+        return (try lang.names(of: lines, tokens: tokensPerLine(lang.tokens(text), lines: lines)), lines)
     }
 
     static func e(_ name: String, _ line: Int, nth: Int = 0, _ lines: [Int]) -> LocalsSample.Expectation {

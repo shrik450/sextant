@@ -20,6 +20,20 @@ public struct BlobAnalysis: Sendable {
     public var tokens: [[Token]]
     /// Its definitions, if it was analyzed for them.
     public var definitions: [Symbol]?
+    /// Why the analysis was given up, leaving no tokens or definitions, if it was.
+    public var abandoned: AnalysisStop?
+
+    public init(tokens: [[Token]], definitions: [Symbol]?, abandoned: AnalysisStop? = nil) {
+        self.tokens = tokens
+        self.definitions = definitions
+        self.abandoned = abandoned
+    }
+
+    /// An analysis that found nothing: no tokens on any of some lines, and no definitions if
+    /// they were asked for.
+    public static func empty(lines: Int, definitions: Bool, abandoned: AnalysisStop? = nil) -> BlobAnalysis {
+        BlobAnalysis(tokens: [[Token]](repeating: [], count: lines), definitions: definitions ? [] : nil, abandoned: abandoned)
+    }
 
     /// About how much memory it holds.
     public var byteCount: Int { tokensByteCount(tokens) + symbolsByteCount(definitions ?? []) }
@@ -48,7 +62,9 @@ public actor ContentAnalysis {
     private var unsaved = false
     private var saveScheduled = false
     private var saving: Task<Void, Never>?
-    private var running: [ContentKey: (task: Task<BlobAnalysis, Never>, definitions: Bool)] = [:]
+    private var running: [ContentKey: (work: SharedWork<BlobAnalysis>, definitions: Bool)] = [:]
+    /// The versions whose analysis ran out of time or captured too much, which aren't tried again.
+    private var abandoned: [ContentKey: AnalysisStop] = [:]
 
     /// Changes when what's saved changes shape or meaning, so older saves are dropped.
     static let format = 2
@@ -74,24 +90,51 @@ public actor ContentAnalysis {
     ///   - oid: The blob ID of the file's contents.
     ///   - language: The grammar to parse it with.
     ///   - definitions: Whether to find its definitions too.
-    public func analysis(of lines: [String], oid: String, language: SyntaxLanguage, definitions wanted: Bool) async -> BlobAnalysis {
+    /// - Returns: The analysis, which is empty and says why for a version too large to analyze
+    ///   or whose analysis was given up, or nil once the task is cancelled. Callers asking for
+    ///   the same version share one analysis, which stops once none of them waits for it.
+    public func analysis(of lines: [String], oid: String, language: SyntaxLanguage, definitions wanted: Bool) async -> BlobAnalysis? {
         let key = ContentKey(oid: oid, grammar: language.version)
-        if let known = Admissions.shared[oid], !known.analyzes {
-            return BlobAnalysis(tokens: [[Token]](repeating: [], count: lines.count), definitions: wanted && language.hasTags ? [] : nil)
-        }
         let needsDefinitions = wanted && language.hasTags
+        if let known = Admissions.shared[oid], !known.analyzes { return .empty(lines: lines.count, definitions: needsDefinitions) }
+        if let stop = abandoned[key] { return .empty(lines: lines.count, definitions: needsDefinitions, abandoned: stop) }
         if let hit = memory.value(for: CacheKey(Kept(content: key))) as? BlobAnalysis, !needsDefinitions || hit.definitions != nil { return hit }
-        if let r = running[key], r.definitions || !needsDefinitions { return await r.task.value }
-        let task = Task.detached(priority: .userInitiated) { language.analysis(of: lines, definitions: needsDefinitions) }
-        running[key] = (task, needsDefinitions)
-        let found = await task.value
-        if running[key]?.task == task { running[key] = nil }
+        let work: SharedWork<BlobAnalysis>
+        if let r = running[key], r.definitions || !needsDefinitions {
+            work = r.work
+        } else {
+            work = SharedWork()
+            running[key] = (work, needsDefinitions)
+        }
+        let found = await work.value { await Self.analyze(lines, language: language, definitions: needsDefinitions) }
+        if running[key]?.work === work, !work.isRunning { running[key] = nil }
+        guard let found else { return nil }
+        if let stop = found.abandoned {
+            abandoned[key] = stop
+            return found
+        }
         memory.insert(found, for: CacheKey(Kept(content: key)), bytes: found.byteCount)
         if let d = found.definitions {
             self.definitions[key] = indexedDefinitions(d)
             saveSoon()
         }
         return found
+    }
+
+    /// Analyzes some lines once they fit through the analysis gate, giving up when the task is
+    /// cancelled or the analysis runs out of budget.
+    ///
+    /// - Returns: The analysis, an empty one that says why it was given up, or nil once the
+    ///   task is cancelled.
+    @concurrent public static func analyze(_ lines: [String], language: SyntaxLanguage, definitions: Bool) async -> BlobAnalysis? {
+        let bytes = lines.reduce(0) { $0 + $1.utf8.count + 1 }
+        return await AnalysisGate.shared.run(bytes: bytes) { () -> BlobAnalysis? in
+            do throws(AnalysisStop) {
+                return try language.analysis(of: lines, definitions: definitions)
+            } catch {
+                return error == .cancelled ? nil : .empty(lines: lines.count, definitions: definitions, abandoned: error)
+            }
+        } ?? nil
     }
 
     /// A version of a file to find definitions in.
@@ -108,6 +151,7 @@ public actor ContentAnalysis {
             self.read = read
         }
     }
+
 
     /// Returns the definitions in some versions of files, reading and parsing in parallel those
     /// not analyzed before.
@@ -172,10 +216,15 @@ public actor ContentAnalysis {
         }
         let read = ContentKey(oid: blobID(of: data), grammar: source.key.grammar)
         if let saved = await analysis.saved(read) { return Found(asked: source.key, read: read, definitions: saved) }
-        let found = Admissions.shared.measure(data, oid: read.oid).analyzes
-            ? autoreleasepool { indexedDefinitions(source.language.symbols(splitLines(data).joined(separator: "\n"))) }
-            : []
-        return Found(asked: source.key, read: read, definitions: found)
+        guard Admissions.shared.measure(data, oid: read.oid).analyzes else { return Found(asked: source.key, read: read, definitions: []) }
+        let symbols = await AnalysisGate.shared.run(bytes: data.count) { () -> Result<[Symbol], AnalysisStop> in
+            Result { () throws(AnalysisStop) in try source.language.symbols(splitLines(data).joined(separator: "\n")) }
+        }
+        switch symbols {
+        case nil, .failure(.cancelled)?: throw CancellationError()
+        case .success(let found)?: return Found(asked: source.key, read: read, definitions: indexedDefinitions(found))
+        case .failure?: return Found(asked: source.key, read: read, definitions: [])
+        }
     }
 
     /// Forgets the saved definitions of other versions once they outnumber these threefold, so
@@ -257,9 +306,11 @@ extension SyntaxLanguage {
     /// text.
     ///
     /// A line's trailing CR is left out, so lines split from CRLF contents either way parse alike.
-    public func analysis(of lines: [String], definitions: Bool) -> BlobAnalysis {
+    ///
+    /// - Throws: `AnalysisStop` when the budget runs out first.
+    public func analysis(of lines: [String], definitions: Bool, budget: AnalysisBudget = AnalysisBudget()) throws(AnalysisStop) -> BlobAnalysis {
         let canonical = lines.map { $0.hasSuffix("\r") ? String($0.dropLast()) : $0 }
-        let found = analyze(canonical.joined(separator: "\n"), symbols: definitions)
+        let found = try analyze(canonical.joined(separator: "\n"), symbols: definitions, budget: budget)
         return BlobAnalysis(tokens: tokensPerLine(found.tokens, lines: canonical),
                             definitions: definitions ? found.symbols.filter(\.isDefinition) : nil)
     }

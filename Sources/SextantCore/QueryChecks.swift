@@ -1,6 +1,90 @@
 import Foundation
 import SwiftTreeSitter
 
+/// Why analyzing a text stopped before it finished.
+public enum AnalysisStop: Error, Sendable, Equatable {
+    /// Its task was cancelled: nothing wants it any more.
+    case cancelled
+    /// It ran past `ContentLimits.analysisTime`.
+    case tooSlow
+    /// A query captured more than `ContentLimits.capturesPerQuery`.
+    case tooManyCaptures
+
+    /// Why the analysis was abandoned, in words for the reader; nil for a cancelled one, which
+    /// nobody sees.
+    public var reason: String? {
+        switch self {
+        case .cancelled: nil
+        case .tooSlow: "analyzing it took longer than \(Int(ContentLimits.analysisTime.components.seconds)) seconds"
+        case .tooManyCaptures: "it holds more than \(ContentLimits.capturesPerQuery.formatted(.number)) pieces of syntax"
+        }
+    }
+}
+
+/// How long analyzing a text may go on, and whether anything still wants it.
+public struct AnalysisBudget: Sendable {
+    private let deadline: ContinuousClock.Instant
+    /// The most captures one query run takes.
+    let captures: Int
+
+    /// - Parameters:
+    ///   - time: How long the analysis may take, from now.
+    ///   - captures: The most captures one query run takes.
+    public init(time: Duration = ContentLimits.analysisTime, captures: Int = ContentLimits.capturesPerQuery) {
+        deadline = .now + time
+        self.captures = captures
+    }
+
+    /// Why the analysis must stop now, if it must: the task running it was cancelled, or it ran
+    /// past its time.
+    func spent() -> AnalysisStop? {
+        if Task.isCancelled { return .cancelled }
+        if ContinuousClock.now > deadline { return .tooSlow }
+        return nil
+    }
+
+    /// The seconds left before the deadline.
+    var secondsLeft: Double {
+        let left = (deadline - .now).components
+        return Double(left.seconds) + Double(left.attoseconds) * 1e-18
+    }
+}
+
+/// One run of a query over a tree, which ends early once its budget is spent or it has
+/// captured too much, and says why.
+final class QueryRun: Sequence, IteratorProtocol {
+    private let matches: AnyIterator<QueryMatch>
+    private let budget: AnalysisBudget
+    private var captured = 0
+    private var taken = 0
+    /// Why the run ended early, once it has.
+    private(set) var stop: AnalysisStop?
+
+    /// How many matches go by between checks of the budget, which reads the clock.
+    private static let checkEvery = 64
+
+    init(_ matches: AnyIterator<QueryMatch>, budget: AnalysisBudget) {
+        self.matches = matches
+        self.budget = budget
+    }
+
+    func next() -> QueryMatch? {
+        guard stop == nil else { return nil }
+        taken += 1
+        if taken % Self.checkEvery == 0, let spent = budget.spent() {
+            stop = spent
+            return nil
+        }
+        guard let match = matches.next() else { return nil }
+        captured += match.captures.count
+        if captured > budget.captures {
+            stop = .tooManyCaptures
+            return nil
+        }
+        return match
+    }
+}
+
 /// A query, with the predicates SwiftTreeSitter lets through unchecked checked on each match.
 ///
 /// SwiftTreeSitter checks `#eq?` and `#match?` against strings, and passes every predicate it
@@ -43,10 +127,11 @@ struct CheckedQuery: Sendable {
         }
     }
 
-    /// Returns the matches in a tree that pass every predicate.
-    func matches(in tree: MutableTree, _ text: String) -> some Sequence<QueryMatch> {
+    /// Runs the query over a tree, for the matches that pass every predicate, within a budget.
+    func run(in tree: MutableTree, _ text: String, budget: AnalysisBudget) -> QueryRun {
         let ns = text as NSString
-        return query.execute(in: tree).resolve(with: .init(string: text)).lazy.filter { allows($0, ns) }
+        let matches = query.execute(in: tree).resolve(with: .init(string: text)).lazy.filter { allows($0, ns) }
+        return QueryRun(AnyIterator(matches.makeIterator()), budget: budget)
     }
 
     private func allows(_ match: QueryMatch, _ text: NSString) -> Bool {

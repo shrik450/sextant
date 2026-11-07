@@ -20,6 +20,12 @@ public enum ContentLimits {
     public static let previewLines = 10_000
     /// The most bytes of a file that's too large to show whole read for its preview.
     public static let previewBytes = 1 << 20
+    /// The most bytes of text analyzed at once, across every analysis (see `AnalysisGate`).
+    public static let analysisInFlight = 8 << 20
+    /// The longest a parse and the queries over its tree may run before they're abandoned.
+    public static let analysisTime: Duration = .seconds(10)
+    /// The most captures one query run over a file takes before it stops.
+    public static let capturesPerQuery = 2_000_000
 }
 
 /// What Sextant takes in of one version of a file, decided once from its size and shape.
@@ -248,4 +254,94 @@ public func cutLine(_ text: String) -> (text: String, left: Int) {
     var keep = ContentLimits.lineWidth
     if UTF16.isLeadSurrogate(units[units.index(units.startIndex, offsetBy: keep - 1)]) { keep -= 1 }
     return (String(decoding: units.prefix(keep), as: UTF16.self), width - keep)
+}
+
+/// Bounds how much text is analyzed at once, so analyses running together, each within the
+/// analysis limit, can't fill memory between them.
+///
+/// Each analysis holds as many bytes of the budget as its text has while it runs, in the order
+/// they ask. A text larger than the whole budget runs once nothing else does.
+public final class AnalysisGate: Sendable {
+    private struct Waiter {
+        var id: Int
+        var bytes: Int
+        var continuation: CheckedContinuation<Bool, Never>
+    }
+
+    private struct State {
+        var inFlight = 0
+        var running = 0
+        var waiting: [Waiter] = []
+        var lastID = 0
+    }
+
+    private let state = Mutex(State())
+    private let budget: Int
+
+    /// The gate every analysis in the app goes through.
+    public static let shared = AnalysisGate(budget: ContentLimits.analysisInFlight)
+
+    /// - Parameter budget: The most bytes analyzed at once.
+    public init(budget: Int) {
+        self.budget = budget
+    }
+
+    /// How many analyses hold the gate now.
+    public var running: Int { state.withLock { $0.running } }
+
+    /// Runs some analysis once its text fits beside the others running.
+    ///
+    /// - Parameter bytes: The size of the text it analyzes.
+    /// - Returns: What the analysis returns, or nil if the task was cancelled while it waited.
+    public func run<T>(bytes: Int, _ analysis: () async throws -> T) async rethrows -> T? {
+        guard await enter(bytes) else { return nil }
+        defer { leave(bytes) }
+        return try await analysis()
+    }
+
+    private func fits(_ bytes: Int, _ s: State) -> Bool { s.running == 0 || s.inFlight + bytes <= budget }
+
+    private func enter(_ bytes: Int) async -> Bool {
+        let id = state.withLock { s in
+            s.lastID += 1
+            return s.lastID
+        }
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+                let admitted = state.withLock { s -> Bool? in
+                    guard !Task.isCancelled else { return false }
+                    guard s.waiting.isEmpty, fits(bytes, s) else {
+                        s.waiting.append(Waiter(id: id, bytes: bytes, continuation: c))
+                        return nil
+                    }
+                    s.inFlight += bytes
+                    s.running += 1
+                    return true
+                }
+                if let admitted { c.resume(returning: admitted) }
+            }
+        } onCancel: {
+            let waiter = state.withLock { s -> Waiter? in
+                guard let i = s.waiting.firstIndex(where: { $0.id == id }) else { return nil }
+                return s.waiting.remove(at: i)
+            }
+            waiter?.continuation.resume(returning: false)
+        }
+    }
+
+    private func leave(_ bytes: Int) {
+        let admitted = state.withLock { s -> [CheckedContinuation<Bool, Never>] in
+            s.inFlight -= bytes
+            s.running -= 1
+            var out: [CheckedContinuation<Bool, Never>] = []
+            while let first = s.waiting.first, fits(first.bytes, s) {
+                s.waiting.removeFirst()
+                s.inFlight += first.bytes
+                s.running += 1
+                out.append(first.continuation)
+            }
+            return out
+        }
+        for c in admitted { c.resume(returning: true) }
+    }
 }

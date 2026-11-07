@@ -80,49 +80,84 @@ public final class SyntaxLanguage: Sendable {
 
     public var hasTags: Bool { tagsQuery != nil }
 
-    func parse(_ text: String) -> MutableTree? {
+    /// Parses a text, stopping once the budget says to.
+    ///
+    /// The parser reads the text a chunk at a time, and each read checks the budget: a read
+    /// that finds it spent ends the text there, so the parse finishes at once and is thrown away.
+    /// The parser's own timeout stops it between reads.
+    ///
+    /// - Returns: The tree, or nil if the grammar won't load.
+    /// - Throws: `AnalysisStop` when the budget ran out first.
+    func parse(_ text: String, budget: AnalysisBudget) throws(AnalysisStop) -> MutableTree? {
         let parser = Parser()
         guard (try? parser.setLanguage(language)) != nil else { return nil }
-        return parser.parse(text)
+        parser.timeout = max(0.001, budget.secondsLeft)
+        var stopped: AnalysisStop?
+        let units = Array(text.utf16)
+        let tree = units.withUnsafeBytes { bytes in
+            parser.parse(tree: nil as Tree?) { offset, _ in
+                if let stop = budget.spent() {
+                    stopped = stop
+                    return nil
+                }
+                guard offset < bytes.count else { return nil }
+                return Data(bytes[offset..<min(bytes.count, offset + Self.readChunk)])
+            }
+        }
+        if let stopped { throw stopped }
+        guard let tree else { throw budget.spent() ?? .tooSlow }
+        return tree
     }
 
-    /// Returns the syntax tokens for the whole text.
+    /// The most bytes the parser reads at once, so it checks its budget at least this often.
+    private static let readChunk = 1 << 16
+
+    /// Returns the syntax tokens for the whole text, or none if analyzing it runs out of budget.
     ///
     /// Later tokens are more specific and win where they overlap.
-    public func tokens(_ text: String) -> [Token] { analyze(text, symbols: false).tokens }
+    public func tokens(_ text: String) -> [Token] { (try? analyze(text, symbols: false))?.tokens ?? [] }
 
     /// Returns the definitions and references in the text, in document order.
     ///
     /// A name that several query patterns match, like a Swift method that is also a function, is
     /// kept once, as the first pattern that matched it.
-    public func symbols(_ text: String) -> [Symbol] {
-        autoreleasepool { parse(text).map { symbols(in: $0, text) } ?? [] }
+    ///
+    /// - Throws: `AnalysisStop` when the budget runs out first.
+    public func symbols(_ text: String, budget: AnalysisBudget = AnalysisBudget()) throws(AnalysisStop) -> [Symbol] {
+        try autoreleasepool { () throws(AnalysisStop) -> [Symbol] in
+            guard let tree = try parse(text, budget: budget) else { return [] }
+            return try symbols(in: tree, text, budget: budget)
+        }
     }
 
     /// Returns the tokens and, if asked, the symbols of a text, parsing it once.
     ///
     /// Runs in its own autorelease pool, since the text it bridges is as big as the file and
     /// background tasks never drain one.
-    public func analyze(_ text: String, symbols wanted: Bool) -> (tokens: [Token], symbols: [Symbol]) {
-        autoreleasepool {
-            guard let tree = parse(text) else { return ([], []) }
-            return (tokens(in: tree, text), wanted ? symbols(in: tree, text) : [])
+    ///
+    /// - Throws: `AnalysisStop` when the budget runs out first.
+    public func analyze(_ text: String, symbols wanted: Bool, budget: AnalysisBudget = AnalysisBudget()) throws(AnalysisStop) -> (tokens: [Token], symbols: [Symbol]) {
+        try autoreleasepool { () throws(AnalysisStop) -> (tokens: [Token], symbols: [Symbol]) in
+            guard let tree = try parse(text, budget: budget) else { return ([], []) }
+            return (try tokens(in: tree, text, budget: budget), wanted ? try symbols(in: tree, text, budget: budget) : [])
         }
     }
 
-    private func tokens(in tree: MutableTree, _ text: String) -> [Token] {
+    private func tokens(in tree: MutableTree, _ text: String, budget: AnalysisBudget) throws(AnalysisStop) -> [Token] {
         guard let q = highlightsQuery else { return [] }
-        return q.matches(in: tree, text).highlights().compactMap { r in
-            TokenKind(capture: r.name).map { Token(range: r.range, kind: $0) }
-        }
+        let run = q.run(in: tree, text, budget: budget)
+        let found = run.highlights()
+        if let stop = run.stop { throw stop }
+        return found.compactMap { r in TokenKind(capture: r.name).map { Token(range: r.range, kind: $0) } }
     }
 
-    private func symbols(in tree: MutableTree, _ text: String) -> [Symbol] {
+    private func symbols(in tree: MutableTree, _ text: String, budget: AnalysisBudget) throws(AnalysisStop) -> [Symbol] {
         guard let q = tagsQuery else { return [] }
         let ns = text as NSString
         let lines = LineIndex(text)
         var out: [Symbol] = []
-        for match in q.matches(in: tree, text) {
+        let run = q.run(in: tree, text, budget: budget)
+        for match in run {
             guard let nameCapture = match.captures(named: "name").first else { continue }
             for c in match.captures {
                 guard let capture = c.name, capture.hasPrefix("definition.") || capture.hasPrefix("reference.") else { continue }
@@ -139,6 +174,7 @@ public final class SyntaxLanguage: Sendable {
                 ))
             }
         }
+        if let stop = run.stop { throw stop }
         var seen = Set<String>()
         let unique = out.filter { seen.insert("\($0.isDefinition) \($0.nameRange.location) \($0.nameRange.length)").inserted }
         return unique.sorted { $0.range.location < $1.range.location }

@@ -1236,8 +1236,8 @@ EOF
 }
 
 #######################################
-# Closes a pane while the large file it opened is still parsed: its reader must go then, not
-# when the parse ends.
+# Closes a pane while the large file it opened is still analyzed: its reader must go then, and
+# the analysis must stop, rather than run on to its end for nobody.
 #######################################
 scene_paneclose() {
   local dir repo
@@ -1245,7 +1245,7 @@ scene_paneclose() {
   repo="$dir/repo"
   g init -q -b main "$repo"
   printf 'a\n' > "$repo/a.txt"
-  awk 'BEGIN { for (i = 0; i < 200000; i++) printf "func f%d() -> Int { return %d + 1 }\n", i, i }' > "$repo/big.swift"
+  awk 'BEGIN { for (i = 0; i < 45000; i++) printf "func f%d() -> Int { return %d + 1 }\n", i, i }' > "$repo/big.swift"
   g -C "$repo" add -A
   g -C "$repo" commit -qm base
   printf 'a\nb\n' > "$repo/a.txt"
@@ -1256,7 +1256,7 @@ wait
 menu Go to Anything…
 type big.swift
 nowait key cmd+return
-sleep 1500
+sleep 400
 dump $dir/opened.json
 nowait menu Close Pane
 sleep 300
@@ -1271,8 +1271,9 @@ EOF
   local closed later ok=1
   closed=$(cpu_at "$dir" closed)
   later=$(cpu_at "$dir" later)
-  ((later - closed > 200)) && ok=0
-  check paneclose "CPU ms parsing on after closing (the scene's premise)" "$ok" "$((later - closed))" "over 200"
+  ((later - closed < 200)) && ok=0
+  check paneclose "CPU ms after closing, once the analysis stops" "$ok" "$((later - closed))" "under 200"
+  expect paneclose "the file still analyzed as its pane closed (the scene's premise)" "$(value "$dir/opened.json" settled)" false
   expect paneclose "readers with the large file open beside" "$(value "$dir/opened.json" readers)" 2
   expect paneclose "readers just after closing its pane" "$(value "$dir/closed.json" readers)" 1
   expect paneclose "scene finished" "$(grep -cx END "$dir/run.log")" 1

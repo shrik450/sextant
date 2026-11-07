@@ -68,7 +68,7 @@ import Testing
         let changed = Data("func shared() -> Int {\n    1\n}\n\nfunc added() {}\n".utf8)
         try changed.write(to: edited)
         let swift = try #require(SyntaxRuntime.shared?.language(forPath: "a.swift"))
-        let read = await index.analysis.analysis(of: splitLines(changed), oid: blobID(of: changed), language: swift, definitions: true)
+        let read = try #require(await index.analysis.analysis(of: splitLines(changed), oid: blobID(of: changed), language: swift, definitions: true))
         #expect(read.definitions?.map(\.name) == ["shared", "added"])
         toParse.set(0)
         let inWorktree = try await index.definitions(in: .worktree, git: repo) { _, total in toParse.set(total) }
@@ -93,11 +93,11 @@ import Testing
         let analysis = ContentAnalysis(cache: nil)
         let swift = try #require(SyntaxRuntime.shared?.language(forPath: "a.swift"))
         let lines = ["/**", " * Four", " * lines", " */", "func f() {}"]
-        let whole = await analysis.analysis(of: lines, oid: blobID(of: Data(lines.joined(separator: "\n").utf8)), language: swift, definitions: false)
+        let whole = try #require(await analysis.analysis(of: lines, oid: blobID(of: Data(lines.joined(separator: "\n").utf8)), language: swift, definitions: false))
         #expect(whole.tokens[2].map(\.kind) == [.comment])
         #expect(whole.tokens[4].first?.kind == .keyword)
         #expect(whole.definitions == nil)
-        let crlf = await analysis.analysis(of: lines.map { $0 + "\r" }, oid: "crlf", language: swift, definitions: true)
+        let crlf = try #require(await analysis.analysis(of: lines.map { $0 + "\r" }, oid: "crlf", language: swift, definitions: true))
         #expect(crlf.tokens == whole.tokens)
         #expect(crlf.definitions?.map(\.name) == ["f"])
     }

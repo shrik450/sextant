@@ -295,18 +295,21 @@ extension SyntaxLanguage {
     ///   - lines: The lines.
     ///   - tokens: Each line's syntax tokens, which tell names from keywords, comments, strings
     ///     and numbers.
-    public func names(of lines: [String], tokens: [[Token]]) -> NameIndex {
+    ///   - budget: How long finding them may take.
+    /// - Throws: `AnalysisStop` when the budget runs out first.
+    public func names(of lines: [String], tokens: [[Token]], budget: AnalysisBudget = AnalysisBudget()) throws(AnalysisStop) -> NameIndex {
         let canonical = lines.map { $0.hasSuffix("\r") ? String($0.dropLast()) : $0 }
         var candidates = NameIndex.candidates(in: canonical, tokens: tokens)
-        let locals: LocalCaptures? = autoreleasepool {
+        let locals: LocalCaptures? = try autoreleasepool { () throws(AnalysisStop) -> LocalCaptures? in
             let text = canonical.joined(separator: "\n")
-            guard let tree = parse(text), let root = tree.rootNode else { return nil }
+            guard let tree = try parse(text, budget: budget), let root = tree.rootNode else { return nil }
             candidates.removeAll { c in
                 let bytes = UInt32(c.offset * 2)..<UInt32((c.offset + c.range.length) * 2)
                 guard let node = root.descendant(in: bytes), node.range.location == c.offset, node.range.length == c.range.length else { return false }
                 return !node.isNamed || (node.nodeType == c.spelling && keywordNodes.contains(c.spelling))
             }
-            return localsQuery.map { Self.locals($0, in: tree, text) }
+            if let stop = budget.spent() { throw stop }
+            return try localsQuery.map { q throws(AnalysisStop) in try Self.locals(q, in: tree, text, budget: budget) }
         }
         return NameIndex(lineCount: canonical.count, candidates: candidates, locals: locals)
     }
@@ -315,9 +318,12 @@ extension SyntaxLanguage {
     ///
     /// The tree's root isn't taken for a scope, so what's defined at the top level is
     /// named by spelling like everything outside the scopes.
-    static func locals(_ query: CheckedQuery, in tree: MutableTree, _ text: String) -> LocalCaptures {
+    ///
+    /// - Throws: `AnalysisStop` when the budget runs out first.
+    static func locals(_ query: CheckedQuery, in tree: MutableTree, _ text: String, budget: AnalysisBudget) throws(AnalysisStop) -> LocalCaptures {
         var out = LocalCaptures()
-        for match in query.matches(in: tree, text) {
+        let run = query.run(in: tree, text, budget: budget)
+        for match in run {
             for c in match.captures {
                 guard let name = c.name else { continue }
                 let range = c.node.range
@@ -338,6 +344,7 @@ extension SyntaxLanguage {
                 }
             }
         }
+        if let stop = run.stop { throw stop }
         return out
     }
 }
