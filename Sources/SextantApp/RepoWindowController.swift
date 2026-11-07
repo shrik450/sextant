@@ -345,7 +345,9 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         let shared = sessions.first { $0.review == r }
         let s = shared ?? Session(review: r)
         s.pickerIfEmpty = pickerIfEmpty
+        p.stopLoading()
         p.session = s
+        if let current { stopIfUnshown([current]) }
         p.pendingLocation = location
         showNotes()
         watch()
@@ -367,7 +369,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         }
         let r = s.review
         busy += 1
-        Task {
+        s.load { [self] in
             defer {
                 busy -= 1
                 loadExtrasOnce()
@@ -478,7 +480,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         guard let s = p.session, let t = s.target else { return }
         let git = s.resolved?.git ?? repository.git
         busy += 1
-        Task {
+        s.load { [self] in
             defer { busy -= 1 }
             let data = await git.contents(of: shown.path, in: t.snapshot)
             guard p.session === s, s.target == t, p.reader.files.first?.file === shown, p.pendingLocation == nil else { return }
@@ -521,10 +523,11 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         guard force || snapshot != s.snapshotLoaded else { return }
         let git = s.resolved?.git ?? repository.git
         busy += 1
-        Task {
+        s.load { [self] in
             defer { busy -= 1 }
-            let files = ((try? await git.files(in: snapshot)) ?? []).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-            guard s.target?.snapshot == snapshot else { return }
+            let listed = try? await git.files(in: snapshot)
+            guard !Task.isCancelled, s.target?.snapshot == snapshot else { return }
+            let files = (listed ?? []).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
             s.snapshotLoaded = snapshot
             if files != s.snapshotFiles {
                 s.snapshotFiles = files
@@ -592,6 +595,8 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         showPanes(animated: false)
         updateTitle()
         if let f = readyFile(path, in: s) {
+            p.loadingFile?.cancel()
+            p.loadingFile = nil
             p.loadingGeneration = nil
             present(f, at: anchor, in: p)
             prepareNeighbour(of: path, in: s, for: p)
@@ -599,13 +604,14 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         }
         busy += 1
         p.loadingGeneration = gen
-        Task {
+        p.loadingFile?.cancel()
+        p.loadingFile = Task {
             defer {
                 busy -= 1
                 if p.loadingGeneration == gen { p.loadingGeneration = nil }
             }
             let f = await fileState(path, in: t, of: s)
-            guard gen == p.showGeneration else { return }
+            guard gen == p.showGeneration, !Task.isCancelled else { return }
             guard let f else {
                 p.reader.showEmpty("\(path) isn’t in this revision", symbol: "questionmark.text.page")
                 if isFocused(p) { inspector.showEmpty(card: card()) }
@@ -751,6 +757,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     func showOverview(in p: Pane? = nil, at path: String? = nil, top: SideLine? = nil, caret: Location.Caret? = nil) {
         let p = p ?? pane
         guard let s = p.session, !s.changes.isEmpty else { beep(); return }
+        p.stopLoading()
         p.showGeneration += 1
         p.focus = .overview(path: nil)
         UserDefaults.standard.set("overview", forKey: "readerMode")
@@ -876,8 +883,17 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         for p in closed {
             p.reader.delegate = nil
             p.reader.stopWork()
+            p.stopLoading()
             p.surface.removeFromSuperview()
         }
+        stopIfUnshown(closed.compactMap(\.session))
+    }
+
+    /// Stops the work of the sessions no pane shows any more, so a review left behind stops
+    /// loading and indexing.
+    private func stopIfUnshown(_ left: [Session]) {
+        let shown = Set(sessions.map(ObjectIdentifier.init))
+        for s in left where !shown.contains(ObjectIdentifier(s)) { s.stopWork() }
     }
 
     @objc func previousPane(_ sender: Any?) { focusPane(focusedPane - 1) }
@@ -1077,15 +1093,14 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         refreshTask?.cancel()
         findTask?.cancel()
         definitionTask?.cancel()
-        for s in sessions {
-            s.loadGeneration += 1
-            s.indexTask?.cancel()
-            s.indexTask = nil
-        }
+        for s in sessions { s.stopWork() }
         for t in afterFrame.values { t.invalidate() }
         afterFrame = [:]
         waitingForFile = [:]
-        for p in panes { p.reader.stopWork() }
+        for p in panes {
+            p.reader.stopWork()
+            p.stopLoading()
+        }
     }
 }
 

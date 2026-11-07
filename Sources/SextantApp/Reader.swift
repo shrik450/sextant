@@ -1,5 +1,6 @@
 import AppKit
 import SextantCore
+import Synchronization
 
 @MainActor
 protocol ReaderDelegate: AnyObject {
@@ -54,11 +55,19 @@ final class Reader: NSViewController, CodeViewDelegate {
     private var layout = Layout(left: [], right: nil)
     private var syncing = false
 
+    /// How many readers exist, so automation can check that a closed pane's goes away.
+    nonisolated static let live = Mutex(0)
+
     init(look: any Look) {
         self.look = look
         header = PaneHeader(style: look.paneHeader)
         changeCounter = ChangeCounter(look: look)
         super.init(nibName: nil, bundle: nil)
+        Reader.live.withLock { $0 += 1 }
+    }
+
+    deinit {
+        Reader.live.withLock { $0 -= 1 }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -187,6 +196,7 @@ final class Reader: NSViewController, CodeViewDelegate {
     func show(files: [FileState], overview: Bool, at position: ReaderPosition? = nil) {
         self.overview = overview
         self.files = files.map { ShownFile(file: $0, text: text(of: $0)) }
+        naming?.cancel()
         usesWord = nil
         boxed = nil
         cancelJump()
@@ -201,6 +211,7 @@ final class Reader: NSViewController, CodeViewDelegate {
     func stopWork() {
         analysis?.cancel()
         pendingOccurrences?.cancel()
+        naming?.cancel()
     }
 
     /// Analyzes the files shown, nearest the view first, coloring each as it arrives.
@@ -392,6 +403,8 @@ final class Reader: NSViewController, CodeViewDelegate {
     private var boxed: (file: Int, places: [FileText.Occurrence])?
     /// The update of the boxes waiting for the caret to settle.
     private var pendingOccurrences: Task<Void, Never>?
+    /// Indexing the names of the text the caret is in, to box them once they're indexed.
+    private var naming: Task<Void, Never>?
 
     /// How long the caret rests on a name before the names that name the same thing are boxed,
     /// so holding a key down to move doesn't box every name on the way. A tenth of a second
@@ -446,7 +459,8 @@ final class Reader: NSViewController, CodeViewDelegate {
         let t = files[at.file].text
         guard let places = t.occurrences(atLine: at.line, column: at.column) else {
             guard t.tokens != nil else { return }
-            Task(priority: .utility) { [weak self] in
+            naming?.cancel()
+            naming = Task(priority: .utility) { [weak self] in
                 await t.indexNames()
                 guard t.hasNames, let self, self.caret.map({ self.files[$0.file].text === t }) == true else { return }
                 self.updateOccurrences()

@@ -833,6 +833,8 @@ extension RepoWindowController {
             "commands": enabledCommands(in: NSApp.mainMenu).map(\.item.title),
             "footprintMB": physicalFootprint() / 1_048_576,
             "indexing": session?.indexing.map { "\($0.done)/\($0.total)" } ?? "",
+            "readers": Reader.live.withLock { $0 },
+            "processes": RunningProcesses.count,
         ]
     }
 

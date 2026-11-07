@@ -26,10 +26,34 @@ final class Session {
     var indexTask: Task<Void, Never>?
     /// Whether to offer the picker if the review turns out empty.
     var pickerIfEmpty = false
+    /// Loading the review, its snapshot's files, and the files panes left open outside it.
+    var loads: [UUID: Task<Void, Never>] = [:]
 
     init(review: Review) { self.review = review }
 
     var target: Target? { resolved?.target }
+
+    /// Runs some of the review's loading in a task the session stops with its other work.
+    func load(_ work: @escaping @MainActor () async -> Void) {
+        let id = UUID()
+        loads[id] = Task {
+            await work()
+            loads[id] = nil
+        }
+    }
+
+    /// Stops everything the session runs, once no pane shows it.
+    ///
+    /// What it was loading is dropped, as for a load that a later one replaced.
+    func stopWork() {
+        loadGeneration += 1
+        isLoading = false
+        for t in loads.values { t.cancel() }
+        loads = [:]
+        indexTask?.cancel()
+        indexTask = nil
+        indexing = nil
+    }
 }
 
 /// One reader in the window's strip, showing a place in a review.
@@ -55,6 +79,16 @@ final class Pane {
     /// The change the pane opened last, by its index in the session it showed then, which says
     /// which way the pane reads.
     var lastOpened: (session: ObjectIdentifier, index: Int)?
+    /// Loading the file the pane is to show, until it shows.
+    var loadingFile: Task<Void, Never>?
+
+    /// Stops what the pane started for what it showed: loading a file, and preparing the next.
+    func stopLoading() {
+        loadingFile?.cancel()
+        loadingFile = nil
+        preparingNeighbour?.cancel()
+        preparingNeighbour = nil
+    }
 
     init(look: any Look) {
         reader = Reader(look: look)

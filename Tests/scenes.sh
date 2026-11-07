@@ -33,7 +33,7 @@ bundle_id=${SEXTANT_SCENES_BUNDLE:-com.shrikanthup.Sextant.scenes}
 main_checkout=$(cd "$(git -C "$here" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
 lock=${SEXTANT_PERF_LOCK:-$main_checkout/scratch/gui-lock}
 real_git=$(command -v git)
-scenes=(page symlink find reload close base status shared showall columns rename read endings removed notes reference harness fields frames reopen lookups)
+scenes=(page symlink find reload close base status shared showall columns rename read endings removed notes reference harness fields frames reopen lookups drop slowdrop paneclose)
 failed=0
 holding_lock=0
 
@@ -1128,6 +1128,154 @@ EOF
   expect lookups "menus after a history answered once another file shows" "$(grep -c '^MENU History' "$dir/late/run.log")" 0
   expect lookups "popovers after a Peek answered once its pane closed" "$(value "$dir/late/closed.json" popovers)" 0
   expect lookups "scene finished" "$(grep -cx END "$dir/late/run.log")" 1
+}
+
+#######################################
+# Makes a repository of 5,000 Swift files and commits a change to one, for scenes that need
+# indexing to take a while.
+# Arguments:
+#   The repository's folder.
+#######################################
+make_many_files() {
+  local repo=$1
+  mkdir -p "$repo/src"
+  g init -q -b main "$repo"
+  awk -v dir="$repo/src" 'BEGIN {
+    for (f = 0; f < 5000; f++) {
+      file = sprintf("%s/f%04d.swift", dir, f)
+      for (i = 0; i < 300; i++) printf "func f%d_%d() -> Int { %d }\n", f, i, i > file
+      close(file)
+    }
+  }'
+  g -C "$repo" add -A
+  g -C "$repo" commit -qm base
+  printf 'func changed() {}\n' >> "$repo/src/f0000.swift"
+  g -C "$repo" commit -qam change
+}
+
+#######################################
+# Prints how many of the app's own child processes a scene's `sh` listing holds, leaving out
+# the shell that listed them and the batch reader that stays.
+# Arguments:
+#   The listing file.
+#######################################
+children_in() {
+  grep -v -e ' sh$' -e 'cat-file' "$1" | grep -c .
+}
+
+#######################################
+# Leaves a review while its definitions are indexed: indexing must stop with it.
+#######################################
+scene_drop() {
+  local dir repo
+  dir=$(scene_dir drop)
+  repo="$dir/repo"
+  make_many_files "$repo"
+  cat > "$dir/script.txt" <<EOF
+open $repo HEAD^..HEAD
+sleep 1000
+nowait menu Go to Anything…
+sleep 150
+nowait key esc
+dump $dir/leaving.json
+open $repo HEAD
+mark left
+sleep 5000
+mark later
+quit
+EOF
+  run_app "$dir"
+  local indexing ok left later
+  indexing=$(value "$dir/leaving.json" indexing)
+  ok=1
+  [[ $indexing == */* ]] && ok=0
+  check drop "files indexed when the review was left" "$ok" "\"$indexing\"" "some of them"
+  left=$(cpu_at "$dir" left)
+  later=$(cpu_at "$dir" later)
+  ok=1
+  ((later - left < 500)) && ok=0
+  check drop "CPU ms in the 5 s after leaving" "$ok" "$((later - left))" "under 500"
+}
+
+#######################################
+# Leaves a review of a linked worktree whose every git takes 3 s while it still loads: its
+# gits must stop with it.
+#######################################
+scene_slowdrop() {
+  local dir repo slow
+  dir=$(scene_dir slowdrop)
+  repo="$dir/repo"
+  slow="$dir/slow"
+  g init -q -b main "$repo"
+  printf 'a\n' > "$repo/a.txt"
+  g -C "$repo" add -A
+  g -C "$repo" commit -qm base
+  g -C "$repo" worktree add -q "$slow" -b slow
+  printf 'a\nb\n' > "$slow/a.txt"
+  slow=$(cd "$slow" && pwd -P)
+  cat > "$dir/script.txt" <<EOF
+open $repo
+wait
+nowait open $slow
+sleep 4500
+sh pgrep -lP \$PPID > $dir/during.txt
+nowait open $repo HEAD
+sleep 700
+sh pgrep -lP \$PPID > $dir/after.txt
+wait
+log END
+quit
+EOF
+  run_app "$dir" 120 "" "$slow" 3
+  local during ok=1
+  during=$(children_in "$dir/during.txt")
+  ((during > 0)) && ok=0
+  check slowdrop "gits running while the slow review loads" "$ok" "$during" "some"
+  expect slowdrop "gits running after leaving it" "$(children_in "$dir/after.txt")" 0
+  expect slowdrop "scene finished" "$(grep -cx END "$dir/run.log")" 1
+}
+
+#######################################
+# Closes a pane while the large file it opened is still parsed: its reader must go then, not
+# when the parse ends.
+#######################################
+scene_paneclose() {
+  local dir repo
+  dir=$(scene_dir paneclose)
+  repo="$dir/repo"
+  g init -q -b main "$repo"
+  printf 'a\n' > "$repo/a.txt"
+  awk 'BEGIN { for (i = 0; i < 200000; i++) printf "func f%d() -> Int { return %d + 1 }\n", i, i }' > "$repo/big.swift"
+  g -C "$repo" add -A
+  g -C "$repo" commit -qm base
+  printf 'a\nb\n' > "$repo/a.txt"
+  printf 'func added() {}\n' >> "$repo/big.swift"
+  cat > "$dir/script.txt" <<EOF
+open $repo
+wait
+menu Go to Anything…
+type big.swift
+nowait key cmd+return
+sleep 1500
+dump $dir/opened.json
+nowait menu Close Pane
+sleep 300
+dump $dir/closed.json
+mark closed
+sleep 3000
+mark later
+log END
+quit
+EOF
+  run_app "$dir"
+  local closed later ok=1
+  closed=$(cpu_at "$dir" closed)
+  later=$(cpu_at "$dir" later)
+  ((later - closed > 200)) && ok=0
+  check paneclose "CPU ms parsing on after closing (the scene's premise)" "$ok" "$((later - closed))" "over 200"
+  expect paneclose "readers with the large file open beside" "$(value "$dir/opened.json" readers)" 2
+  expect paneclose "readers just after closing its pane" "$(value "$dir/closed.json" readers)" 1
+  expect paneclose "scene finished" "$(grep -cx END "$dir/run.log")" 1
 }
 
 if [[ ${1:-} == list ]]; then
