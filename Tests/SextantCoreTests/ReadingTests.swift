@@ -312,3 +312,16 @@ private func file(_ newOid: String, path: String = "f") -> RawChange {
     #expect(keys([line(.added, 0, 1, "x")]) != keys([line(.deleted, 1, 0, "x")]))
 }
 
+
+@Test func aReferenceNamesTheSideTheSelectedLinesAreOn() {
+    let lines = [line(.context, 1, 1, "a"), line(.deleted, 2, 0, "b"), line(.deleted, 3, 0, "c"), line(.added, 0, 2, "B"), line(.context, 4, 3, "d")]
+    #expect(referencedLines([0, 1, 2], in: lines, old: nil).map { [$0.lines.lowerBound, $0.lines.upperBound] } == [1, 3])
+    #expect(referencedLines([0, 1, 2], in: lines, old: nil)?.old == true)
+    #expect(referencedLines([0, 1, 2], in: lines, old: nil)?.code == ["a", "b", "c"])
+    #expect(referencedLines([1, 2, 3], in: lines, old: nil)?.code == ["B"])
+    #expect(referencedLines([3, 4], in: lines, old: nil)?.old == false)
+    #expect(referencedLines([4], in: lines, old: true).map { [$0.lines.lowerBound, $0.lines.upperBound] } == [4, 4])
+    #expect(referencedLines([4], in: lines, old: nil).map { [$0.lines.lowerBound, $0.lines.upperBound] } == [3, 3])
+    #expect(referencedLines([3], in: lines, old: true) == nil)
+    #expect(referencedLines([9], in: lines, old: nil) == nil)
+}

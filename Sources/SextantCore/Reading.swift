@@ -380,3 +380,22 @@ public func changeOrdinal(atRow row: Int, starts: [Int]) -> Int {
     }
     return low
 }
+
+/// Returns the line numbers and code that some of a diff's lines are, on one side, for a
+/// reference such as `path:3-5` or a note.
+///
+/// - Parameters:
+///   - indices: The lines, by index into `lines`.
+///   - lines: The diff's lines.
+///   - old: The side to name, as the column the lines were picked in says; nil to name the old
+///     side when no picked line was added and some were removed, and the new side otherwise.
+/// - Returns: The range of line numbers, whether they're the old side's, and the code of the
+///   lines on that side, or nil if none of them is on it.
+public func referencedLines(_ indices: [Int], in lines: [DiffLine], old: Bool?) -> (lines: ClosedRange<Int>, old: Bool, code: [String])? {
+    let picked = indices.filter { lines.indices.contains($0) }
+    let old = old ?? (!picked.contains { lines[$0].kind == .added } && picked.contains { lines[$0].kind == .deleted })
+    let kept = picked.filter { lines[$0].kind != (old ? .added : .deleted) }
+    let numbers = kept.map { old ? lines[$0].oldNo : lines[$0].newNo }
+    guard let lo = numbers.min(), let hi = numbers.max() else { return nil }
+    return (lo...hi, old, kept.map { lines[$0].text })
+}

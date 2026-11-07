@@ -33,7 +33,7 @@ bundle_id=${SEXTANT_SCENES_BUNDLE:-com.shrikanthup.Sextant.scenes}
 main_checkout=$(cd "$(git -C "$here" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
 lock=${SEXTANT_PERF_LOCK:-$main_checkout/scratch/gui-lock}
 real_git=$(command -v git)
-scenes=(page symlink find reload close base status shared showall columns rename read endings removed notes)
+scenes=(page symlink find reload close base status shared showall columns rename read endings removed notes reference)
 failed=0
 holding_lock=0
 
@@ -846,6 +846,40 @@ EOF
   run_app "$dir"
   expect notes "rows beside a note of three lines" "$(pane_rows "$dir" noted 0)" '[" 1 l1","+2 L2","note First\nsecond\nthird","+3 L3","+4 L4"," 5 l5"," 6 l6"]'
   expect notes "rows out of level with their other side" "$(pane "$dir" noted 0 misaligned)" 0
+}
+
+#######################################
+# Selects an unchanged line and the removed lines after it, and adds a note: the note must name
+# all three lines, numbered as they were.
+#######################################
+scene_reference() {
+  local dir repo
+  dir=$(scene_dir reference)
+  repo="$dir/repo"
+  mkdir -p "$repo"
+  g init -q -b main "$repo"
+  printf 'a\nb\nc\nd\n' > "$repo/a.txt"
+  g -C "$repo" add -A
+  g -C "$repo" commit -qm base
+  printf 'a\nd\n' > "$repo/a.txt"
+  cat > "$dir/script.txt" <<EOF
+defaults diffMode unified
+defaults readerMode file
+open $repo
+wait
+key k
+key shift+v
+key j
+key j
+dump $dir/selected.json
+note Across the removal
+wait
+dump $dir/noted.json
+quit
+EOF
+  run_app "$dir"
+  expect reference "rows selected" "$(value "$dir/selected.json" selectionRows)" 3
+  expect reference "note on an unchanged line and removed ones" "$(value "$dir/noted.json" notes.0.title)" "a.txt:1-3 (removed)"
 }
 
 if [[ ${1:-} == list ]]; then

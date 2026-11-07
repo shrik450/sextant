@@ -185,17 +185,11 @@ final class FileText {
         return l.kind == .deleted ? SideLine(number: l.oldNo, old: true) : SideLine(number: l.newNo, old: false)
     }
 
-    /// Returns the reference and code for some line indices.
+    /// Returns the reference and code for some line indices (see `referencedLines(_:in:old:)`).
     ///
-    /// The reference uses new-side line numbers, or old-side ones if all the lines were removed.
-    func reference(_ indices: [Int]) -> (lines: ClosedRange<Int>, old: Bool, code: [String])? {
-        let picked = indices.filter { lines.indices.contains($0) }
-        guard !picked.isEmpty else { return nil }
-        let old = picked.allSatisfy { lines[$0].kind == .deleted }
-        let kept = old ? picked : picked.filter { lines[$0].kind != .deleted }
-        let numbers = kept.map { old ? lines[$0].oldNo : lines[$0].newNo }
-        guard let lo = numbers.min(), let hi = numbers.max() else { return nil }
-        return (lo...hi, old, kept.map { lines[$0].text })
+    /// - Parameter old: The side to name, when the lines were picked in one column of two.
+    func reference(_ indices: [Int], old: Bool?) -> (lines: ClosedRange<Int>, old: Bool, code: [String])? {
+        referencedLines(indices, in: lines, old: old)
     }
 
     /// Returns the changed words in a line, if it's one of a pair of removed and added lines.
@@ -241,7 +235,7 @@ final class FileText {
     func anchor(of note: Note) -> Int? {
         guard let on = note.lines, on.path == path else { return nil }
         let no = on.range.upperBound
-        guard let i = lines.firstIndex(where: { on.old ? ($0.kind == .deleted && $0.oldNo == no) : ($0.kind != .deleted && $0.newNo == no) }) else { return nil }
+        guard let i = positions.index(ofLine: no, old: on.old) else { return nil }
         return on.code.last.map { $0 == lines[i].text } ?? true ? i : nil
     }
 

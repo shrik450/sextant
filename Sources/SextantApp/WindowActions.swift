@@ -438,7 +438,7 @@ extension RepoWindowController: NSMenuItemValidation {
     private var selectedReference: (path: String, lines: ClosedRange<Int>, old: Bool, code: [String], file: Int, line: Int)? {
         guard let sel = reader.selection, reader.files.indices.contains(sel.file), let last = sel.lines.last else { return nil }
         let f = reader.files[sel.file]
-        guard let r = f.text.reference(sel.lines) else { return nil }
+        guard let r = f.text.reference(sel.lines, old: reader.selectionIsOld) else { return nil }
         return (f.file.path, r.lines, r.old, r.code, sel.file, last)
     }
 

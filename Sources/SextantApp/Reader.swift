@@ -1021,6 +1021,9 @@ final class Reader: NSViewController, CodeViewDelegate {
         land(onRow: r, animated: true)
     }
 
+    /// Whether the active column is the old side of two, nil with one column.
+    var selectionIsOld: Bool? { columns.count == 2 ? activeCode === columns[0].code : nil }
+
     /// The selected source lines of the active column, as a file and line indices.
     var selection: (file: Int, lines: [Int])? {
         let code = activeCode
