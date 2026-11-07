@@ -34,7 +34,7 @@ import SextantCore
 ///                             do something n times, logging the main thread's time for each
 ///                             and the time until the window settled
 ///     timeopen <path> [rev]   open, logging when the window, content and settled state came
-///     mark <name>             log the time since launch and the footprint
+///     mark <name>             log the time since launch, the footprint and the CPU time
 ///     settle <name>           wait for the window to settle, logging how long it took
 ///     stall <ms>              block the main thread, to check that the probe sees it
 ///     waitindex [timeout-ms]  wait for Go to Anything's definitions, logging how long it took
@@ -268,7 +268,7 @@ final class Automation {
             log("MEASURE \(kind) \(what) ×\(n): frame \(stats(frame)) | settled \(stats(settled)) ms")
         case "mark":
             let now = Date().timeIntervalSince1970
-            log(String(format: "MARK %@: %.0f ms since launch, %d MB, at %lld", arg, (now - processStart()) * 1000, physicalFootprint() / 1_048_576, Int64(now * 1e9)))
+            log(String(format: "MARK %@: %.0f ms since launch, %d MB, %.0f ms CPU, at %lld", arg, (now - processStart()) * 1000, physicalFootprint() / 1_048_576, cpuTime() * 1000, Int64(now * 1e9)))
         case "settle":
             let t0 = CACurrentMediaTime()
             while !(window.map { $0.busy == 0 && $0.reader.isSettled } ?? true), CACurrentMediaTime() - t0 < 10 {
@@ -758,6 +758,7 @@ extension RepoWindowController {
             "visibleRows": visibleRowsInWindow(),
             "fontSize": Appearance.shared.font.pointSize,
             "footprintMB": physicalFootprint() / 1_048_576,
+            "indexing": session?.indexing.map { "\($0.done)/\($0.total)" } ?? "",
         ]
     }
 
@@ -807,4 +808,12 @@ func processStart() -> Double {
     sysctl(&mib, 4, &info, &size, nil, 0)
     let t = info.kp_proc.p_un.__p_starttime
     return Double(t.tv_sec) + Double(t.tv_usec) / 1_000_000
+}
+
+/// Returns the CPU time this process has used, user and system, in seconds.
+func cpuTime() -> Double {
+    var usage = rusage()
+    getrusage(RUSAGE_SELF, &usage)
+    func seconds(_ t: timeval) -> Double { Double(t.tv_sec) + Double(t.tv_usec) / 1_000_000 }
+    return seconds(usage.ru_utime) + seconds(usage.ru_stime)
 }
