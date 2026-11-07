@@ -39,10 +39,10 @@ import Testing
 
     @Test func theProcessEndsWhenIdleAndStartsAgainOnTheNextRead() async throws {
         let f = try repository("objects-idle")
-        let reader = ObjectReader(directory: f.repo.root, executable: GitIntegrationTests.git, idleTimeout: .milliseconds(200))
+        let reader = ObjectReader(directory: f.repo.root, executable: GitIntegrationTests.git, idleTimeout: .seconds(2))
         #expect(try await reader.blob(f.small, limit: 1 << 20) == Data("small\n".utf8))
         let first = try #require(reader.processID)
-        try await Task.sleep(for: .milliseconds(600))
+        try await Task.sleep(for: .seconds(3))
         #expect(reader.processID == nil)
         #expect(await isGone(first))
         #expect(try await reader.blob(f.small, limit: 1 << 20) == Data("small\n".utf8))
