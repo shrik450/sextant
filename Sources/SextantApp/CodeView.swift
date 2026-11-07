@@ -1138,7 +1138,7 @@ final class Gutter: NSRulerView {
 
     /// The width of one column of line numbers, fitting the largest line number and its sign.
     private var numberColumnWidth: CGFloat {
-        let maxNo = code.files.reduce(1) { max($0, $1.text.lines.last.map { max($0.oldNo, $0.newNo) } ?? 1) }
+        let maxNo = code.files.reduce(1) { max($0, $1.text.positions.lastOld, $1.text.positions.lastNew) }
         let characters = max(3, String(maxNo).count) + (signsNumbers ? 1 : 0)
         return CGFloat(characters) * code.style.digitWidth + 12
     }

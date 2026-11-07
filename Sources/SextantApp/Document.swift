@@ -167,9 +167,12 @@ final class FileText {
         self.contentAnalysis = contentAnalysis
     }
 
+    /// Where the lines are by their line numbers, and where each stands on the new side.
+    private(set) lazy var positions = LinePositions(lines)
+
     /// Returns the index of a 1-based line number on one side, or of the nearest line after it.
     func index(ofLine n: Int, old: Bool = false) -> Int? {
-        if let exact = lines.firstIndex(where: { old ? $0.kind != .added && $0.oldNo == n : $0.kind != .deleted && $0.newNo == n }) { return exact }
+        if let exact = positions.index(ofLine: n, old: old) { return exact }
         return lines.firstIndex { old ? $0.oldNo >= n : $0.newNo >= n } ?? (lines.isEmpty ? nil : lines.count - 1)
     }
 

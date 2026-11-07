@@ -980,9 +980,9 @@ final class Reader: NSViewController, CodeViewDelegate {
     func stepDefinition(_ dir: Int, changedOnly: Bool) -> Bool {
         guard !overview, let f = files.first?.text, !f.lines.isEmpty else { return false }
         if changedOnly { return stepChangedDefinition(dir, in: f) }
-        let here = caret.map { f.lines[$0.line] }.map { $0.kind == .deleted ? max(0, $0.newNo) : $0.newNo - 1 } ?? currentNewLine ?? 0
+        let here = caret.map { f.positions.newSideHalfLine(at: $0.line) } ?? (currentNewLine ?? 0) * 2
         let starts = Set(header.definitions.map(\.nameLine)).sorted()
-        guard let next = dir > 0 ? starts.first(where: { $0 > here }) : starts.last(where: { $0 < here }),
+        guard let next = dir > 0 ? starts.first(where: { 2 * $0 > here }) : starts.last(where: { 2 * $0 < here }),
               let i = f.index(ofLine: next + 1), let r = row(for: ReaderPosition(file: 0, line: i), in: primary) else { return false }
         land(onRow: r, animated: true)
         return true
@@ -992,7 +992,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         let here = caret?.line ?? topPosition?.line ?? 0
         let starts = changedDefinitions(in: f.outline ?? []).compactMap { d -> Int? in
             let old = d.change == .deleted
-            return f.lines.firstIndex { old ? $0.kind == .deleted && $0.oldNo == d.line + 1 : $0.kind != .deleted && $0.newNo == d.line + 1 }
+            return f.positions.index(ofLine: d.line + 1, old: old)
         }
         let sorted = Set(starts).sorted()
         guard let next = dir > 0 ? sorted.first(where: { $0 > here }) : sorted.last(where: { $0 < here }),
@@ -1050,7 +1050,7 @@ final class Reader: NSViewController, CodeViewDelegate {
     private var currentNewLine: Int? {
         guard !overview, let f = files.first?.text, !f.lines.isEmpty else { return nil }
         let p = (caretInView ? caret : nil) ?? topPosition
-        return p.map { f.lines[min($0.line, f.lines.count - 1)] }.map { $0.newNo > 0 ? $0.newNo - 1 : max(0, $0.oldNo - 1) }
+        return p.map { f.positions.newSideLine(at: min($0.line, f.lines.count - 1)) }
     }
 
     func updateHeader() {

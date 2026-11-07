@@ -721,10 +721,11 @@ extension RepoWindowController: NSMenuItemValidation {
 
     @objc func goToLine(_ sender: Any?) {
         guard let window, sheet == nil, let f = focusedFile?.text, !f.lines.isEmpty else { beep(); return }
-        let last = f.lines.last.map { max($0.newNo, $0.oldNo) } ?? 1
+        let old = f.positions.lastNew == 0
+        let last = max(1, old ? f.positions.lastOld : f.positions.lastNew)
         let s = RevisionSheet(title: "Go to Line", placeholder: "1–\(last)", suggestions: [], initial: "") { [weak self] text in
             guard let self, let n = Int(text.trimmingCharacters(in: .whitespaces)), n >= 1 else { return "Enter a line number" }
-            self.open(f.path, at: .line(SideLine(number: min(n, last), old: false)))
+            self.open(f.path, at: .line(SideLine(number: min(n, last), old: old)))
             return nil
         }
         sheet = s

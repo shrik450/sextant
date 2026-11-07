@@ -64,3 +64,57 @@ public func foldedRuns(_ lines: [DiffLine], context: Int, minimum: Int = 4) -> [
     }
     return out
 }
+
+/// Where a diff's lines are by their line numbers, and where each line stands on the new side.
+///
+/// Built in one pass, so finding a line by its number costs nothing however long the text is.
+/// A removed line has no new-side number (`newNo` is 0), and an added line no old-side one.
+public struct LinePositions: Sendable {
+    private let newIndex: [Int32]
+    private let oldIndex: [Int32]
+    private let halfLines: [Int32]
+    /// The highest new-side line number, or 0 if no line is on the new side.
+    public let lastNew: Int
+    /// The highest old-side line number, or 0 if no line is on the old side.
+    public let lastOld: Int
+
+    public init(_ lines: [DiffLine]) {
+        let lastNew = lines.lazy.filter { $0.kind != .deleted }.map(\.newNo).max() ?? 0
+        let lastOld = lines.lazy.filter { $0.kind != .added }.map(\.oldNo).max() ?? 0
+        var newIndex = [Int32](repeating: -1, count: lastNew + 1)
+        var oldIndex = [Int32](repeating: -1, count: lastOld + 1)
+        var halfLines = [Int32](repeating: 0, count: lines.count)
+        var before: Int32 = -2
+        for (i, l) in lines.enumerated() {
+            if l.kind != .deleted, l.newNo > 0, newIndex[l.newNo] < 0 { newIndex[l.newNo] = Int32(i) }
+            if l.kind != .added, l.oldNo > 0, oldIndex[l.oldNo] < 0 { oldIndex[l.oldNo] = Int32(i) }
+            if l.kind == .deleted {
+                halfLines[i] = before + 1
+            } else {
+                before = Int32(2 * (l.newNo - 1))
+                halfLines[i] = before
+            }
+        }
+        self.newIndex = newIndex
+        self.oldIndex = oldIndex
+        self.halfLines = halfLines
+        self.lastNew = lastNew
+        self.lastOld = lastOld
+    }
+
+    /// Returns the index of the line with a 1-based number on one side, if the lines hold it.
+    public func index(ofLine n: Int, old: Bool) -> Int? {
+        let table = old ? oldIndex : newIndex
+        guard table.indices.contains(n), table[n] >= 0 else { return nil }
+        return Int(table[n])
+    }
+
+    /// Returns where a line stands on the new side, in half lines: `2 * (newNo - 1)` for a line
+    /// the new side has, and one more than the new-side line before it for a removed line, so
+    /// it sorts between the lines around it.
+    public func newSideHalfLine(at index: Int) -> Int { Int(halfLines[index]) }
+
+    /// Returns the zero-based new-side line a line is on, or for a removed line the one before
+    /// it, as what holds the removal: 0 if none is.
+    public func newSideLine(at index: Int) -> Int { max(0, Int(halfLines[index]) / 2) }
+}

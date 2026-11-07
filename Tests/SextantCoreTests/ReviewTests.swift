@@ -265,3 +265,14 @@ private func added(_ new: Int) -> DiffLine { DiffLine(kind: .added, oldNo: 0, ne
     #expect(describe(items) == ["foo modified @0", "bar none @2"])
     #expect(changedDefinitions(in: items).map(\.name) == ["foo"])
 }
+
+@Test func linePositionsFindLinesByNumberAndPlaceRemovedOnesBetweenTheirNeighbours() {
+    let lines = [context(1, 1), removed(2), added(2), added(3), context(3, 4), removed(4), removed(5)]
+    let p = LinePositions(lines)
+    #expect(p.lastNew == 4 && p.lastOld == 5)
+    #expect(p.index(ofLine: 3, old: false) == 3 && p.index(ofLine: 4, old: true) == 5 && p.index(ofLine: 9, old: false) == nil)
+    #expect(lines.indices.map(p.newSideHalfLine) == [0, 1, 2, 4, 6, 7, 7])
+    #expect(lines.indices.map(p.newSideLine) == [0, 0, 1, 2, 3, 3, 3])
+    #expect(LinePositions([removed(1), context(2, 1)]).newSideHalfLine(at: 0) == -1)
+    #expect(LinePositions([removed(1)]).lastNew == 0)
+}

@@ -33,7 +33,7 @@ bundle_id=${SEXTANT_SCENES_BUNDLE:-com.shrikanthup.Sextant.scenes}
 main_checkout=$(cd "$(git -C "$here" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
 lock=${SEXTANT_PERF_LOCK:-$main_checkout/scratch/gui-lock}
 real_git=$(command -v git)
-scenes=(page symlink find reload close base status shared showall columns rename read endings)
+scenes=(page symlink find reload close base status shared showall columns rename read endings removed)
 failed=0
 holding_lock=0
 
@@ -781,6 +781,42 @@ EOF
   run_app "$dir"
   expect endings "rows of a line ending changed" "$(pane_rows "$dir" dos 0)" '[" 1 one","-2 two ⏎ CRLF","+2 two ⏎ LF"," 3 three"]'
   expect endings "rows of a newline added at the end" "$(pane_rows "$dir" tail 0)" '[" 1 a","-2 b ⏎ No newline at end of file","+2 b ⏎ LF"]'
+}
+
+#######################################
+# Puts the caret on a removed line below an insertion that moves the lines after it: Next and
+# Previous Definition must step from where the line was, not from the top of the file.
+#######################################
+scene_removed() {
+  local dir repo
+  dir=$(scene_dir removed)
+  repo="$dir/repo"
+  mkdir -p "$repo"
+  g init -q -b main "$repo"
+  printf 'func a() {\n    1\n}\nfunc b() {\n    let x = 1\n    let y = 2\n}\nfunc c() {\n    3\n}\n' > "$repo/a.swift"
+  g -C "$repo" add -A
+  g -C "$repo" commit -qm base
+  printf '// one\n// two\n// three\nfunc a() {\n    1\n}\nfunc b() {\n    let x = 1\n}\nfunc c() {\n    3\n}\n' > "$repo/a.swift"
+  cat > "$dir/script.txt" <<EOF
+defaults readerMode file
+open $repo
+wait
+menu Next Change
+wait
+sleep 500
+dump $dir/removed.json
+menu Next Definition
+dump $dir/next.json
+menu Next Change
+wait
+menu Previous Definition
+dump $dir/previous.json
+quit
+EOF
+  run_app "$dir"
+  expect removed "caret on the removed line" "$(value "$dir/removed.json" caret)" "a.swift:6 (old):9"
+  expect removed "caret after Next Definition" "$(value "$dir/next.json" caret)" "a.swift:10:6"
+  expect removed "caret after Previous Definition" "$(value "$dir/previous.json" caret)" "a.swift:7:6"
 }
 
 if [[ ${1:-} == list ]]; then
