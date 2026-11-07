@@ -136,8 +136,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         updateKeyLoop()
         window.initialFirstResponder = reader.firstKeyView
 
-        window.setFrameAutosaveName("SextantWindow")
-        if !window.setFrameUsingName("SextantWindow") { window.center() }
+        placeWindow()
 
         NotificationCenter.default.addObserver(self, selector: #selector(appearanceChanged(_:)), name: Appearance.didChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(reviewsChanged(_:)), name: ReviewStore.didChange, object: repository.reviews)
@@ -146,6 +145,22 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    /// Puts the window where it was last for its repository, which it then keeps up to date, or
+    /// else down and to the right of the window opened last, or in the middle of the screen.
+    ///
+    /// AppKit lets only one open window save its frame under a name, so the name is the
+    /// repository's, which has one window.
+    private func placeWindow() {
+        guard let window else { return }
+        let name = "SextantWindow " + repository.commonDir.path
+        let restored = window.setFrameUsingName(name)
+        let saving = window.setFrameAutosaveName(name)
+        guard !(restored && saving) else { return }
+        guard let last = (NSApp.delegate as? AppDelegate)?.controllers.last?.window, last !== window else { return window.center() }
+        window.setFrame(last.frame, display: false)
+        window.setFrameTopLeftPoint(window.cascadeTopLeft(from: NSPoint(x: last.frame.minX, y: last.frame.maxY)))
+    }
 
     /// Makes a pane's reader, set up like the others.
     private func makePane() -> Pane {

@@ -792,6 +792,7 @@ extension RepoWindowController {
             "rows": reader.primary.rows.count,
             "firstResponder": focusName,
             "windowFrame": NSStringFromRect(window?.frame ?? .zero),
+            "frameName": window?.frameAutosaveName ?? "",
             "isKey": window?.isKeyWindow ?? false,
             "navigatorCollapsed": !isShown(.navigator),
             "inspectorCollapsed": !isShown(.inspector),

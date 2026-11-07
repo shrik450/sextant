@@ -33,7 +33,7 @@ bundle_id=${SEXTANT_SCENES_BUNDLE:-com.shrikanthup.Sextant.scenes}
 main_checkout=$(cd "$(git -C "$here" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
 lock=${SEXTANT_PERF_LOCK:-$main_checkout/scratch/gui-lock}
 real_git=$(command -v git)
-scenes=(page symlink find reload close base status shared showall columns rename read endings removed notes reference harness fields)
+scenes=(page symlink find reload close base status shared showall columns rename read endings removed notes reference harness fields frames)
 failed=0
 holding_lock=0
 
@@ -986,6 +986,43 @@ EOF
 #######################################
 has_command() {
   if plutil -extract commands json -o - "$1" 2>/dev/null | grep -qF "\"$2\""; then echo yes; else echo no; fi
+}
+
+#######################################
+# Opens two repositories: each window must save its frame under its own repository's name, as
+# AppKit lets only one open window save under a name. A window manager may move and resize the
+# windows as they open, so the scene checks what's saved rather than where the windows are.
+#######################################
+scene_frames() {
+  local dir one two repo
+  dir=$(scene_dir frames)
+  one="$dir/one"
+  two="$dir/two"
+  for repo in "$one" "$two"; do
+    mkdir -p "$repo"
+    g init -q -b main "$repo"
+    printf 'a\n' > "$repo/a.txt"
+    g -C "$repo" add -A
+    g -C "$repo" commit -qm base
+    printf 'b\n' >> "$repo/a.txt"
+  done
+  one=$(cd "$one/.git" && pwd -P)
+  two=$(cd "$two/.git" && pwd -P)
+  cat > "$dir/script.txt" <<EOF
+open ${one%/.git}
+wait
+dump $dir/one.json
+open ${two%/.git}
+wait
+resize 1100 700
+dump $dir/two.json
+sh defaults read $bundle_id > $dir/defaults.txt
+quit
+EOF
+  run_app "$dir"
+  expect frames "first window's saved frame" "$(value "$dir/one.json" frameName)" "SextantWindow $one"
+  expect frames "second window's saved frame" "$(value "$dir/two.json" frameName)" "SextantWindow $two"
+  expect frames "frames saved" "$(grep -c '"NSWindow Frame SextantWindow' "$dir/defaults.txt")" 2
 }
 
 if [[ ${1:-} == list ]]; then
