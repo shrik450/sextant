@@ -33,7 +33,7 @@ bundle_id=${SEXTANT_SCENES_BUNDLE:-com.shrikanthup.Sextant.scenes}
 main_checkout=$(cd "$(git -C "$here" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
 lock=${SEXTANT_PERF_LOCK:-$main_checkout/scratch/gui-lock}
 real_git=$(command -v git)
-scenes=(page symlink find reload close base status shared showall columns)
+scenes=(page symlink find reload close base status shared showall columns rename)
 failed=0
 holding_lock=0
 
@@ -459,6 +459,28 @@ pane() {
 }
 
 #######################################
+# Prints the index of the focused pane in a panes dump.
+# Arguments:
+#   The scene folder, then the dump's name.
+#######################################
+focused() {
+  local i
+  for i in 0 1 2 3 4 5; do
+    [[ $(pane "$1" "$2" "$i" focused) == true ]] && { echo "$i"; return; }
+  done
+  echo 0
+}
+
+#######################################
+# Prints the rows of a pane in a panes dump, as JSON.
+# Arguments:
+#   The scene folder, the dump's name, then the pane's index.
+#######################################
+pane_rows() {
+  plutil -extract "panes.$3.rows" json -o - "$1/$2.json" 2>/dev/null || echo "(none)"
+}
+
+#######################################
 # Shows All Changes beside b.swift opened whole, unfolded, and opened again in a third pane: the
 # overview must go on showing the hunks it laid out, with its caret and its notes on the lines it
 # shows, and each file pane must keep its own folds. Once the overview lays out again, it shows
@@ -634,6 +656,58 @@ EOF
   run_app "$dir"
   expect columns "columns for added lines" "$(pane "$dir" added 0 columns)" 2
   expect columns "columns for removed lines" "$(pane "$dir" removed 0 columns)" 2
+}
+
+#######################################
+# Reads a file renamed without changes and one whose mode alone changed: each must open with
+# what changed above its lines, Jump to Definition must land in the renamed file, and All
+# Changes must show what changed, not the lines, even once they're read.
+#######################################
+scene_rename() {
+  local dir repo rows ok
+  dir=$(scene_dir rename)
+  repo="$dir/repo"
+  mkdir -p "$repo"
+  g init -q -b main "$repo"
+  printf 'func helper() -> Int {\n    42\n}\n' > "$repo/lib.swift"
+  printf 'let x = 1\n' > "$repo/main.swift"
+  printf 'echo hi\n' > "$repo/run.sh"
+  g -C "$repo" add -A
+  g -C "$repo" commit -qm base
+  g -C "$repo" mv lib.swift core.swift
+  chmod +x "$repo/run.sh"
+  printf 'let x = helper()\n' > "$repo/main.swift"
+  cat > "$dir/script.txt" <<EOF
+defaults readerMode file
+open $repo
+wait
+panes $dir/renamed.json
+menu Next File
+wait
+key j
+wait
+menu Jump to Definition
+wait
+sleep 500
+panes $dir/jumped.json
+menu Next File
+wait
+menu Next File
+wait
+panes $dir/mode.json
+menu All Changes
+wait
+panes $dir/overview.json
+quit
+EOF
+  run_app "$dir"
+  expect rename "renamed file's rows" "$(pane_rows "$dir" renamed 0)" '["notice Renamed without changes"," 1 func helper() -> Int {"," 2     42"," 3 }"]'
+  expect rename "caret after Jump to Definition" "$(pane "$dir" jumped "$(focused "$dir" jumped)" caret)" "core.swift:1"
+  expect rename "mode change's rows" "$(pane_rows "$dir" mode "$(focused "$dir" mode)")" '["notice Mode changed from 100644 to 100755"," 1 echo hi"]'
+  rows=$(pane_rows "$dir" overview "$(focused "$dir" overview)")
+  ok=1
+  [[ $rows == *'"header core.swift","notice Renamed without changes","header main.swift"'* && $rows != *'func helper'* ]] && ok=0
+  check rename "renamed file in All Changes" "$ok" "$rows" "its header and notice only"
 }
 
 if [[ ${1:-} == list ]]; then

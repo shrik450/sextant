@@ -488,7 +488,9 @@ func layoutRows(files: [ShownFile], overview: Bool, split: Bool, showAll: Bool, 
         let f = shown.file, t = shown.text
         if overview { both(Row(kind: .header, file: fi)) }
         if f.diff.isBinary { both(Row(kind: .notice("Binary file"), file: fi)); continue }
-        if t.lines.isEmpty { both(Row(kind: .notice(emptyNotice(f)), file: fi)); continue }
+        let touchesNoLines = f.isChange && f.diff.hunks.isEmpty
+        if t.lines.isEmpty || (overview && touchesNoLines) { both(Row(kind: .notice(emptyNotice(f)), file: fi)); continue }
+        if touchesNoLines { both(Row(kind: .notice(emptyNotice(f)), file: fi)) }
 
         var anchors: [Int: [Note]] = [:]
         for n in notes { if let a = t.anchor(of: n) { anchors[a, default: []].append(n) } }
@@ -538,14 +540,19 @@ func layoutRows(files: [ShownFile], overview: Bool, split: Bool, showAll: Bool, 
     return Layout(left: left, right: sideBySide ? right : nil)
 }
 
+/// Says what a change that touches no lines did, such as renaming the file or changing its mode.
+///
+/// The reader shows it in place of a file with no lines, and above the lines of a file whose
+/// change touches none of them.
 @MainActor
 func emptyNotice(_ f: FileState) -> String {
-    let d = f.diff
-    if d.change.status == "U" { return "Unmerged" }
-    if d.change.isRename { return "Renamed without changes" }
+    let d = f.diff, c = d.change
+    if c.status == "U" { return "Unmerged" }
+    let modeChanged = c.oldMode != c.newMode && c.oldMode != "000000" && c.newMode != "000000"
+    if c.isRename { return modeChanged ? "Renamed, and its mode changed from \(c.oldMode) to \(c.newMode)" : "Renamed without changes" }
     let notes = d.notes.filter { !$0.hasPrefix("old mode") && !$0.hasPrefix("new mode") }
     if !notes.isEmpty { return notes.joined(separator: " · ") }
-    if d.change.oldMode != d.change.newMode && d.change.oldMode != "000000" { return "Mode changed from \(d.change.oldMode) to \(d.change.newMode)" }
+    if modeChanged { return "Mode changed from \(c.oldMode) to \(c.newMode)" }
     if d.change.isAdded { return "Empty file" }
     if d.change.isDeleted { return "Empty file deleted" }
     return f.isChange ? "No content changes" : "Empty file"

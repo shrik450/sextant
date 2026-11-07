@@ -147,9 +147,18 @@ public struct FileDiff: Sendable, Hashable, Identifiable {
 
     public var lineCount: Int { hunks.reduce(0) { $0 + $1.lines.count } }
 
-    /// Whether the hunks already hold the whole file, as an added or deleted file's one hunk
-    /// does, so there are no unchanged lines around them to fill in.
-    public var hunksAreWholeFile: Bool { hunks.isEmpty || (hunks.count == 1 && (change.isAdded || change.isDeleted)) }
+    /// Whether the hunks already hold the whole file, so there are no unchanged lines around
+    /// them to fill in.
+    ///
+    /// An added or deleted file's one hunk is the whole file. A file without hunks is whole only
+    /// when there's nothing to read: an empty file added or deleted, or a submodule, whose IDs
+    /// name commits. A rename or a mode change without hunks keeps all its lines, unchanged.
+    public var hunksAreWholeFile: Bool {
+        if hunks.isEmpty {
+            return change.isAdded || change.isDeleted || change.oldOid == zeroOid || change.oldMode == gitlinkMode || change.newMode == gitlinkMode
+        }
+        return hunks.count == 1 && (change.isAdded || change.isDeleted)
+    }
 }
 
 /// The two sides of a diff to load.

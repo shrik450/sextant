@@ -340,3 +340,28 @@ extension GitEdgeCaseTests {
         #expect(try await resolved.git.diff(resolved.target).map(\.path) == ["f0.txt", "f1.txt"])
     }
 }
+
+extension GitEdgeCaseTests {
+    @Test func aFileRenamedOrMadeExecutableKeepsItsContentsToRead() async throws {
+        let r = try ScratchRepo("rename-mode")
+        try r.write("old.txt", "one\ntwo\nthree\n")
+        try r.write("run.sh", "echo hi\n")
+        try r.write("empty.txt", "")
+        try r.commitAll("Files")
+        try r.git("mv", "old.txt", "new.txt")
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: r.root.appendingPathComponent("run.sh").path)
+        try r.write("added-empty.txt", "")
+        try r.commitAll("Rename, chmod and an empty file")
+        let diffs = try await r.repo.diff(.commit(try r.git("rev-parse", "HEAD")))
+        let renamed = try #require(diffs.first { $0.path == "new.txt" })
+        let chmodded = try #require(diffs.first { $0.path == "run.sh" })
+        let empty = try #require(diffs.first { $0.path == "added-empty.txt" })
+        #expect(renamed.change.isRename && renamed.hunks.isEmpty && chmodded.hunks.isEmpty && empty.hunks.isEmpty)
+        #expect(!renamed.hunksAreWholeFile)
+        #expect(!chmodded.hunksAreWholeFile)
+        #expect(empty.hunksAreWholeFile)
+        let whole = wholeFile(renamed.hunks, oldLines: try await r.repo.oldLines(of: renamed))
+        #expect(whole == ["one", "two", "three"].enumerated().map { DiffLine(kind: .context, oldNo: $0.offset + 1, newNo: $0.offset + 1, text: $0.element) })
+        #expect(wholeFile(chmodded.hunks, oldLines: try await r.repo.oldLines(of: chmodded)).map(\.text) == ["echo hi"])
+    }
+}
