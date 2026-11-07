@@ -90,8 +90,9 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     /// The number of loads in flight.
     ///
     /// Automation waits for this to reach zero.
-    var busy = 0 { didSet { if busy == 0 { RepoWindowController.idleWaiters.forEach { $0() }; RepoWindowController.idleWaiters.removeAll() } } }
-    static var idleWaiters: [() -> Void] = []
+    var busy = 0 { didSet { if busy == 0 { resumeIdleWaiters() } } }
+    /// What waits for this window's loads to finish.
+    var idleWaiters: [() -> Void] = []
     var lastError: String?
     var picker: NSPopover?
     var sheet: RevisionSheet?
@@ -1012,7 +1013,15 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         watcher = nil
         picker?.close()
         stopWork()
+        resumeIdleWaiters()
         (NSApp.delegate as? AppDelegate)?.windowClosed(self)
+    }
+
+    /// Lets go of what waits for the window's loads, once they're done or the window closes.
+    private func resumeIdleWaiters() {
+        let waiting = idleWaiters
+        idleWaiters = []
+        waiting.forEach { $0() }
     }
 
     /// Stops what the window started, so none of it runs on, or keeps the window, once it's

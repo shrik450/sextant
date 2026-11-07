@@ -147,26 +147,32 @@ extension RepoWindowController {
     }
 
     /// The responder that would run a menu item's command in this window, if it's enabled.
-    private func commandTarget(for item: NSMenuItem) -> AnyObject? {
+    ///
+    /// - Parameter keyWindow: A window in front of this one that has the keyboard, such as a
+    ///   panel, whose responders AppKit asks first.
+    func commandTarget(for item: NSMenuItem, keyWindow: NSWindow? = nil) -> AnyObject? {
         guard let action = item.action else { return nil }
-        let target: AnyObject? = item.target ?? responders().first { $0.responds(to: action) }
+        let target: AnyObject? = item.target ?? responders(keyWindow: keyWindow).first { $0.responds(to: action) }
         guard let target else { return nil }
         if let v = target as? NSMenuItemValidation { return v.validateMenuItem(item) ? target : nil }
         if let v = target as? NSUserInterfaceValidations { return v.validateUserInterfaceItem(item) ? target : nil }
         return target
     }
 
-    /// This window's responder chain, then its delegate, the app and the app's delegate.
-    private func responders() -> [NSObject] {
+    /// A key window's responder chain and delegate, then this window's responder chain and
+    /// delegate, then the app and the app's delegate.
+    private func responders(keyWindow: NSWindow? = nil) -> [NSObject] {
         var chain: [NSObject] = []
-        var r: NSResponder? = window?.firstResponder
-        while let next = r {
-            chain.append(next)
-            r = next.nextResponder
+        for w in [keyWindow, window].compactMap({ $0 }) {
+            var r: NSResponder? = w.firstResponder
+            while let next = r {
+                if !chain.contains(next) { chain.append(next) }
+                r = next.nextResponder
+            }
+            if !chain.contains(w) { chain.append(w) }
+            if w === window, !chain.contains(self) { chain.append(self) }
+            if let d = w.delegate as? NSObject, !chain.contains(d) { chain.append(d) }
         }
-        if let w = window, !chain.contains(w) { chain.append(w) }
-        if !chain.contains(self) { chain.append(self) }
-        if let d = window?.delegate as? NSObject, !chain.contains(d) { chain.append(d) }
         chain.append(NSApp)
         if let d = NSApp.delegate as? NSObject { chain.append(d) }
         return chain

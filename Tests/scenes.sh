@@ -33,7 +33,7 @@ bundle_id=${SEXTANT_SCENES_BUNDLE:-com.shrikanthup.Sextant.scenes}
 main_checkout=$(cd "$(git -C "$here" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
 lock=${SEXTANT_PERF_LOCK:-$main_checkout/scratch/gui-lock}
 real_git=$(command -v git)
-scenes=(page symlink find reload close base status shared showall columns rename read endings removed notes reference)
+scenes=(page symlink find reload close base status shared showall columns rename read endings removed notes reference harness)
 failed=0
 holding_lock=0
 
@@ -52,13 +52,15 @@ build_app() {
 #######################################
 # Writes the git the app runs in a scene: it logs each command line to $SCENE_GIT_LOG, and
 # waits $SCENE_GREP_DELAY seconds before a grep when that's set, so a scene can act while a
-# search runs.
+# search runs, and $SCENE_SLOW_DELAY seconds before any git run in $SCENE_SLOW_REPO, so one
+# repository loads slowly.
 #######################################
 write_git() {
   cat > "$work/git" <<'EOF'
 #!/bin/bash
 printf '%s\n' "$*" >> "$SCENE_GIT_LOG"
 if [[ -n $SCENE_GREP_DELAY && " $* " == *" grep "* ]]; then sleep "$SCENE_GREP_DELAY"; fi
+if [[ -n $SCENE_SLOW_REPO && $(pwd -P)/ == "$SCENE_SLOW_REPO"/* ]]; then sleep "$SCENE_SLOW_DELAY"; fi
 exec "$SCENE_GIT" "$@"
 EOF
   chmod +x "$work/git"
@@ -85,9 +87,10 @@ trap release_lock EXIT
 #   The folder to run in, holding script.txt; the log goes to run.log and the gits to git.log.
 #   Seconds before the app is killed (default 120).
 #   Seconds each grep waits first (default none).
+#   A repository whose gits each wait first, then how many seconds (default none).
 #######################################
 run_app() {
-  local dir=$1 limit=${2:-120} grep_delay=${3:-}
+  local dir=$1 limit=${2:-120} grep_delay=${3:-} slow_repo=${4:-} slow_delay=${5:-}
   rm -f "$dir/run.log" "$dir/git.log" "$dir/stderr.txt"
   touch "$dir/git.log"
   until mkdir "$lock" 2>/dev/null; do sleep 5; done
@@ -97,6 +100,7 @@ run_app() {
   local watchdog=$!
   open -n -g -W -a "$app" --stderr "$dir/stderr.txt" --env "SEXTANT_GIT=$work/git" --env "SCENE_GIT=$real_git" \
     --env "SCENE_GIT_LOG=$dir/git.log" --env "SCENE_GREP_DELAY=$grep_delay" \
+    --env "SCENE_SLOW_REPO=$slow_repo" --env "SCENE_SLOW_DELAY=$slow_delay" \
     --args --automation "$dir/script.txt" --log "$dir/run.log" --background
   kill "$watchdog" 2>/dev/null || true
   defaults delete "$bundle_id" >/dev/null 2>&1 || true
@@ -885,6 +889,54 @@ EOF
   run_app "$dir"
   expect reference "rows selected" "$(value "$dir/selected.json" selectionRows)" 3
   expect reference "note on an unchanged line and removed ones" "$(value "$dir/noted.json" notes.0.title)" "a.txt:1-3 (removed)"
+}
+
+#######################################
+# Checks the script driving the app: menu shortcuts behind the windows in use, cmd++, and
+# waiting, which must wait for the window's own loads, not another window's, and for its
+# colours.
+#######################################
+scene_harness() {
+  local dir small slow heavy f
+  dir=$(scene_dir harness)
+  small="$dir/small"
+  slow="$dir/slow"
+  heavy="$dir/heavy"
+  for repo in "$small" "$slow" "$heavy"; do
+    mkdir -p "$repo"
+    g init -q -b main "$repo"
+    printf 'one\n' > "$repo/a.txt"
+    g -C "$repo" add -A
+    g -C "$repo" commit -qm base
+  done
+  for f in a b c; do printf 'func %s() {}\n' "$f" > "$small/$f.swift"; done
+  printf 'two\n' >> "$slow/a.txt"
+  awk 'BEGIN { for (i = 0; i < 40000; i++) printf "let value%d = compute(%d, \"text %d\") + other.value%d\n", i, i, i, i }' > "$heavy/heavy.swift"
+  slow=$(cd "$slow" && pwd -P)
+  cat > "$dir/script.txt" <<EOF
+defaults readerMode file
+open $small
+wait
+key shift+l
+dump $dir/moved.json
+key cmd++
+dump $dir/bigger.json
+key cmd+k
+dump $dir/jump.json
+key esc
+sh (for i in 1 2 3 4 5 6 7 8 9 10; do sleep 0.4; echo \$i >> $small/a.swift; done) >/dev/null 2>&1 &
+open $slow
+dump $dir/slow.json
+open $heavy
+dump $dir/heavy.json
+quit
+EOF
+  run_app "$dir" 120 "" "$slow" 0.4
+  expect harness "file after Shift-L behind other windows" "$(value "$dir/moved.json" currentChange)" b.swift
+  expect harness "font size after cmd++" "$(value "$dir/bigger.json" fontSize)" 13
+  expect harness "Go to Anything after cmd+k" "$(value "$dir/jump.json" jumpShown)" true
+  expect harness "slow repository's files when its open is waited for" "$(value "$dir/slow.json" files.0.path)" a.txt
+  expect harness "colours when a heavy file's open is waited for" "$(value "$dir/heavy.json" settled)" true
 }
 
 if [[ ${1:-} == list ]]; then

@@ -107,11 +107,19 @@ final class Automation {
         }
     }
 
+    /// Waits until the window has no loads in flight and its reader has coloured what it shows,
+    /// checking three times, so work that starts a little after a command is waited for too.
     private func waitIdle() async {
+        let t0 = CACurrentMediaTime()
         for _ in 0..<3 {
             try? await Task.sleep(for: .milliseconds(60))
-            if let w = window, w.busy > 0 {
-                await withCheckedContinuation { c in RepoWindowController.idleWaiters.append { c.resume() } }
+            while let w = window, !w.isSettled {
+                guard CACurrentMediaTime() - t0 < 30 else { return log("! still not settled after 30 s") }
+                if w.busy > 0 {
+                    await withCheckedContinuation { c in w.idleWaiters.append { c.resume() } }
+                } else {
+                    try? await Task.sleep(for: .milliseconds(1))
+                }
             }
         }
         try? await Task.sleep(for: .milliseconds(80))
@@ -147,7 +155,7 @@ final class Automation {
             }
             let windowed = CACurrentMediaTime() - t0
             var content: Double?
-            while !(window.map { $0.busy == 0 && $0.reader.isSettled && !$0.reader.files.isEmpty } ?? false), CACurrentMediaTime() - t0 < 30 {
+            while !(window.map { $0.isSettled && !$0.reader.files.isEmpty } ?? false), CACurrentMediaTime() - t0 < 30 {
                 if content == nil, window?.reader.files.isEmpty == false {
                     window?.window?.displayIfNeeded()
                     content = CACurrentMediaTime() - t0
@@ -259,7 +267,7 @@ final class Automation {
                 window?.reader.settleOccurrences()
                 window?.window?.displayIfNeeded()
                 frame.append((CACurrentMediaTime() - t0) * 1000)
-                while !(window.map { $0.busy == 0 && $0.reader.isSettled } ?? true), CACurrentMediaTime() - t0 < 10 {
+                while !(window.map { $0.isSettled } ?? true), CACurrentMediaTime() - t0 < 10 {
                     try? await Task.sleep(for: .microseconds(250))
                 }
                 window?.window?.displayIfNeeded()
@@ -276,7 +284,7 @@ final class Automation {
             log(String(format: "MARK %@: %.0f ms since launch, %d MB, %.0f ms CPU, at %lld", arg, (now - processStart()) * 1000, physicalFootprint() / 1_048_576, cpuTime() * 1000, Int64(now * 1e9)))
         case "settle":
             let t0 = CACurrentMediaTime()
-            while !(window.map { $0.busy == 0 && $0.reader.isSettled } ?? true), CACurrentMediaTime() - t0 < 10 {
+            while !(window.map { $0.isSettled } ?? true), CACurrentMediaTime() - t0 < 10 {
                 try? await Task.sleep(for: .microseconds(250))
             }
             window?.window?.displayIfNeeded()
@@ -406,21 +414,7 @@ final class Automation {
     private func sendKey(_ combo: String) {
         guard let w = (window?.jumpPanel?.isVisible == true ? window?.jumpPanel : nil) ?? NSApp.keyWindow.flatMap({ $0.isVisible ? $0 : nil }) ?? window?.window else { return }
         if w === window?.jumpPanel, !w.isKeyWindow { w.makeKey() }
-        var flags: NSEvent.ModifierFlags = []
-        var key = combo
-        let parts = combo.split(separator: "+").map(String.init)
-        if parts.count > 1 {
-            key = parts.last!
-            for m in parts.dropLast() {
-                switch m {
-                case "cmd": flags.insert(.command)
-                case "shift": flags.insert(.shift)
-                case "opt", "alt": flags.insert(.option)
-                case "ctrl": flags.insert(.control)
-                default: break
-                }
-            }
-        }
+        var (flags, key) = Self.split(combo)
         let special: [String: (Int, UInt16)] = [
             "down": (NSDownArrowFunctionKey, 125), "up": (NSUpArrowFunctionKey, 126),
             "left": (NSLeftArrowFunctionKey, 123), "right": (NSRightArrowFunctionKey, 124),
@@ -448,12 +442,73 @@ final class Automation {
         }
         let shown = flags.contains(.shift) && chars.count == 1 && chars.first!.isLetter ? chars.uppercased() : chars
         for type in [NSEvent.EventType.keyDown, .keyUp] {
-            if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
-                                        windowNumber: w.windowNumber, context: nil, characters: shown, charactersIgnoringModifiers: shown,
-                                        isARepeat: false, keyCode: code) {
-                if w === window?.jumpPanel { w.sendEvent(e) } else { NSApp.sendEvent(e) }
+            guard let made = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
+                                              windowNumber: w.windowNumber, context: nil, characters: shown, charactersIgnoringModifiers: shown,
+                                              isARepeat: false, keyCode: code) else { continue }
+            let e = Self.throughQueue(made)
+            if app.inBackground { sendBehind(e, to: w) } else { NSApp.sendEvent(e) }
+        }
+    }
+
+    /// Splits a combo such as `cmd+shift+k`, or `cmd++` for the plus key, into its modifiers and
+    /// its key.
+    private static func split(_ combo: String) -> (NSEvent.ModifierFlags, String) {
+        var parts = combo.components(separatedBy: "+")
+        var key = parts.removeLast()
+        if key.isEmpty, parts.last == "" {
+            key = "+"
+            parts.removeLast()
+        }
+        var flags: NSEvent.ModifierFlags = []
+        for m in parts {
+            switch m {
+            case "cmd": flags.insert(.command)
+            case "shift": flags.insert(.shift)
+            case "opt", "alt": flags.insert(.option)
+            case "ctrl": flags.insert(.control)
+            default: break
             }
         }
+        return (flags, key)
+    }
+
+    /// Puts a key event through the app's event queue, so it's the app's current event while
+    /// it's handled, as a key typed on the keyboard is.
+    private static func throughQueue(_ e: NSEvent) -> NSEvent {
+        NSApp.postEvent(e, atStart: true)
+        return NSApp.nextEvent(matching: e.type == .keyDown ? .keyDown : .keyUp, until: .distantPast, inMode: .default, dequeue: true) ?? e
+    }
+
+    /// Handles a key as AppKit does for the key window, while the app runs behind the windows
+    /// in use and has none.
+    ///
+    /// AppKit offers a key to the key window's key equivalents, then to the main menu's, whose
+    /// commands it finds through the key window's responders and the main window's, and only
+    /// then to the window. Behind other windows the app has no key or main window, so the menu
+    /// never finds the window's commands; this finds them through the window the key is for.
+    private func sendBehind(_ e: NSEvent, to w: NSWindow) {
+        if e.type == .keyDown {
+            if w.performKeyEquivalent(with: e) { return }
+            if let c = window, let item = Self.menuItem(for: e, in: NSApp.mainMenu), let action = item.action,
+               let target = c.commandTarget(for: item, keyWindow: w === c.window ? nil : w) {
+                NSApp.sendAction(action, to: target, from: item)
+                return
+            }
+        }
+        if w === window?.jumpPanel { w.sendEvent(e) } else { NSApp.sendEvent(e) }
+    }
+
+    /// Returns the menu item whose shortcut a key event is, as AppKit matches them.
+    private static func menuItem(for e: NSEvent, in menu: NSMenu?) -> NSMenuItem? {
+        let mods = e.modifierFlags.intersection([.command, .shift, .option, .control])
+        let key = (e.charactersIgnoringModifiers ?? "").lowercased()
+        for item in menu?.items ?? [] {
+            if let found = menuItem(for: e, in: item.submenu) { return found }
+            guard !item.keyEquivalent.isEmpty, !item.isHidden || item.allowsKeyEquivalentWhenHidden else { continue }
+            let shifted: NSEvent.ModifierFlags = item.keyEquivalent != item.keyEquivalent.lowercased() ? .shift : []
+            if item.keyEquivalent.lowercased() == key, item.keyEquivalentModifierMask.union(shifted) == mods { return item }
+        }
+        return nil
     }
 
     private let keyCodes: [String: UInt16] = [
@@ -586,6 +641,9 @@ final class Automation {
 
 /// What the window shows, as plain values, for scripts to check.
 extension RepoWindowController {
+    /// Whether the window has no loads in flight and its reader has coloured what it shows.
+    var isSettled: Bool { busy == 0 && reader.isSettled }
+
     private var focusName: String {
         guard let r = window?.firstResponder else { return "" }
         let editing = (r as? NSTextView)?.delegate as? NSView
@@ -762,6 +820,9 @@ extension RepoWindowController {
             "symbol": reader.header.symbols.isHidden ? "" : reader.header.symbols.titleOfSelectedItem ?? "",
             "visibleRows": visibleRowsInWindow(),
             "fontSize": Appearance.shared.font.pointSize,
+            "settled": isSettled,
+            "jumpShown": jumpPanel?.isVisible == true,
+            "filterText": navigator.changes.filter.stringValue,
             "footprintMB": physicalFootprint() / 1_048_576,
             "indexing": session?.indexing.map { "\($0.done)/\($0.total)" } ?? "",
         ]
