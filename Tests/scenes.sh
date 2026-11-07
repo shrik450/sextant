@@ -33,7 +33,7 @@ bundle_id=${SEXTANT_SCENES_BUNDLE:-com.shrikanthup.Sextant.scenes}
 main_checkout=$(cd "$(git -C "$here" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
 lock=${SEXTANT_PERF_LOCK:-$main_checkout/scratch/gui-lock}
 real_git=$(command -v git)
-scenes=(page symlink find reload close base status shared showall columns rename read endings removed notes reference harness fields frames)
+scenes=(page symlink find reload close base status shared showall columns rename read endings removed notes reference harness fields frames reopen)
 failed=0
 holding_lock=0
 
@@ -1024,6 +1024,40 @@ EOF
   expect frames "first window's saved frame" "$(value "$dir/one.json" frameName)" "SextantWindow $one"
   expect frames "second window's saved frame" "$(value "$dir/two.json" frameName)" "SextantWindow $two"
   expect frames "frames saved" "$(grep -c '"NSWindow Frame SextantWindow' "$dir/defaults.txt")" 2
+}
+
+#######################################
+# Opens a repository whose gits are slow, then opens a branch of it while the window still
+# starts: the window must review the branch, with its refs.
+#######################################
+scene_reopen() {
+  local dir repo
+  dir=$(scene_dir reopen)
+  repo="$dir/repo"
+  mkdir -p "$repo"
+  g init -q -b main "$repo"
+  printf 'a\n' > "$repo/a.txt"
+  g -C "$repo" add -A
+  g -C "$repo" commit -qm base
+  g -C "$repo" checkout -q -b feature
+  printf 'b\n' > "$repo/b.txt"
+  g -C "$repo" add -A
+  g -C "$repo" commit -qm feature
+  g -C "$repo" checkout -q main
+  printf 'c\n' >> "$repo/a.txt"
+  repo=$(cd "$repo" && pwd -P)
+  cat > "$dir/script.txt" <<EOF
+nowait open $repo
+sleep 200
+open $repo feature
+wait
+sleep 1000
+wait
+dump $dir/after.json
+quit
+EOF
+  run_app "$dir" 120 "" "$repo" 0.3
+  expect reopen "subject once both opens are done" "$(value "$dir/after.json" subject)" branch:feature
 }
 
 if [[ ${1:-} == list ]]; then

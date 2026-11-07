@@ -75,7 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 let loc = try await Git.locate(url.hasDirectoryPath || isDirectory(url) ? url : url.deletingLastPathComponent(), executable: gitPath)
                 if let existing = controllers.first(where: { $0.repository.commonDir == loc.commonDir }) {
                     existing.window?.raise()
-                    if let spec { await existing.open(spec: spec, in: loc.root) } else { existing.openWork(in: loc.root) }
+                    await existing.openAgain(spec: spec, in: loc.root)
                     if !inBackground { NSApp.activate() }
                     completion?(existing)
                     return

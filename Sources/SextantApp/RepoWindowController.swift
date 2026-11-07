@@ -244,12 +244,13 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     ///   reading before it makes the window.
     func start(spec: String?, opening: Task<Repository.Opening, Never>) {
         busy += 1
-        Task {
+        starting = Task {
             defer { busy -= 1 }
             let o = await opening.value
             await repository.refreshRefs(o.refs)
-            preloaded = o.loaded
             updateTitle()
+            guard !askedAgain else { return }
+            preloaded = o.loaded
             if let spec, !spec.isEmpty {
                 await open(spec: spec, in: home)
             } else {
@@ -257,6 +258,24 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
             }
         }
     }
+
+    /// Reviews what the window's repository is opened for again: a revision expression, or all
+    /// the work in a checkout.
+    ///
+    /// While the window still starts, this waits for the repository's refs, which looking up a
+    /// revision needs, and takes the place of what the window was opened with.
+    func openAgain(spec: String?, in root: CanonicalPath) async {
+        if let starting {
+            askedAgain = true
+            await starting.value
+        }
+        if let spec { await open(spec: spec, in: root) } else { openWork(in: root) }
+    }
+
+    /// Loading the refs and the first review, until it's done.
+    private var starting: Task<Void, Never>?
+    /// Whether the window was asked for another review while it started.
+    private var askedAgain = false
 
     /// The review read before the window existed, until it's shown.
     private var preloaded: Repository.Loaded?
