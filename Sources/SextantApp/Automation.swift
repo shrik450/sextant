@@ -18,6 +18,7 @@ import SextantCore
 ///     hscroll <dx>
 ///     snapshot <file.png>
 ///     dump <file.json>
+///     panes <file.json>       dump each pane's rows, caret and folds
 ///     appearance light|dark
 ///     resize <w> <h>
 ///     defaults <key> <value>
@@ -207,6 +208,10 @@ final class Automation {
         case "dump":
             guard let w = window else { return }
             let data = try? JSONSerialization.data(withJSONObject: w.stateSnapshot(), options: [.prettyPrinted, .sortedKeys])
+            try? data?.write(to: URL(fileURLWithPath: arg))
+        case "panes":
+            guard let w = window else { return }
+            let data = try? JSONSerialization.data(withJSONObject: ["panes": w.panesSnapshot()], options: [.prettyPrinted, .sortedKeys])
             try? data?.write(to: URL(fileURLWithPath: arg))
         case "appearance":
             NSApp.appearance = NSAppearance(named: arg == "dark" ? .darkAqua : .aqua)
@@ -787,6 +792,60 @@ extension RepoWindowController {
             out.append(["kind": kind, "y": cv.bounds.height - rect.midY, "x": rect.minX + 40])
         }
         return out
+    }
+
+    /// Describes what each pane shows, row by row, for checking panes against each other.
+    ///
+    /// A line row reads as its sign, number and text, from the file line the pane's colours,
+    /// numbers and commands use; a row whose text on screen differs adds `| shown:` and that text,
+    /// and counts as mismatched.
+    func panesSnapshot() -> [[String: Any]] {
+        panes.enumerated().map { i, p in
+            let reader = p.reader, code = reader.primary
+            let text = (code.textStorage?.string ?? "") as NSString
+            var rows: [String] = [], mismatched = 0, folds = 0, gaps = 0
+            for (r, row) in code.rows.enumerated() {
+                switch row.kind {
+                case .line:
+                    let l = code.files[row.file].lines[row.line]
+                    let sign = l.kind == .added ? "+" : l.kind == .deleted ? "-" : " "
+                    let shown = text.substring(with: code.charRange(ofRow: r))
+                    var described = "\(sign)\(l.kind == .deleted ? l.oldNo : l.newNo) \(l.text)"
+                    if shown != displayText(l.text) {
+                        mismatched += 1
+                        described += " | shown: \(shown)"
+                    }
+                    rows.append(described)
+                case .filler: rows.append("filler")
+                case .fold(let range):
+                    folds += 1
+                    rows.append("fold \(range.count)")
+                case .gap(let n):
+                    gaps += 1
+                    rows.append("gap \(n)")
+                case .header: rows.append("header \(code.files[row.file].path)")
+                case .notice(let s): rows.append("notice \(s)")
+                case .note(let id): rows.append("note \(notes.notes.first { $0.id == id }?.text ?? "?")")
+                }
+            }
+            let caret: String = reader.caret.map { c in
+                let f = reader.files[c.file]
+                guard !f.lines.isEmpty else { return f.path }
+                let (n, old) = f.lineNumber(at: c.line)
+                return lineReference(path: f.path, lines: n...n, old: old)
+            } ?? ""
+            return [
+                "title": p.title,
+                "focused": i == focusedPane,
+                "caret": caret,
+                "columns": code.side == 1 ? 2 : 1,
+                "showAll": reader.showAll,
+                "mismatched": mismatched,
+                "folds": folds,
+                "gaps": gaps,
+                "rows": Array(rows.prefix(600)),
+            ]
+        }
     }
 }
 

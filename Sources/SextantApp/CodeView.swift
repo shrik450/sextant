@@ -147,7 +147,7 @@ private func unchangedLabel(_ count: Int) -> String {
 }
 
 /// Replaces control characters other than tab with their Unicode pictures, so they're visible.
-private func displayText(_ s: String) -> String {
+func displayText(_ s: String) -> String {
     guard s.unicodeScalars.contains(where: { $0.value < 32 && $0.value != 9 }) else { return s }
     return String(String.UnicodeScalarView(s.unicodeScalars.map { $0.value < 32 && $0.value != 9 ? UnicodeScalar(0x2400 + $0.value)! : $0 }))
 }

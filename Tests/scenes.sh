@@ -33,7 +33,7 @@ bundle_id=${SEXTANT_SCENES_BUNDLE:-com.shrikanthup.Sextant.scenes}
 main_checkout=$(cd "$(git -C "$here" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
 lock=${SEXTANT_PERF_LOCK:-$main_checkout/scratch/gui-lock}
 real_git=$(command -v git)
-scenes=(page symlink find reload close base status)
+scenes=(page symlink find reload close base status shared showall columns)
 failed=0
 holding_lock=0
 
@@ -434,6 +434,159 @@ quit
 EOF
   run_app "$dir"
   expect status "worktrees without a status" "$(value "$dir/after.json" statusFailures.0)" "$(cd "$dir/linked" && pwd -P)"
+}
+
+#######################################
+# Writes a 600-line b.swift and commits it, then changes lines 300 and 500 in the worktree, so
+# its diff is two hunks with unchanged lines before, between and after them.
+# Arguments:
+#   The repository.
+#######################################
+write_long_file() {
+  seq 1 600 | awk '{ print "let value" $1 " = " $1 }' > "$1/b.swift"
+  g -C "$1" add -A
+  g -C "$1" commit -qm "long file"
+  seq 1 600 | awk '$1 == 300 || $1 == 500 { print "let value" $1 " = -" $1; next } { print "let value" $1 " = " $1 }' > "$1/b.swift"
+}
+
+#######################################
+# Prints a value from a panes dump.
+# Arguments:
+#   The scene folder, the dump's name, the pane's index, then the key.
+#######################################
+pane() {
+  value "$1/$2.json" "panes.$3.$4"
+}
+
+#######################################
+# Shows All Changes beside b.swift opened whole, unfolded, and opened again in a third pane: the
+# overview must go on showing the hunks it laid out, with its caret and its notes on the lines it
+# shows, and each file pane must keep its own folds.
+#######################################
+scene_shared() {
+  local dir repo
+  dir=$(scene_dir shared)
+  repo="$dir/repo"
+  mkdir -p "$repo"
+  g init -q -b main "$repo"
+  printf 'a1\na2\na3\n' > "$repo/a.txt"
+  printf 'c1\nc2\nc3\n' > "$repo/c.txt"
+  write_long_file "$repo"
+  printf 'a1\na2 changed\na3\n' > "$repo/a.txt"
+  printf 'c1\nc2 changed\nc3\n' > "$repo/c.txt"
+  cat > "$dir/script.txt" <<EOF
+defaults readerMode overview
+open $repo
+wait
+menu Next File
+key j
+key j
+key j
+key j
+panes $dir/start.json
+menu Go to Anything…
+type b.swift
+key cmd+return
+wait
+sleep 1000
+panes $dir/opened.json
+menu Show Nearby Unchanged Lines
+wait
+panes $dir/unfolded.json
+menu Go to Anything…
+type b.swift
+key cmd+return
+wait
+sleep 1000
+panes $dir/third.json
+menu Previous Pane
+menu Previous Pane
+wait
+render $dir/overview.png
+note From the overview
+wait
+dump $dir/noted.json
+panes $dir/after-note.json
+quit
+EOF
+  run_app "$dir"
+  local dump p
+  for dump in start opened unfolded third after-note; do
+    for p in 0 1 2; do
+      [[ $(pane "$dir" "$dump" "$p" title) == "(none)" ]] && continue
+      expect shared "rows unlike their lines in pane $p ($dump)" "$(pane "$dir" "$dump" "$p" mismatched)" 0
+    done
+  done
+  expect shared "overview caret after the file panes" "$(pane "$dir" after-note 0 caret)" "$(pane "$dir" start 0 caret)"
+  expect shared "note added from the overview" "$(value "$dir/noted.json" notes.0.title)" "$(pane "$dir" start 0 caret)"
+  expect shared "overview gaps after the file panes" "$(pane "$dir" after-note 0 gaps)" "$(pane "$dir" start 0 gaps)"
+  expect shared "overview folds after the file panes" "$(pane "$dir" after-note 0 folds)" 0
+  expect shared "folds after unfolding one" "$(pane "$dir" unfolded 1 folds)" "$(($(pane "$dir" opened 1 folds) - 1))"
+  expect shared "folds in a third pane on the file" "$(pane "$dir" third 2 folds)" "$(pane "$dir" opened 1 folds)"
+}
+
+#######################################
+# Hides unchanged lines again with the caret on one of them: every run must fold, and the caret
+# must move to the nearest line still shown.
+#######################################
+scene_showall() {
+  local dir repo
+  dir=$(scene_dir showall)
+  repo="$dir/repo"
+  mkdir -p "$repo"
+  g init -q -b main "$repo"
+  write_long_file "$repo"
+  cat > "$dir/script.txt" <<EOF
+open $repo
+wait
+menu Show Unchanged Lines
+key j
+key j
+key j
+key j
+key j
+key j
+key j
+key j
+panes $dir/shown.json
+menu Show Unchanged Lines
+panes $dir/folded.json
+quit
+EOF
+  run_app "$dir"
+  expect showall "caret with unchanged lines shown" "$(pane "$dir" shown 0 caret)" "b.swift:307"
+  expect showall "folds once hidden again" "$(pane "$dir" folded 0 folds)" 3
+  expect showall "caret once hidden again" "$(pane "$dir" folded 0 caret)" "b.swift:303"
+}
+
+#######################################
+# Reads changes that only add or only remove lines side by side: each must show both sides.
+#######################################
+scene_columns() {
+  local dir repo
+  dir=$(scene_dir columns)
+  repo="$dir/repo"
+  mkdir -p "$repo"
+  g init -q -b main "$repo"
+  printf 'one\ntwo\nthree\n' > "$repo/added.txt"
+  printf 'one\ntwo\nthree\n' > "$repo/removed.txt"
+  g -C "$repo" add -A
+  g -C "$repo" commit -qm base
+  printf 'one\ntwo\nmore\nthree\n' > "$repo/added.txt"
+  printf 'one\nthree\n' > "$repo/removed.txt"
+  cat > "$dir/script.txt" <<EOF
+defaults diffMode split
+open $repo
+wait
+panes $dir/added.json
+menu Next File
+wait
+panes $dir/removed.json
+quit
+EOF
+  run_app "$dir"
+  expect columns "columns for added lines" "$(pane "$dir" added 0 columns)" 2
+  expect columns "columns for removed lines" "$(pane "$dir" removed 0 columns)" 2
 }
 
 if [[ ${1:-} == list ]]; then
