@@ -31,6 +31,12 @@ public struct RawChange: Sendable, Hashable {
     /// it shows up (working tree, commit, range).
     public var reviewKey: String { "\(oldOid) \(oldMode) \(newOid) \(newMode)\t\(oldPath)\t\(path)" }
 
+    /// The identity of the file this change starts from, which its runs of changes are read in
+    /// (see `ReadingState`).
+    ///
+    /// It leaves out the new side, so it stays the same however the file changes from there.
+    public var readingKey: String { "\(oldOid) \(oldMode)\t\(oldPath)\t\(path)" }
+
     public var isRename: Bool { status == "R" }
     public var isAdded: Bool { status == "A" || status == "?" }
     public var isDeleted: Bool { status == "D" }

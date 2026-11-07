@@ -60,6 +60,9 @@ final class FileState {
 
     var path: String { diff.path }
 
+    /// The keys of the file's runs of changes, the same in each of its texts.
+    var changeKeys: [String] { hunks.keyedRuns.map(\.key) }
+
     /// The text a pane showing this file by itself shows: the whole file once it's read, else
     /// the hunks.
     var wholeOrHunks: FileText { whole ?? hunks }
@@ -419,8 +422,8 @@ final class FileText {
 
     /// A run of changed lines with the key its read state is kept under.
     ///
-    /// The key comes from the run's lines, so a run has the same key in the hunks and in the
-    /// whole file, and reading it in one pane reads it in every pane.
+    /// The key comes from the run's lines (see `changeKeys(_:runs:)`), so a run has the same
+    /// key in the hunks and in the whole file, and reading it in one pane reads it in every pane.
     struct KeyedRun {
         var run: ChangeRun
         var key: String
@@ -429,8 +432,8 @@ final class FileText {
     /// The text's runs of changes, with their keys.
     var keyedRuns: [KeyedRun] {
         if let runs { return runs }
-        let file = change.reviewKey
-        let r = isChange ? changeRuns(lines).map { KeyedRun(run: $0, key: changeKey(file: file, lines: lines[$0.lines])) } : []
+        let found = isChange ? changeRuns(lines, gapsBefore: gapsBefore) : []
+        let r = zip(found, changeKeys(lines, runs: found)).map { KeyedRun(run: $0, key: $1) }
         runs = r
         return r
     }

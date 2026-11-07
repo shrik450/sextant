@@ -139,14 +139,20 @@ public struct ChangeRun: Sendable, Equatable {
 }
 
 /// Finds the runs of changed lines in a file's lines.
-public func changeRuns(_ lines: [DiffLine]) -> [ChangeRun] {
+///
+/// - Parameters:
+///   - lines: The lines, whole or as hunks.
+///   - gapsBefore: The number of unchanged lines left out before each hunk, by the index of
+///     its first line, where a run ends even with no unchanged line in between, as when a diff
+///     has no context lines.
+public func changeRuns(_ lines: [DiffLine], gapsBefore: [Int: Int] = [:]) -> [ChangeRun] {
     var out: [ChangeRun] = []
     var i = 0
     while i < lines.count {
         guard lines[i].kind != .context else { i += 1; continue }
         let start = i
         var adds = 0, dels = 0
-        while i < lines.count, lines[i].kind != .context {
+        while i < lines.count, lines[i].kind != .context, i == start || gapsBefore[i] == nil {
             if lines[i].kind == .added { adds += 1 } else { dels += 1 }
             i += 1
         }

@@ -256,72 +256,99 @@ public func jumpLabels(_ count: Int) -> [String] {
     return Array(keys.lazy.flatMap { a in keys.map { a + $0 } }.prefix(count))
 }
 
-/// Returns a key for one run of changed lines in a file.
+/// Returns a key for each run of changed lines in a file, which no other run in the file has.
 ///
-/// The key starts with the file's review key, so it changes whenever the file's change does.
+/// A run's key comes from its lines, and from how many runs with the same lines come before it,
+/// so runs with the same lines have keys of their own. Nothing else goes into it, so a run has
+/// the same key in the hunks and in the whole file, and keeps it however the file changes
+/// elsewhere, unless a run with the same lines comes or goes before it.
 ///
 /// - Parameters:
-///   - file: The file's `RawChange.reviewKey`.
-///   - lines: The run's lines.
-public func changeKey(file: String, lines: some Sequence<DiffLine>) -> String {
-    var hash: UInt64 = 0xcbf29ce484222325
-    func mix(_ bytes: some Sequence<UInt8>) {
-        for b in bytes {
-            hash ^= UInt64(b)
+///   - lines: The file's lines.
+///   - runs: The runs of changes in `lines`, in order.
+/// - Returns: Each run's key, in the order of `runs`.
+public func changeKeys(_ lines: [DiffLine], runs: [ChangeRun]) -> [String] {
+    var seen: [UInt64: Int] = [:]
+    return runs.map { run in
+        var hash: UInt64 = 0xcbf29ce484222325
+        func mix(_ byte: UInt8) {
+            hash ^= UInt64(byte)
             hash = hash &* 0x100000001b3
         }
+        for l in lines[run.lines] {
+            mix(l.kind == .added ? 0x2b : l.kind == .deleted ? 0x2d : 0x20)
+            for b in l.text.utf8 { mix(b) }
+            mix(0x0a)
+        }
+        let earlier = seen[hash, default: 0]
+        seen[hash] = earlier + 1
+        return String(hash, radix: 16) + (earlier == 0 ? "" : "-\(earlier)")
     }
-    for l in lines {
-        mix([l.kind == .added ? 0x2b : l.kind == .deleted ? 0x2d : 0x20])
-        mix(l.text.utf8)
-        mix([0x0a])
-    }
-    return file + "#" + String(hash, radix: 16)
 }
 
 /// What has been read and reviewed in a repository.
 ///
-/// A file is reviewed as a whole, and its runs of changes are read one by one. Reviewing a file
-/// reads all of its changes, reading the last unread change reviews the file, and unreading a
-/// change or unreviewing the file undoes that.
+/// A file is reviewed as a whole, by the change that made it (`RawChange.reviewKey`), and its
+/// runs of changes are read one by one. Reviewing a file reads all of its changes, reading the
+/// last unread change reviews the file, and unreading a change or unreviewing the file undoes
+/// that.
+///
+/// Changes are read in the file a change starts from (`RawChange.readingKey`) rather than in
+/// the change, so once the file changes elsewhere, as it does while an agent works on it, it's
+/// no longer reviewed but the changes read in it stay read.
 public struct ReadingState: Equatable, Sendable {
     /// The review keys of reviewed files.
     public private(set) var reviewed: Set<String>
-    /// The keys of changes read in files that aren't reviewed.
-    public private(set) var read: Set<String>
+    /// The keys of read changes, by the reading key of the file they're in.
+    public private(set) var read: [String: Set<String>]
 
-    public init(reviewed: Set<String> = [], read: Set<String> = []) {
+    public init(reviewed: Set<String> = [], read: [String: Set<String>] = [:]) {
         self.reviewed = reviewed
         self.read = read
     }
 
-    public func isReviewed(_ file: String) -> Bool { reviewed.contains(file) }
+    public func isReviewed(_ file: RawChange) -> Bool { reviewed.contains(file.reviewKey) }
 
-    public func isRead(_ change: String, in file: String) -> Bool { reviewed.contains(file) || read.contains(change) }
+    public func isRead(_ change: String, in file: RawChange) -> Bool {
+        isReviewed(file) || read[file.readingKey]?.contains(change) == true
+    }
 
     /// Marks one change of a file read or unread.
     ///
     /// - Parameters:
-    ///   - change: The change's key.
-    ///   - file: The file's review key.
+    ///   - change: The change's key, from `changeKeys(_:runs:)`.
+    ///   - file: The file's change.
     ///   - all: The keys of every change in the file.
-    public mutating func setRead(_ change: String, in file: String, all: [String], to value: Bool) {
+    public mutating func setRead(_ change: String, in file: RawChange, all: [String], to value: Bool) {
+        let key = file.readingKey
         if value {
-            read.insert(change)
-            if all.allSatisfy(read.contains) { setReviewed([file], to: true) }
+            read[key, default: []].insert(change)
+            if !all.isEmpty, all.allSatisfy({ read[key]?.contains($0) == true }) { reviewed.insert(file.reviewKey) }
         } else {
-            if reviewed.remove(file) != nil { read.formUnion(all) }
-            read.remove(change)
+            if reviewed.remove(file.reviewKey) != nil { read[key, default: []].formUnion(all) }
+            read[key]?.remove(change)
+            if read[key]?.isEmpty == true { read[key] = nil }
         }
     }
 
     /// Marks files reviewed or not, reading or unreading all of their changes.
-    public mutating func setReviewed(_ files: [String], to value: Bool) {
+    ///
+    /// - Parameters:
+    ///   - files: The files' changes.
+    ///   - value: Whether they're reviewed.
+    ///   - changes: The keys of the changes in each file, where they're known, which a file
+    ///     reviewed keeps read once it changes elsewhere. Files that can't change, such as a
+    ///     commit's, don't need them.
+    public mutating func setReviewed(_ files: [RawChange], to value: Bool, changes: [RawChange: [String]] = [:]) {
         for f in files {
-            if value { reviewed.insert(f) } else { reviewed.remove(f) }
+            if value {
+                reviewed.insert(f.reviewKey)
+                if let keys = changes[f], !keys.isEmpty { read[f.readingKey, default: []].formUnion(keys) }
+            } else {
+                reviewed.remove(f.reviewKey)
+                read[f.readingKey] = nil
+            }
         }
-        let prefixes = files.map { $0 + "#" }
-        read = read.filter { k in !prefixes.contains { k.hasPrefix($0) } }
     }
 }
 

@@ -752,7 +752,7 @@ extension RepoWindowController {
             "selectionRows": reader.selection?.lines.count ?? 0,
             "uses": reader.activeCode.uses.count,
             "jumpLabels": reader.activeCode.jumpLabels.map(\.label),
-            "read": reader.caretRun.map { c in c.text.keyedRuns.map { repository.reviews.isRead($0.key, in: c.file.diff.change) } } ?? [],
+            "read": focusedFile.map { f in f.text.keyedRuns.map { repository.reviews.isRead($0.key, in: f.file.diff.change) } } ?? [],
             "panes": panes.map(\.title),
             "focusedPane": focusedPane,
             "jump": jumpPanel?.isVisible == true ? (jumpPanel?.items ?? []).map { $0.title + " | " + $0.detail } : [],

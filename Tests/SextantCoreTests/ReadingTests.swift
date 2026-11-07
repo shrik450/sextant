@@ -139,44 +139,132 @@ private func randomRanges(in length: Int, count: Int, using g: inout SeededRando
     #expect(Set(many).count == 30)
 }
 
-@Test func changeKeysFollowContentAndFile() {
-    let a = [DiffLine(kind: .added, oldNo: 0, newNo: 3, text: "use std::fs;")]
-    let b = [DiffLine(kind: .deleted, oldNo: 3, newNo: 0, text: "use std::fs;")]
-    #expect(changeKey(file: "f1", lines: a) == changeKey(file: "f1", lines: a))
-    #expect(changeKey(file: "f1", lines: a) != changeKey(file: "f1", lines: b))
-    #expect(changeKey(file: "f1", lines: a) != changeKey(file: "f2", lines: a))
-    #expect(changeKey(file: "f1", lines: a).hasPrefix("f1#"))
+private func line(_ kind: LineKind, _ old: Int, _ new: Int, _ text: String) -> DiffLine {
+    DiffLine(kind: kind, oldNo: kind == .added ? 0 : old, newNo: kind == .deleted ? 0 : new, text: text)
+}
+
+/// Two functions that each gain the same guard, as hunks a diff with no context would give,
+/// and as the whole file.
+private let guards = (
+    whole: [
+        line(.context, 1, 1, "func a() {"),
+        line(.added, 0, 2, "    guard ready else { return }"),
+        line(.context, 2, 3, "}"),
+        line(.context, 3, 4, "func b() {"),
+        line(.added, 0, 5, "    guard ready else { return }"),
+        line(.context, 4, 6, "}"),
+    ],
+    hunks: [
+        line(.added, 0, 2, "    guard ready else { return }"),
+        line(.added, 0, 5, "    guard ready else { return }"),
+    ]
+)
+
+private func keys(_ lines: [DiffLine], gapsBefore: [Int: Int] = [:]) -> [String] {
+    changeKeys(lines, runs: changeRuns(lines, gapsBefore: gapsBefore))
+}
+
+@Test func identicalRunsInAFileHaveTheirOwnKeys() {
+    let k = keys(guards.whole)
+    #expect(k.count == 2 && Set(k).count == 2)
+}
+
+@Test func runsEndWhereHunksLeaveLinesOutAndKeepTheirKeysInTheWholeFile() {
+    #expect(changeRuns(guards.hunks, gapsBefore: [1: 2]).map(\.lines) == [0..<1, 1..<2])
+    #expect(keys(guards.hunks, gapsBefore: [1: 2]) == keys(guards.whole))
+}
+
+@Test func aRunKeepsItsKeyWhenTheFileChangesElsewhere() {
+    let before = [
+        line(.context, 1, 1, "one"),
+        line(.deleted, 2, 0, "two"),
+        line(.added, 0, 2, "TWO"),
+        line(.context, 3, 3, "three"),
+        line(.added, 0, 4, "    guard ready else { return }"),
+        line(.context, 4, 5, "four"),
+    ]
+    let after = [
+        line(.added, 0, 1, "zero"),
+        line(.context, 1, 2, "one"),
+        line(.deleted, 2, 0, "two"),
+        line(.added, 0, 3, "TWO"),
+        line(.context, 3, 4, "three"),
+        line(.added, 0, 5, "    guard ready else { return }"),
+        line(.context, 4, 6, "four"),
+        line(.added, 0, 7, "    guard ready else { return }"),
+    ]
+    let old = keys(before), new = keys(after)
+    #expect(new.count == 4)
+    #expect(new[1] == old[0] && new[2] == old[1])
+    #expect(!old.contains(new[0]) && !old.contains(new[3]))
+}
+
+private func file(_ newOid: String, path: String = "f") -> RawChange {
+    RawChange(status: "M", oldMode: "100644", newMode: "100644", oldOid: "base", newOid: newOid, oldPath: path, path: path)
+}
+
+@Test func readingOneOfIdenticalRunsLeavesTheOtherUnread() {
+    var s = ReadingState()
+    let k = keys(guards.whole), f = file("v1")
+    s.setRead(k[0], in: f, all: k, to: true)
+    #expect(s.isRead(k[0], in: f))
+    #expect(!s.isRead(k[1], in: f))
+    #expect(!s.isReviewed(f))
 }
 
 @Test func readingEveryChangeReviewsTheFile() {
     var s = ReadingState()
-    let keys = ["f#1", "f#2"]
-    s.setRead("f#1", in: "f", all: keys, to: true)
-    #expect(s.isRead("f#1", in: "f"))
-    #expect(!s.isReviewed("f"))
-    s.setRead("f#2", in: "f", all: keys, to: true)
-    #expect(s.isReviewed("f"))
-    #expect(s.read.isEmpty)
+    let f = file("v1")
+    s.setRead("1", in: f, all: ["1", "2"], to: true)
+    #expect(s.isRead("1", in: f))
+    #expect(!s.isReviewed(f))
+    s.setRead("2", in: f, all: ["1", "2"], to: true)
+    #expect(s.isReviewed(f))
+}
+
+@Test func readingAChangeOfAFileWithoutChangesDoesNotReviewIt() {
+    var s = ReadingState()
+    s.setRead("1", in: file("v1"), all: [], to: true)
+    #expect(!s.isReviewed(file("v1")))
+}
+
+@Test func changesReadStayReadWhenTheFileChangesElsewhere() {
+    var s = ReadingState()
+    s.setRead("1", in: file("v1"), all: ["1", "2"], to: true)
+    #expect(s.isRead("1", in: file("v2")))
+    #expect(!s.isRead("2", in: file("v2")))
+    #expect(!s.isRead("1", in: file("v1", path: "g")))
+}
+
+@Test func reviewingAFileReadsItsChangesForItsNextVersion() {
+    var s = ReadingState()
+    s.setReviewed([file("v1")], to: true, changes: [file("v1"): ["1", "2"]])
+    #expect(s.isReviewed(file("v1")))
+    #expect(!s.isReviewed(file("v2")))
+    #expect(s.isRead("1", in: file("v2")) && s.isRead("2", in: file("v2")))
+    #expect(!s.isRead("3", in: file("v2")))
 }
 
 @Test func unreadingAChangeUnreviewsTheFileButKeepsTheOthersRead() {
     var s = ReadingState()
-    s.setReviewed(["f"], to: true)
-    s.setRead("f#1", in: "f", all: ["f#1", "f#2"], to: false)
-    #expect(!s.isReviewed("f"))
-    #expect(!s.isRead("f#1", in: "f"))
-    #expect(s.isRead("f#2", in: "f"))
+    let f = file("v1")
+    s.setReviewed([f], to: true)
+    s.setRead("1", in: f, all: ["1", "2"], to: false)
+    #expect(!s.isReviewed(f))
+    #expect(!s.isRead("1", in: f))
+    #expect(s.isRead("2", in: f))
 }
 
-@Test func reviewingAFileReadsItsChangesAndUnreviewingUnreadsThem() {
+@Test func unreviewingAFileUnreadsItsChanges() {
     var s = ReadingState()
-    s.setRead("f#1", in: "f", all: ["f#1", "f#2"], to: true)
-    s.setRead("g#1", in: "g", all: ["g#1", "g#2"], to: true)
-    s.setReviewed(["f"], to: true)
-    #expect(s.isRead("f#2", in: "f"))
-    s.setReviewed(["f"], to: false)
-    #expect(!s.isRead("f#1", in: "f"))
-    #expect(s.isRead("g#1", in: "g"))
+    let f = file("v1"), g = file("v1", path: "g")
+    s.setRead("1", in: f, all: ["1", "2"], to: true)
+    s.setRead("1", in: g, all: ["1", "2"], to: true)
+    s.setReviewed([f], to: true)
+    #expect(s.isRead("2", in: f))
+    s.setReviewed([f], to: false)
+    #expect(!s.isRead("1", in: f) && !s.isRead("1", in: file("v2")))
+    #expect(s.isRead("1", in: g))
 }
 
 @Test func subjectKeysNameTheSubject() {

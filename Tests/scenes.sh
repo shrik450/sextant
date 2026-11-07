@@ -33,7 +33,7 @@ bundle_id=${SEXTANT_SCENES_BUNDLE:-com.shrikanthup.Sextant.scenes}
 main_checkout=$(cd "$(git -C "$here" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
 lock=${SEXTANT_PERF_LOCK:-$main_checkout/scratch/gui-lock}
 real_git=$(command -v git)
-scenes=(page symlink find reload close base status shared showall columns rename)
+scenes=(page symlink find reload close base status shared showall columns rename read)
 failed=0
 holding_lock=0
 
@@ -708,6 +708,47 @@ EOF
   ok=1
   [[ $rows == *'"header core.swift","notice Renamed without changes","header main.swift"'* && $rows != *'func helper'* ]] && ok=0
   check rename "renamed file in All Changes" "$ok" "$rows" "its header and notice only"
+}
+
+#######################################
+# Reads one of two runs of changes with the same lines, then edits the file elsewhere twice, as
+# an agent would, once before and once after marking it reviewed: only the run read must read,
+# and the runs read or reviewed must stay read once the file changes elsewhere.
+#######################################
+scene_read() {
+  local dir repo
+  dir=$(scene_dir read)
+  repo="$dir/repo"
+  mkdir -p "$repo"
+  g init -q -b main "$repo"
+  printf 'func a() {\n    1\n}\n\nfunc b() {\n    2\n}\n' > "$repo/a.swift"
+  g -C "$repo" add -A
+  g -C "$repo" commit -qm base
+  printf 'func a() {\n    guard ready else { return }\n    1\n}\n\nfunc b() {\n    guard ready else { return }\n    2\n}\n' > "$repo/a.swift"
+  cat > "$dir/script.txt" <<EOF
+open $repo
+wait
+menu Mark Change as Read
+wait
+dump $dir/one.json
+sh printf '// one\n' >> $repo/a.swift
+sleep 2500
+wait
+dump $dir/edited.json
+menu Mark File as Reviewed
+wait
+sh { printf '// two\n'; cat $repo/a.swift; } > $dir/a.tmp && mv $dir/a.tmp $repo/a.swift
+sleep 2500
+wait
+dump $dir/reviewed-edited.json
+quit
+EOF
+  run_app "$dir"
+  expect read "runs read after reading the first of two alike" "$(plutil -extract read json -o - "$dir/one.json" 2>/dev/null)" '[true,false]'
+  expect read "file reviewed after reading one run of two" "$(value "$dir/one.json" files.0.reviewed)" false
+  expect read "runs read once the file changes elsewhere" "$(plutil -extract read json -o - "$dir/edited.json" 2>/dev/null)" '[true,false,false]'
+  expect read "runs read once a reviewed file changes elsewhere" "$(plutil -extract read json -o - "$dir/reviewed-edited.json" 2>/dev/null)" '[false,true,true,true]'
+  expect read "file reviewed once it changes elsewhere" "$(value "$dir/reviewed-edited.json" files.0.reviewed)" false
 }
 
 if [[ ${1:-} == list ]]; then

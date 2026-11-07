@@ -613,12 +613,12 @@ extension RepoWindowController: NSMenuItemValidation {
 
     @objc func markAllReviewed(_ sender: Any?) {
         guard !changes.isEmpty else { return }
-        repository.reviews.set(changes.map(\.diff.change), reviewed: true)
+        repository.reviews.set(changes, reviewed: true)
     }
 
     @objc func markAllNotReviewed(_ sender: Any?) {
         guard !changes.isEmpty else { return }
-        repository.reviews.set(changes.map(\.diff.change), reviewed: false)
+        repository.reviews.set(changes, reviewed: false)
     }
 
     @objc func nextUnreviewed(_ sender: Any?) {

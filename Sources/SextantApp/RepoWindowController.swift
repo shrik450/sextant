@@ -952,7 +952,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         guard !idx.isEmpty else { return }
         let newValue = !idx.allSatisfy { changes[$0].reviewed }
         for i in idx { changes[i].reviewed = newValue }
-        repository.reviews.set(idx.map { changes[$0].diff.change }, reviewed: newValue)
+        repository.reviews.set(idx.map { changes[$0] }, reviewed: newValue)
         if newValue, advance, let last = idx.max() {
             let next = changes.indices.first { $0 > last && !changes[$0].reviewed } ?? changes.indices.first { !changes[$0].reviewed }
             if let next {
