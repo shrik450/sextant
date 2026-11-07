@@ -181,11 +181,10 @@ final class Reader: NSViewController, CodeViewDelegate {
 
     /// Shows one file by itself, or every change as an overview.
     ///
-    /// A file by itself shows whole once it's read; the overview shows each change's hunks,
-    /// whatever other panes read of them.
+    /// See `text(of:)` for which of each file's texts shows.
     func show(files: [FileState], overview: Bool, at position: ReaderPosition? = nil) {
-        self.files = files.map { ShownFile(file: $0, text: overview ? $0.hunks : $0.wholeOrHunks) }
         self.overview = overview
+        self.files = files.map { ShownFile(file: $0, text: text(of: $0)) }
         usesWord = nil
         boxed = nil
         cancelJump()
@@ -263,9 +262,47 @@ final class Reader: NSViewController, CodeViewDelegate {
     }
 
     /// Lays out and renders again, such as after toggling split, folds, notes or highlighting.
+    /// The text this reader shows of a file.
+    ///
+    /// A file by itself shows whole once it's read. The overview shows each change's hunks,
+    /// or, while it shows unchanged lines, the whole file of each change already read whole;
+    /// what other panes read of a file changes the overview only when it lays out again.
+    private func text(of f: FileState) -> FileText {
+        overview && !showAll ? f.hunks : f.wholeOrHunks
+    }
+
+    /// Shows the text `text(of:)` picks for each file, where it isn't shown already.
+    ///
+    /// A file whose text changes starts with nothing unfolded, since its line indices change.
+    ///
+    /// - Returns: The texts replaced, by file index.
+    private func pickTexts() -> [Int: FileText] {
+        var replaced: [Int: FileText] = [:]
+        for (i, shown) in files.enumerated() {
+            let t = text(of: shown.file)
+            guard t !== shown.text else { continue }
+            replaced[i] = shown.text
+            files[i] = ShownFile(file: shown.file, text: t)
+        }
+        return replaced
+    }
+
+    /// Returns where a position in a replaced text is in the text that replaced it, by its line
+    /// number.
+    private func position(_ p: ReaderPosition, replacing replaced: [Int: FileText]) -> ReaderPosition {
+        guard let old = replaced[p.file], let line = old.lineNumber(at: p.line), let moved = position(of: line, inFile: p.file) else { return p }
+        return moved
+    }
+
     func reload(keepPosition: Bool) {
-        let pos = keepPosition ? topPosition : nil
-        let kept = keepPosition ? keptSelection : nil
+        var pos = keepPosition ? topPosition : nil
+        var kept = keepPosition ? keptSelection : nil
+        let replaced = pickTexts()
+        if !replaced.isEmpty {
+            pos = pos.map { position($0, replacing: replaced) }
+            if let k = kept { kept?.position = position(k.position, replacing: replaced) }
+            if let l = landedSelection { landedSelection?.position = position(l.position, replacing: replaced) }
+        }
         let topOffset = keepPosition ? offsetFromTopPosition : 0
         emptyState.isHidden = true
         stack.isHidden = false
@@ -298,6 +335,7 @@ final class Reader: NSViewController, CodeViewDelegate {
         boxed = nil
         updateOccurrences()
         updateHeader()
+        if !replaced.isEmpty { analyzeShownFiles() }
     }
 
     /// Says whether a run of changes has been read.

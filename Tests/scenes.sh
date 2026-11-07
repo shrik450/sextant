@@ -461,7 +461,9 @@ pane() {
 #######################################
 # Shows All Changes beside b.swift opened whole, unfolded, and opened again in a third pane: the
 # overview must go on showing the hunks it laid out, with its caret and its notes on the lines it
-# shows, and each file pane must keep its own folds.
+# shows, and each file pane must keep its own folds. Then, with the overview showing unchanged
+# lines, it must show b.swift whole once it lays out again after another pane read it, numbered
+# right and without that pane's unfolds, and its hunks again once unchanged lines hide.
 #######################################
 scene_shared() {
   local dir repo
@@ -523,6 +525,51 @@ EOF
   expect shared "overview folds after the file panes" "$(pane "$dir" after-note 0 folds)" 0
   expect shared "folds after unfolding one" "$(pane "$dir" unfolded 1 folds)" "$(($(pane "$dir" opened 1 folds) - 1))"
   expect shared "folds in a third pane on the file" "$(pane "$dir" third 2 folds)" "$(pane "$dir" opened 1 folds)"
+  rm -rf "$repo/.git/sextant"
+  mkdir -p "$dir/all"
+  cat > "$dir/all/script.txt" <<EOF
+defaults readerMode overview
+open $repo
+wait
+menu Show Unchanged Lines
+menu Next File
+key j
+key j
+key j
+key j
+panes $dir/all/start.json
+menu Go to Anything…
+type b.swift
+key cmd+return
+wait
+sleep 1000
+menu Show Nearby Unchanged Lines
+wait
+menu Previous Pane
+wait
+note From the overview with unchanged lines
+wait
+dump $dir/all/noted.json
+panes $dir/all/reloaded.json
+menu Show Unchanged Lines
+wait
+panes $dir/all/hidden.json
+quit
+EOF
+  run_app "$dir/all"
+  local all="$dir/all" whole ok=1
+  expect shared "gaps with unchanged lines shown, before b.swift is read" "$(pane "$all" start 0 gaps)" 2
+  for dump in reloaded hidden; do
+    expect shared "rows unlike their lines in the overview ($dump)" "$(pane "$all" "$dump" 0 mismatched)" 0
+    expect shared "overview caret ($dump)" "$(pane "$all" "$dump" 0 caret)" "$(pane "$all" start 0 caret)"
+  done
+  whole=$(plutil -extract panes.0.rows json -o - "$all/reloaded.json")
+  [[ $whole == *'" 150 let value150 = 150"'* && $whole == *'" 450 let value450 = 450"'* ]] && ok=0
+  check shared "unchanged lines of b.swift, read whole, once the overview lays out again" "$ok" "rows without lines 150 and 450" "them"
+  expect shared "gaps with unchanged lines shown, after b.swift is read" "$(pane "$all" reloaded 0 gaps)" 0
+  expect shared "note from the overview with unchanged lines" "$(value "$all/noted.json" notes.0.title)" "$(pane "$all" start 0 caret)"
+  expect shared "overview gaps once unchanged lines hide" "$(pane "$all" hidden 0 gaps)" 2
+  expect shared "overview folds once unchanged lines hide" "$(pane "$all" hidden 0 folds)" 0
 }
 
 #######################################
