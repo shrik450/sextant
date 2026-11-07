@@ -461,9 +461,9 @@ pane() {
 #######################################
 # Shows All Changes beside b.swift opened whole, unfolded, and opened again in a third pane: the
 # overview must go on showing the hunks it laid out, with its caret and its notes on the lines it
-# shows, and each file pane must keep its own folds. Then, with the overview showing unchanged
-# lines, it must show b.swift whole once it lays out again after another pane read it, numbered
-# right and without that pane's unfolds, and its hunks again once unchanged lines hide.
+# shows, and each file pane must keep its own folds. Once the overview lays out again, it shows
+# b.swift whole, numbered right, folded as a file pane first shows it and not as another pane
+# unfolded it, and with unchanged lines shown, every line of it.
 #######################################
 scene_shared() {
   local dir repo
@@ -521,8 +521,8 @@ EOF
   done
   expect shared "overview caret after the file panes" "$(pane "$dir" after-note 0 caret)" "$(pane "$dir" start 0 caret)"
   expect shared "note added from the overview" "$(value "$dir/noted.json" notes.0.title)" "$(pane "$dir" start 0 caret)"
-  expect shared "overview gaps after the file panes" "$(pane "$dir" after-note 0 gaps)" "$(pane "$dir" start 0 gaps)"
-  expect shared "overview folds after the file panes" "$(pane "$dir" after-note 0 folds)" 0
+  expect shared "overview gaps once it lays out again" "$(pane "$dir" after-note 0 gaps)" 0
+  expect shared "overview folds once it lays out again" "$(pane "$dir" after-note 0 folds)" "$(pane "$dir" opened 1 folds)"
   expect shared "folds after unfolding one" "$(pane "$dir" unfolded 1 folds)" "$(($(pane "$dir" opened 1 folds) - 1))"
   expect shared "folds in a third pane on the file" "$(pane "$dir" third 2 folds)" "$(pane "$dir" opened 1 folds)"
   rm -rf "$repo/.git/sextant"
@@ -568,8 +568,8 @@ EOF
   check shared "unchanged lines of b.swift, read whole, once the overview lays out again" "$ok" "rows without lines 150 and 450" "them"
   expect shared "gaps with unchanged lines shown, after b.swift is read" "$(pane "$all" reloaded 0 gaps)" 0
   expect shared "note from the overview with unchanged lines" "$(value "$all/noted.json" notes.0.title)" "$(pane "$all" start 0 caret)"
-  expect shared "overview gaps once unchanged lines hide" "$(pane "$all" hidden 0 gaps)" 2
-  expect shared "overview folds once unchanged lines hide" "$(pane "$all" hidden 0 folds)" 0
+  expect shared "overview gaps once unchanged lines hide" "$(pane "$all" hidden 0 gaps)" 0
+  expect shared "overview folds once unchanged lines hide" "$(pane "$all" hidden 0 folds)" "$(pane "$dir" opened 1 folds)"
 }
 
 #######################################

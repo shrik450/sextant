@@ -262,13 +262,13 @@ final class Reader: NSViewController, CodeViewDelegate {
     }
 
     /// Lays out and renders again, such as after toggling split, folds, notes or highlighting.
-    /// The text this reader shows of a file.
+    /// The text this reader shows of a file: the whole file once it's read, else the hunks.
     ///
-    /// A file by itself shows whole once it's read. The overview shows each change's hunks,
-    /// or, while it shows unchanged lines, the whole file of each change already read whole;
-    /// what other panes read of a file changes the overview only when it lays out again.
+    /// The overview reads no file whole itself; it shows whole, folded unless it shows unchanged
+    /// lines, each change some pane read whole. What other panes read changes the overview only
+    /// when it lays out again, and their folds never do.
     private func text(of f: FileState) -> FileText {
-        overview && !showAll ? f.hunks : f.wholeOrHunks
+        f.wholeOrHunks
     }
 
     /// Shows the text `text(of:)` picks for each file, where it isn't shown already.
