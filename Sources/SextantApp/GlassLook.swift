@@ -1,10 +1,9 @@
 import AppKit
 
-/// The look of macOS 26: the panes are cards on a frosted backdrop that reaches under the floating
-/// sidebar, and a toolbar floats over the cards' headers.
+/// The look of macOS 26: the side columns and the panes' cards share one frosted backdrop, and a
+/// toolbar floats over the cards' headers.
 struct GlassLook: Look {
-    /// The space between the cards and the strip's edges, the same as the sidebar's glass keeps
-    /// from the window's edges.
+    /// The space between the cards and the strip's edges.
     static let margin: CGFloat = 8
     /// The corner radius of a macOS 26 window with a toolbar, measured from a capture, since
     /// AppKit doesn't publish it. The cards' corners are concentric with it.
@@ -51,14 +50,18 @@ struct GlassLook: Look {
     func canvasOpacity(of theme: Theme) -> CGFloat { theme.cardOpacity }
 }
 
-/// The glass window's frame: a floating sidebar headed by the review, and a toolbar with the
-/// sidebar toggle and a few plain buttons beside the traffic lights and the inspector toggle at
-/// the far end, so the cards rise to the top of the window between them.
+/// The glass window's frame: a navigator headed by the review, and a toolbar with the navigator
+/// toggle and a few plain buttons beside the traffic lights and the inspector toggle at the far
+/// end, so the cards rise to the top of the window between them.
+///
+/// The navigator is a plain column rather than the system's sidebar, whose own glass would set it
+/// apart from the backdrop the rest of the window shares.
 @MainActor
 final class GlassFrame: NSObject, WindowFrame, NSToolbarDelegate {
     private let reviewHeader = ReviewHeader()
     private weak var controller: RepoWindowController?
 
+    private static let navigatorToggleID = NSToolbarItem.Identifier("navigatorToggle")
     private static let goToAnythingID = NSToolbarItem.Identifier("goToAnything")
     private static let findInFilesID = NSToolbarItem.Identifier("findInFiles")
     private static let inspectorToggleID = NSToolbarItem.Identifier("inspectorToggle")
@@ -83,16 +86,12 @@ final class GlassFrame: NSObject, WindowFrame, NSToolbarDelegate {
         reviewHeader.base.target = controller
         reviewHeader.base.action = #selector(RepoWindowController.baseChosen(_:))
 
-        let navigatorItem = NSSplitViewItem(sidebarWithViewController: controller.navigator)
-        navigatorItem.configureSideColumn(maximum: 440)
-        let stripItem = NSSplitViewItem.strip(controller.strip)
-        stripItem.automaticallyAdjustsSafeAreaInsets = true
         let columns = SeamlessSplitView()
         columns.isVertical = true
         columns.dividerStyle = .thin
         columns.arrangesAllSubviews = false
         controller.split.splitView = columns
-        controller.split.splitViewItems = [navigatorItem, stripItem, .sideColumn(controller.inspector, maximum: 420)]
+        controller.split.splitViewItems = [.sideColumn(controller.navigator, maximum: 440), .strip(controller.strip), .sideColumn(controller.inspector, maximum: 420)]
         columns.autosaveName = "SextantSplit3"
         window.contentViewController = controller.split
         let backdrop = BackdropView(frame: columns.bounds)
@@ -112,13 +111,15 @@ final class GlassFrame: NSObject, WindowFrame, NSToolbarDelegate {
     func columnsChanged() {}
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.toggleSidebar, Self.findInFilesID, Self.goToAnythingID, .sidebarTrackingSeparator, .flexibleSpace, Self.inspectorToggleID]
+        [Self.navigatorToggleID, Self.findInFilesID, Self.goToAnythingID, .flexibleSpace, Self.inspectorToggleID]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(toolbar) }
 
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
         switch id {
+        case Self.navigatorToggleID:
+            buttonItem(id, "Navigator", symbol: "sidebar.left", shortcut: "⌘0", action: #selector(RepoWindowController.toggleNavigatorColumn(_:)))
         case Self.goToAnythingID:
             buttonItem(id, "Go to Anything", symbol: "magnifyingglass", shortcut: "⌘K", action: #selector(RepoWindowController.goToAnything(_:)))
         case Self.findInFilesID:

@@ -1026,11 +1026,8 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         for p in panes where !p.reader.files.isEmpty { p.reader.reload(keepPosition: true) }
     }
 
-    /// Lays the strip out again when a side column shows, hides or resizes, and lets the frame
-    /// follow the columns. The strip can reach under the side columns, so only its safe area and
-    /// the titlebar controls over it change, which doesn't lay it out by itself.
+    /// Lets the frame follow the side columns as they show, hide or resize.
     @objc private func columnsResized(_ n: Notification) {
-        strip.needsLayout = true
         frame.columnsChanged()
     }
 
