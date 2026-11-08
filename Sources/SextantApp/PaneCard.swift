@@ -27,6 +27,10 @@ final class PaneCard: NSView, PaneSurface {
     /// Concentric with the window's corners, at the strip's margin from them.
     static let cornerRadius: CGFloat = GlassLook.windowCornerRadius - GlassLook.margin
     private static let shadowOffset = CGSize(width: 0, height: -2)
+    /// The blur of the shadow, tight enough that it fades out within the strip's margin and the
+    /// gap between cards. The window's columns each clip what's drawn in them, so a shadow that
+    /// reached past the margin would end in a hard line at the side columns' edges.
+    private static let shadowRadius: CGFloat = 3
 
     private(set) var isFocused = true
 
@@ -53,6 +57,8 @@ final class PaneCard: NSView, PaneSurface {
         super.init(frame: .zero)
         wantsLayer = true
         cardShadow.shadowOpacity = 0
+        cardShadow.shadowRadius = Self.shadowRadius
+        cardShadow.shadowOffset = Self.shadowOffset
         shadowCutout.fillRule = .evenOdd
         cardShadow.mask = shadowCutout
         layer?.addSublayer(cardShadow)
@@ -76,11 +82,6 @@ final class PaneCard: NSView, PaneSurface {
         guard let clipLayer = clip.layer else { return }
         let theme = Appearance.shared.theme(for: effectiveAppearance)
         cardShadow.shadowColor = theme.color("cardShadow").cgColor
-        if cardShadow.shadowRadius != theme.cardShadowRadius {
-            cardShadow.shadowRadius = theme.cardShadowRadius
-            placeParts()
-        }
-        cardShadow.shadowOffset = Self.shadowOffset
         clipLayer.borderWidth = 1 / (window?.backingScaleFactor ?? 2)
         clipLayer.borderColor = theme.color(isEmphasized ? "cardRimFocused" : "cardRim").cgColor
     }
@@ -148,7 +149,7 @@ final class PaneCard: NSView, PaneSurface {
         let card = NSRect(origin: .zero, size: part.size)
         cardShadow.frame = part
         cardShadow.shadowPath = CGPath(roundedRect: card, cornerWidth: r, cornerHeight: r, transform: nil)
-        let reach = cardShadow.shadowRadius * 3 + abs(Self.shadowOffset.height)
+        let reach = Self.shadowRadius * 3 + abs(Self.shadowOffset.height)
         let cutout = CGMutablePath()
         cutout.addRect(card.insetBy(dx: -reach, dy: -reach))
         cutout.addRoundedRect(in: card, cornerWidth: r, cornerHeight: r)
