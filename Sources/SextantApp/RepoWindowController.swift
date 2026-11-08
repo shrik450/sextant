@@ -1070,6 +1070,15 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         a.beginSheetModal(for: window)
     }
 
+    /// Hides the toolbar in full screen until the menu bar shows, so the panes' headers keep the
+    /// top row they share with the toolbar in a window.
+    ///
+    /// In full screen the toolbar moves to a window of its own, whose opaque background would
+    /// cover the headers.
+    func window(_ window: NSWindow, willUseFullScreenPresentationOptions proposedOptions: NSApplication.PresentationOptions = []) -> NSApplication.PresentationOptions {
+        proposedOptions.union([.autoHideToolbar, .autoHideMenuBar])
+    }
+
     /// Folds the inspector away when the window gets narrow, then the navigator, so the code
     /// keeps its room, and brings back what it folded once there's space again.
     func windowDidResize(_ notification: Notification) {
