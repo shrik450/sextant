@@ -116,7 +116,6 @@ final class Pane {
 /// lays them out.
 @MainActor
 final class PaneStrip: NSView {
-    private let viewport = FlippedView()
     private let track = FlippedView()
     private var surfaces: [PaneSurface] = []
     private var offset: CGFloat = 0
@@ -138,10 +137,7 @@ final class PaneStrip: NSView {
         headerHeight = look.paneHeader.height
         super.init(frame: .zero)
         wantsLayer = true
-        viewport.wantsLayer = true
-        viewport.layer?.masksToBounds = true
-        addSubview(viewport)
-        viewport.addSubview(track)
+        addSubview(track)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -172,14 +168,11 @@ final class PaneStrip: NSView {
 
     /// The part of the strip the panes fill when they're all in view.
     ///
-    /// The strip can reach under a floating sidebar, which the safe area at its leading side
-    /// keeps the panes clear of. The top ignores the safe area, so the panes' headers can share
-    /// the row with the traffic lights and toolbar buttons, which each header keeps its content
-    /// clear of.
+    /// The top ignores the safe area, so the panes' headers can share the row with the traffic
+    /// lights and toolbar buttons, which each header keeps its content clear of.
     private var paneArea: NSRect {
-        let m = arrangement.margins, safe = safeAreaInsets
-        let left = safe.left + m.left, right = safe.right + m.right
-        return NSRect(x: left, y: m.top, width: max(0, bounds.width - left - right), height: max(0, bounds.height - m.top - m.bottom))
+        let m = arrangement.margins
+        return NSRect(x: m.left, y: m.top, width: max(0, bounds.width - m.left - m.right), height: max(0, bounds.height - m.top - m.bottom))
     }
 
     override func layout() {
@@ -203,8 +196,6 @@ final class PaneStrip: NSView {
     }
 
     private func layoutPanes(animated: Bool) {
-        let safe = safeAreaInsets
-        viewport.frame = NSRect(x: safe.left, y: 0, width: max(0, bounds.width - safe.left - safe.right), height: bounds.height)
         let area = paneArea
         let w = paneWidth, h = area.height, gap = arrangement.gap
         for (i, s) in surfaces.enumerated() {
@@ -213,11 +204,11 @@ final class PaneStrip: NSView {
         }
         let total = surfaces.isEmpty ? 0 : CGFloat(surfaces.count) * (w + gap) - gap
         offset = stripOffset(showing: focused, from: offset, paneWidth: w, gap: gap, viewport: area.width, total: total)
-        let trackFrame = NSRect(x: area.minX - viewport.frame.minX - offset, y: area.minY, width: max(total, area.width), height: h)
+        let trackFrame = NSRect(x: area.minX - offset, y: area.minY, width: max(total, area.width), height: h)
         let controls = titlebarControls()
         let place = {
             for s in self.surfaces {
-                let x = self.viewport.frame.minX + trackFrame.minX + s.frame.minX
+                let x = trackFrame.minX + s.frame.minX
                 let from = max(0, area.minX - x), to = min(w, area.maxX - x)
                 s.show(part: NSRect(x: from, y: 0, width: max(0, to - from), height: h))
                 let header = NSRect(x: x, y: area.minY, width: w, height: self.headerHeight)
