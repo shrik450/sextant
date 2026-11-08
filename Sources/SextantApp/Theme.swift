@@ -33,10 +33,6 @@ struct Theme {
     /// Idle controls, which come up to `fgSubtle` on hover.
     var fgFaint: NSColor { color("fgFaint") }
 
-    /// The blur of the cards' shadow, whose colour comes from `cardShadow`. It's tighter in
-    /// light, and fades out within the gap between cards, so no card shades its neighbour.
-    var cardShadowRadius: CGFloat { isDark ? 10 : 8 }
-
     func syntax(_ k: TokenKind) -> NSColor {
         switch k {
         case .keyword: color("syntax.keyword")
