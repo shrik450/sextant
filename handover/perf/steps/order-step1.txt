@@ -1,0 +1,8 @@
+Step 1 is split into fresh sessions (same agent pane w2Z:p1, /clear between):
+1a done (98c17f9..6506d06); remaining 23 MB scroll-pocket drift goes to step 3
+1b done (973c275..2ee9ec7) git correctness (merge-conflict raw headers, hash-object on symlinks/gitlinks/dirs/nested repos, added file doubled in Repository.open + oldLines fallback, readWorktreeFile symlinks, CR in patch lines, newline paths in hashObjects/parseGrepZ)
+1c done (d289300..111b2a8) refresh/state bugs (.lock filter, realpath roots + worktrees/<id>/logs, status failure shown clean, shared searchGeneration, ContentAnalysis lost saves, hash-then-read race + cached empty on failure, #lua-match?)
+1d done (ca94ad1..97bd80f) shared FileState mutation (GUI repro first; separate hunk/whole lines, per-pane view state)
+1e done (a8c3c7e..3dbb389) document-model correctness (renames/mode changes unopenable, changeKey collisions, and the document.md leads after verifying them)
+1f [running] small app fixes from chrome.md/app.md (loginShellPath on main + pipe hang + printenv, CLI run-loop spin, per-window frame autosave, monospaced font list, bare-key validation in Go to Anything, harness waitIdle/isSettled + static idleWaiters)
+Pending when the user is away: Tests/perf/run.sh worktrees soak linux (forward guard misfired; 7fc00ee logs why).

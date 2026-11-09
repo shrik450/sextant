@@ -1,0 +1,8 @@
+probe	selftest_short_stall_ms	305.2
+probe	selftest_stall_ms	2003.9
+probe	selftest_killed_stall_ms	1536.3
+probe	app_stall_ms	1998.1
+probe	app_killed_stall_ms	2048
+probe	scenario_s	12
+probe	beeps	0
+probe	came_forward	0

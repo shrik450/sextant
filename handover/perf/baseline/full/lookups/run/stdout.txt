@@ -1,0 +1,37 @@
+OPEN /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/linux HEAD~30..HEAD: window 153, content 6188, settled 6841 ms, 240 MB
+> timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/linux HEAD~30..HEAD  [6841 ms]
+> sleep 3000  [3115 ms]
+MEASURE menu Next File ×1: frame median 51.6, p90 51.6, max 51.6 | settled median 78.2, p90 78.2, max 78.2 ms
+> measure 1 menu Next File  [98 ms]
+> key w  [272 ms]
+> key w  [273 ms]
+> key w  [273 ms]
+> key w  [272 ms]
+> key w  [274 ms]
+> key w  [273 ms]
+MARK refs-start: 11827 ms since launch, 265 MB, at 1793998563505892096
+> mark refs-start  [0 ms]
+MEASURE menu Find References ×1: frame median 29.2, p90 29.2, max 29.2 | settled median 6084.7, p90 6084.7, max 6084.7 ms
+> measure 1 menu Find References  [6106 ms]
+> sleep 1500  [1543 ms]
+MEASURE menu Find References ×1: frame median 22.0, p90 22.0, max 22.0 | settled median 1535.4, p90 1535.4, max 1535.4 ms
+> measure 1 menu Find References  [1556 ms]
+> sleep 1500  [1543 ms]
+MEASURE menu Peek Definition ×1: frame median 0.3, p90 0.3, max 0.3 | settled median 1254.9, p90 1254.9, max 1254.9 ms
+> measure 1 menu Peek Definition  [1275 ms]
+> sleep 1500  [1511 ms]
+> key esc  [273 ms]
+MEASURE menu Peek Definition ×1: frame median 0.2, p90 0.2, max 0.2 | settled median 1376.1, p90 1376.1, max 1376.1 ms
+> measure 1 menu Peek Definition  [1397 ms]
+> sleep 1500  [1541 ms]
+> key esc  [266 ms]
+MARK refs-end: 28844 ms since launch, 368 MB, at 1793998580523076096
+> mark refs-end  [0 ms]
+> menu Find in Files…  [278 ms]
+> type kmalloc  [270 ms]
+MARK find-start: 29393 ms since launch, 459 MB, at 1793998581072297216
+> mark find-start  [0 ms]
+> key return  [1529 ms]
+> sleep 8000  [8152 ms]
+MARK find-end: 39077 ms since launch, 372 MB, at 1793998590755939840
+> mark find-end  [0 ms]

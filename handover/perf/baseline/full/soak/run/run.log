@@ -1,0 +1,637 @@
+OPEN /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work: window 218, content 395, settled 566 ms, 204 MB
+> timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work  [566 ms]
+> sleep 3000  [3008 ms]
+MARK soak-start: 3697 ms since launch, 106 MB, at 1793998678962765056
+> mark soak-start  [0 ms]
+MARK cycle-1: 3698 ms since launch, 106 MB, at 1793998678963383040
+> mark cycle-1  [0 ms]
+MEASURE menu Next File ×5: frame median 4.9, p90 50.7, max 50.7 | settled median 14.8, p90 74.5, max 74.5 ms
+> measure 5 menu Next File  [246 ms]
+MEASURE menu Previous File ×5: frame median 3.7, p90 18.5, max 18.5 | settled median 17.3, p90 286.9, max 286.9 ms
+> measure 5 menu Previous File  [463 ms]
+MEASURE scroll 40 ×20: frame median 0.5, p90 0.7, max 0.8 | settled median 0.5, p90 0.7, max 0.8 ms
+> measure 20 scroll 40  [427 ms]
+MEASURE menu All Changes ×1: frame median 55.0, p90 55.0, max 55.0 | settled median 55.1, p90 55.1, max 55.1 ms
+> measure 1 menu All Changes  [75 ms]
+MEASURE scroll 40 ×20: frame median 2.5, p90 3.9, max 4.8 | settled median 2.5, p90 3.9, max 4.8 ms
+> measure 20 scroll 40  [469 ms]
+MEASURE menu Side by Side ×1: frame median 54.1, p90 54.1, max 54.1 | settled median 54.2, p90 54.2, max 54.2 ms
+> measure 1 menu Side by Side  [74 ms]
+MEASURE menu Unified ×1: frame median 33.3, p90 33.3, max 33.3 | settled median 33.3, p90 33.3, max 33.3 ms
+> measure 1 menu Unified  [54 ms]
+MEASURE menu Older Commit ×1: frame median 6.5, p90 6.5, max 6.5 | settled median 202.1, p90 202.1, max 202.1 ms
+> measure 1 menu Older Commit  [223 ms]
+MEASURE menu Newer Commit ×1: frame median 3.2, p90 3.2, max 3.2 | settled median 379.3, p90 379.3, max 379.3 ms
+> measure 1 menu Newer Commit  [400 ms]
+MEASURE menu All Commits ×1: frame median 0.1, p90 0.1, max 0.1 | settled median 0.1, p90 0.1, max 0.1 ms
+> measure 1 menu All Commits  [20 ms]
+MEASURE key j ×3: frame median 0.8, p90 3.1, max 3.1 | settled median 0.8, p90 3.1, max 3.1 ms
+> measure 3 key j  [68 ms]
+> sleep 1000  [1000 ms]
+> sleep 2000  [2055 ms]
+MARK checkpoint-1: 9281 ms since launch, 224 MB, at 1793998684546224128
+> mark checkpoint-1  [0 ms]
+> sleep 20000  [20331 ms]
+MARK cycle-2: 29613 ms since launch, 200 MB, at 1793998704878274048
+> mark cycle-2  [0 ms]
+MEASURE menu Next File ×5: frame median 0.8, p90 12.4, max 12.4 | settled median 0.8, p90 12.5, max 12.5 ms
+> measure 5 menu Next File  [157 ms]
+MEASURE menu Previous File ×5: frame median 0.5, p90 0.6, max 0.6 | settled median 0.5, p90 0.6, max 0.6 ms
+> measure 5 menu Previous File  [108 ms]
+MEASURE scroll 40 ×20: frame median 2.7, p90 4.6, max 5.4 | settled median 2.8, p90 5.4, max 312.4 ms
+> measure 20 scroll 40  [781 ms]
+MEASURE menu All Changes ×1: frame median 42.6, p90 42.6, max 42.6 | settled median 42.6, p90 42.6, max 42.6 ms
+> measure 1 menu All Changes  [64 ms]
+MEASURE scroll 40 ×20: frame median 3.5, p90 6.7, max 8.0 | settled median 3.5, p90 6.8, max 8.0 ms
+> measure 20 scroll 40  [496 ms]
+MEASURE menu Side by Side ×1: frame median 77.5, p90 77.5, max 77.5 | settled median 77.6, p90 77.6, max 77.6 ms
+> measure 1 menu Side by Side  [101 ms]
+MEASURE menu Unified ×1: frame median 33.4, p90 33.4, max 33.4 | settled median 33.4, p90 33.4, max 33.4 ms
+> measure 1 menu Unified  [54 ms]
+MEASURE menu Older Commit ×1: frame median 6.2, p90 6.2, max 6.2 | settled median 122.8, p90 122.8, max 122.8 ms
+> measure 1 menu Older Commit  [144 ms]
+MEASURE menu Newer Commit ×1: frame median 2.9, p90 2.9, max 2.9 | settled median 254.5, p90 254.5, max 254.5 ms
+> measure 1 menu Newer Commit  [276 ms]
+MEASURE menu All Commits ×1: frame median 0.0, p90 0.0, max 0.0 | settled median 0.1, p90 0.1, max 0.1 ms
+> measure 1 menu All Commits  [20 ms]
+MEASURE key j ×3: frame median 0.7, p90 0.7, max 0.7 | settled median 0.7, p90 0.7, max 0.7 ms
+> measure 3 key j  [64 ms]
+> sleep 1000  [1005 ms]
+MARK cycle-3: 32892 ms since launch, 213 MB, at 1793998708157944064
+> mark cycle-3  [0 ms]
+MEASURE menu Next File ×5: frame median 1.1, p90 10.3, max 10.3 | settled median 1.1, p90 10.3, max 10.3 ms
+> measure 5 menu Next File  [171 ms]
+MEASURE menu Previous File ×5: frame median 0.5, p90 0.6, max 0.6 | settled median 0.5, p90 0.6, max 0.6 ms
+> measure 5 menu Previous File  [124 ms]
+MEASURE scroll 40 ×20: frame median 3.6, p90 8.4, max 8.6 | settled median 3.6, p90 8.4, max 8.6 ms
+> measure 20 scroll 40  [495 ms]
+MEASURE menu All Changes ×1: frame median 44.9, p90 44.9, max 44.9 | settled median 45.0, p90 45.0, max 45.0 ms
+> measure 1 menu All Changes  [66 ms]
+MEASURE scroll 40 ×20: frame median 3.1, p90 4.9, max 5.5 | settled median 3.1, p90 5.6, max 359.5 ms
+> measure 20 scroll 40  [838 ms]
+MEASURE menu Side by Side ×1: frame median 48.6, p90 48.6, max 48.6 | settled median 48.6, p90 48.6, max 48.6 ms
+> measure 1 menu Side by Side  [69 ms]
+MEASURE menu Unified ×1: frame median 33.8, p90 33.8, max 33.8 | settled median 33.8, p90 33.8, max 33.8 ms
+> measure 1 menu Unified  [54 ms]
+MEASURE menu Older Commit ×1: frame median 6.0, p90 6.0, max 6.0 | settled median 130.3, p90 130.3, max 130.3 ms
+> measure 1 menu Older Commit  [150 ms]
+MEASURE menu Newer Commit ×1: frame median 3.5, p90 3.5, max 3.5 | settled median 298.9, p90 298.9, max 298.9 ms
+> measure 1 menu Newer Commit  [320 ms]
+MEASURE menu All Commits ×1: frame median 0.0, p90 0.0, max 0.0 | settled median 0.1, p90 0.1, max 0.1 ms
+> measure 1 menu All Commits  [21 ms]
+MEASURE key j ×3: frame median 0.6, p90 0.7, max 0.7 | settled median 0.6, p90 0.7, max 0.7 ms
+> measure 3 key j  [63 ms]
+> sleep 1000  [1015 ms]
+MARK cycle-4: 36286 ms since launch, 238 MB, at 1793998711551283712
+> mark cycle-4  [0 ms]
+MEASURE menu Next File ×5: frame median 0.5, p90 7.2, max 7.2 | settled median 0.5, p90 124.5, max 124.5 ms
+> measure 5 menu Next File  [247 ms]
+MEASURE menu Previous File ×5: frame median 0.4, p90 0.5, max 0.5 | settled median 0.4, p90 0.5, max 0.5 ms
+> measure 5 menu Previous File  [106 ms]
+MEASURE scroll 40 ×20: frame median 3.6, p90 8.3, max 9.6 | settled median 3.6, p90 8.3, max 9.6 ms
+> measure 20 scroll 40  [491 ms]
+MEASURE menu All Changes ×1: frame median 38.2, p90 38.2, max 38.2 | settled median 38.2, p90 38.2, max 38.2 ms
+> measure 1 menu All Changes  [59 ms]
+MEASURE scroll 40 ×20: frame median 4.2, p90 7.1, max 7.9 | settled median 4.2, p90 7.1, max 7.9 ms
+> measure 20 scroll 40  [508 ms]
+MEASURE menu Side by Side ×1: frame median 60.0, p90 60.0, max 60.0 | settled median 60.0, p90 60.0, max 60.0 ms
+> measure 1 menu Side by Side  [81 ms]
+MEASURE menu Unified ×1: frame median 32.2, p90 32.2, max 32.2 | settled median 32.2, p90 32.2, max 32.2 ms
+> measure 1 menu Unified  [53 ms]
+MEASURE menu Older Commit ×1: frame median 5.9, p90 5.9, max 5.9 | settled median 127.3, p90 127.3, max 127.3 ms
+> measure 1 menu Older Commit  [148 ms]
+MEASURE menu Newer Commit ×1: frame median 3.0, p90 3.0, max 3.0 | settled median 327.9, p90 327.9, max 327.9 ms
+> measure 1 menu Newer Commit  [349 ms]
+MEASURE menu All Commits ×1: frame median 0.4, p90 0.4, max 0.4 | settled median 0.4, p90 0.4, max 0.4 ms
+> measure 1 menu All Commits  [21 ms]
+MEASURE key j ×3: frame median 0.6, p90 0.6, max 0.6 | settled median 0.6, p90 0.6, max 0.6 ms
+> measure 3 key j  [65 ms]
+> sleep 1000  [1010 ms]
+MARK cycle-5: 39431 ms since launch, 126 MB, at 1793998714696128768
+> mark cycle-5  [0 ms]
+MEASURE menu Next File ×5: frame median 1.0, p90 11.6, max 11.6 | settled median 1.0, p90 11.6, max 11.6 ms
+> measure 5 menu Next File  [160 ms]
+MEASURE menu Previous File ×5: frame median 0.4, p90 0.6, max 0.6 | settled median 0.4, p90 0.6, max 0.6 ms
+> measure 5 menu Previous File  [110 ms]
+MEASURE scroll 40 ×20: frame median 3.9, p90 8.7, max 10.7 | settled median 3.9, p90 10.7, max 368.2 ms
+> measure 20 scroll 40  [879 ms]
+MEASURE menu All Changes ×1: frame median 29.2, p90 29.2, max 29.2 | settled median 29.2, p90 29.2, max 29.2 ms
+> measure 1 menu All Changes  [50 ms]
+MEASURE scroll 40 ×20: frame median 3.3, p90 6.2, max 6.9 | settled median 3.3, p90 6.2, max 6.9 ms
+> measure 20 scroll 40  [486 ms]
+MEASURE menu Side by Side ×1: frame median 57.5, p90 57.5, max 57.5 | settled median 57.5, p90 57.5, max 57.5 ms
+> measure 1 menu Side by Side  [78 ms]
+MEASURE menu Unified ×1: frame median 33.7, p90 33.7, max 33.7 | settled median 33.7, p90 33.7, max 33.7 ms
+> measure 1 menu Unified  [53 ms]
+MEASURE menu Older Commit ×1: frame median 6.3, p90 6.3, max 6.3 | settled median 321.0, p90 321.0, max 321.0 ms
+> measure 1 menu Older Commit  [342 ms]
+MEASURE menu Newer Commit ×1: frame median 3.2, p90 3.2, max 3.2 | settled median 266.5, p90 266.5, max 266.5 ms
+> measure 1 menu Newer Commit  [287 ms]
+MEASURE menu All Commits ×1: frame median 0.0, p90 0.0, max 0.0 | settled median 0.0, p90 0.0, max 0.0 ms
+> measure 1 menu All Commits  [20 ms]
+MEASURE key j ×3: frame median 0.6, p90 1.4, max 1.4 | settled median 0.6, p90 1.4, max 1.4 ms
+> measure 3 key j  [66 ms]
+> sleep 1000  [1025 ms]
+MARK cycle-6: 42995 ms since launch, 219 MB, at 1793998718260178944
+> mark cycle-6  [0 ms]
+MEASURE menu Next File ×5: frame median 0.7, p90 13.2, max 13.2 | settled median 0.7, p90 13.2, max 13.2 ms
+> measure 5 menu Next File  [160 ms]
+MEASURE menu Previous File ×5: frame median 0.4, p90 0.8, max 0.8 | settled median 0.4, p90 0.8, max 0.8 ms
+> measure 5 menu Previous File  [108 ms]
+MEASURE scroll 40 ×20: frame median 3.5, p90 8.3, max 8.9 | settled median 3.5, p90 8.3, max 8.9 ms
+> measure 20 scroll 40  [503 ms]
+MEASURE menu All Changes ×1: frame median 36.9, p90 36.9, max 36.9 | settled median 36.9, p90 36.9, max 36.9 ms
+> measure 1 menu All Changes  [58 ms]
+MEASURE scroll 40 ×20: frame median 3.7, p90 7.0, max 7.8 | settled median 4.0, p90 7.8, max 388.0 ms
+> measure 20 scroll 40  [883 ms]
+MEASURE menu Side by Side ×1: frame median 52.6, p90 52.6, max 52.6 | settled median 52.6, p90 52.6, max 52.6 ms
+> measure 1 menu Side by Side  [73 ms]
+MEASURE menu Unified ×1: frame median 32.8, p90 32.8, max 32.8 | settled median 32.8, p90 32.8, max 32.8 ms
+> measure 1 menu Unified  [54 ms]
+MEASURE menu Older Commit ×1: frame median 6.1, p90 6.1, max 6.1 | settled median 122.8, p90 122.8, max 122.8 ms
+> measure 1 menu Older Commit  [148 ms]
+MEASURE menu Newer Commit ×1: frame median 2.9, p90 2.9, max 2.9 | settled median 223.3, p90 223.3, max 223.3 ms
+> measure 1 menu Newer Commit  [244 ms]
+MEASURE menu All Commits ×1: frame median 0.0, p90 0.0, max 0.0 | settled median 0.0, p90 0.0, max 0.0 ms
+> measure 1 menu All Commits  [20 ms]
+MEASURE key j ×3: frame median 0.5, p90 0.5, max 0.5 | settled median 0.5, p90 0.6, max 0.6 ms
+> measure 3 key j  [63 ms]
+> sleep 1000  [1000 ms]
+MARK cycle-7: 46318 ms since launch, 248 MB, at 1793998721583159808
+> mark cycle-7  [0 ms]
+MEASURE menu Next File ×5: frame median 0.5, p90 6.3, max 6.3 | settled median 0.5, p90 210.2, max 210.2 ms
+> measure 5 menu Next File  [322 ms]
+MEASURE menu Previous File ×5: frame median 0.3, p90 0.8, max 0.8 | settled median 0.3, p90 0.8, max 0.8 ms
+> measure 5 menu Previous File  [108 ms]
+MEASURE scroll 40 ×20: frame median 3.8, p90 7.3, max 11.1 | settled median 3.8, p90 7.4, max 11.1 ms
+> measure 20 scroll 40  [498 ms]
+MEASURE menu All Changes ×1: frame median 34.2, p90 34.2, max 34.2 | settled median 34.2, p90 34.2, max 34.2 ms
+> measure 1 menu All Changes  [54 ms]
+MEASURE scroll 40 ×20: frame median 4.4, p90 6.9, max 7.5 | settled median 4.4, p90 7.0, max 7.5 ms
+> measure 20 scroll 40  [503 ms]
+MEASURE menu Side by Side ×1: frame median 76.6, p90 76.6, max 76.6 | settled median 76.6, p90 76.6, max 76.6 ms
+> measure 1 menu Side by Side  [97 ms]
+MEASURE menu Unified ×1: frame median 30.9, p90 30.9, max 30.9 | settled median 30.9, p90 30.9, max 30.9 ms
+> measure 1 menu Unified  [51 ms]
+MEASURE menu Older Commit ×1: frame median 6.0, p90 6.0, max 6.0 | settled median 122.8, p90 122.8, max 122.8 ms
+> measure 1 menu Older Commit  [144 ms]
+MEASURE menu Newer Commit ×1: frame median 2.9, p90 2.9, max 2.9 | settled median 323.8, p90 323.8, max 323.8 ms
+> measure 1 menu Newer Commit  [345 ms]
+MEASURE menu All Commits ×1: frame median 0.0, p90 0.0, max 0.0 | settled median 0.0, p90 0.0, max 0.0 ms
+> measure 1 menu All Commits  [21 ms]
+MEASURE key j ×3: frame median 0.7, p90 1.0, max 1.0 | settled median 0.7, p90 1.0, max 1.0 ms
+> measure 3 key j  [63 ms]
+> sleep 1000  [1000 ms]
+MARK cycle-8: 49534 ms since launch, 131 MB, at 1793998724799883776
+> mark cycle-8  [0 ms]
+MEASURE menu Next File ×5: frame median 0.8, p90 13.4, max 13.4 | settled median 0.9, p90 13.4, max 13.4 ms
+> measure 5 menu Next File  [155 ms]
+MEASURE menu Previous File ×5: frame median 0.4, p90 0.5, max 0.5 | settled median 0.4, p90 0.5, max 0.5 ms
+> measure 5 menu Previous File  [108 ms]
+MEASURE scroll 40 ×20: frame median 3.6, p90 9.2, max 11.4 | settled median 3.7, p90 11.4, max 320.2 ms
+> measure 20 scroll 40  [812 ms]
+MEASURE menu All Changes ×1: frame median 28.7, p90 28.7, max 28.7 | settled median 28.7, p90 28.7, max 28.7 ms
+> measure 1 menu All Changes  [50 ms]
+MEASURE scroll 40 ×20: frame median 3.5, p90 5.3, max 6.9 | settled median 3.5, p90 5.3, max 6.9 ms
+> measure 20 scroll 40  [487 ms]
+MEASURE menu Side by Side ×1: frame median 59.0, p90 59.0, max 59.0 | settled median 59.0, p90 59.0, max 59.0 ms
+> measure 1 menu Side by Side  [80 ms]
+MEASURE menu Unified ×1: frame median 33.3, p90 33.3, max 33.3 | settled median 33.3, p90 33.3, max 33.3 ms
+> measure 1 menu Unified  [53 ms]
+MEASURE menu Older Commit ×1: frame median 6.8, p90 6.8, max 6.8 | settled median 258.8, p90 258.8, max 258.8 ms
+> measure 1 menu Older Commit  [279 ms]
+MEASURE menu Newer Commit ×1: frame median 3.0, p90 3.0, max 3.0 | settled median 301.8, p90 301.8, max 301.8 ms
+> measure 1 menu Newer Commit  [323 ms]
+MEASURE menu All Commits ×1: frame median 0.0, p90 0.0, max 0.0 | settled median 0.1, p90 0.1, max 0.1 ms
+> measure 1 menu All Commits  [21 ms]
+MEASURE key j ×3: frame median 0.6, p90 0.6, max 0.6 | settled median 0.6, p90 0.6, max 0.6 ms
+> measure 3 key j  [63 ms]
+> sleep 1000  [1017 ms]
+MARK cycle-9: 52992 ms since launch, 237 MB, at 1793998728257717248
+> mark cycle-9  [0 ms]
+MEASURE menu Next File ×5: frame median 0.7, p90 16.3, max 16.3 | settled median 0.7, p90 16.3, max 16.3 ms
+> measure 5 menu Next File  [162 ms]
+MEASURE menu Previous File ×5: frame median 0.4, p90 0.5, max 0.5 | settled median 0.4, p90 0.5, max 0.5 ms
+> measure 5 menu Previous File  [108 ms]
+MEASURE scroll 40 ×20: frame median 3.5, p90 7.3, max 8.9 | settled median 3.5, p90 7.4, max 8.9 ms
+> measure 20 scroll 40  [493 ms]
+MEASURE menu All Changes ×1: frame median 47.9, p90 47.9, max 47.9 | settled median 47.9, p90 47.9, max 47.9 ms
+> measure 1 menu All Changes  [69 ms]
+MEASURE scroll 40 ×20: frame median 4.1, p90 6.1, max 7.9 | settled median 4.2, p90 7.9, max 414.3 ms
+> measure 20 scroll 40  [912 ms]
+MEASURE menu Side by Side ×1: frame median 44.6, p90 44.6, max 44.6 | settled median 44.6, p90 44.6, max 44.6 ms
+> measure 1 menu Side by Side  [65 ms]
+MEASURE menu Unified ×1: frame median 30.1, p90 30.1, max 30.1 | settled median 30.1, p90 30.1, max 30.1 ms
+> measure 1 menu Unified  [51 ms]
+MEASURE menu Older Commit ×1: frame median 5.8, p90 5.8, max 5.8 | settled median 116.3, p90 116.3, max 116.3 ms
+> measure 1 menu Older Commit  [137 ms]
+MEASURE menu Newer Commit ×1: frame median 2.6, p90 2.6, max 2.6 | settled median 232.5, p90 232.5, max 232.5 ms
+> measure 1 menu Newer Commit  [253 ms]
+MEASURE menu All Commits ×1: frame median 0.0, p90 0.0, max 0.0 | settled median 0.0, p90 0.0, max 0.0 ms
+> measure 1 menu All Commits  [21 ms]
+MEASURE key j ×3: frame median 0.5, p90 1.0, max 1.0 | settled median 0.5, p90 1.0, max 1.0 ms
+> measure 3 key j  [64 ms]
+> sleep 1000  [1002 ms]
+MARK cycle-10: 56340 ms since launch, 251 MB, at 1793998731605399040
+> mark cycle-10  [0 ms]
+MEASURE menu Next File ×5: frame median 0.6, p90 6.8, max 6.8 | settled median 0.6, p90 440.2, max 440.2 ms
+> measure 5 menu Next File  [625 ms]
+MEASURE menu Previous File ×5: frame median 0.4, p90 0.5, max 0.5 | settled median 0.4, p90 0.5, max 0.5 ms
+> measure 5 menu Previous File  [114 ms]
+MEASURE scroll 40 ×20: frame median 3.4, p90 7.7, max 10.5 | settled median 3.5, p90 7.7, max 10.5 ms
+> measure 20 scroll 40  [498 ms]
+MEASURE menu All Changes ×1: frame median 42.4, p90 42.4, max 42.4 | settled median 42.5, p90 42.5, max 42.5 ms
+> measure 1 menu All Changes  [63 ms]
+MEASURE scroll 40 ×20: frame median 4.2, p90 6.8, max 7.1 | settled median 4.2, p90 6.8, max 7.1 ms
+> measure 20 scroll 40  [534 ms]
+MEASURE menu Side by Side ×1: frame median 62.5, p90 62.5, max 62.5 | settled median 62.5, p90 62.5, max 62.5 ms
+> measure 1 menu Side by Side  [82 ms]
+MEASURE menu Unified ×1: frame median 33.0, p90 33.0, max 33.0 | settled median 33.0, p90 33.0, max 33.0 ms
+> measure 1 menu Unified  [53 ms]
+MEASURE menu Older Commit ×1: frame median 5.8, p90 5.8, max 5.8 | settled median 156.2, p90 156.2, max 156.2 ms
+> measure 1 menu Older Commit  [177 ms]
+MEASURE menu Newer Commit ×1: frame median 2.8, p90 2.8, max 2.8 | settled median 215.1, p90 215.1, max 215.1 ms
+> measure 1 menu Newer Commit  [235 ms]
+MEASURE menu All Commits ×1: frame median 0.0, p90 0.0, max 0.0 | settled median 0.0, p90 0.0, max 0.0 ms
+> measure 1 menu All Commits  [21 ms]
+MEASURE key j ×3: frame median 0.6, p90 1.0, max 1.0 | settled median 0.7, p90 1.0, max 1.0 ms
+> measure 3 key j  [65 ms]
+> sleep 1000  [1000 ms]
+MARK cycle-11: 59815 ms since launch, 126 MB, at 1793998735080294144
+> mark cycle-11  [0 ms]
+MEASURE menu Next File ×5: frame median 0.9, p90 7.1, max 7.1 | settled median 1.0, p90 7.1, max 7.1 ms
+> measure 5 menu Next File  [165 ms]
+MEASURE menu Previous File ×5: frame median 0.5, p90 0.9, max 0.9 | settled median 0.5, p90 0.9, max 0.9 ms
+> measure 5 menu Previous File  [106 ms]
+MEASURE scroll 40 ×20: frame median 3.3, p90 5.2, max 5.2 | settled median 3.4, p90 5.3, max 596.2 ms
+> measure 20 scroll 40  [1076 ms]
+MEASURE menu All Changes ×1: frame median 35.3, p90 35.3, max 35.3 | settled median 35.3, p90 35.3, max 35.3 ms
+> measure 1 menu All Changes  [55 ms]
+MEASURE scroll 40 ×20: frame median 3.2, p90 5.8, max 7.0 | settled median 3.2, p90 5.8, max 7.0 ms
+> measure 20 scroll 40  [488 ms]
+MEASURE menu Side by Side ×1: frame median 73.0, p90 73.0, max 73.0 | settled median 73.0, p90 73.0, max 73.0 ms
+> measure 1 menu Side by Side  [97 ms]
+MEASURE menu Unified ×1: frame median 32.2, p90 32.2, max 32.2 | settled median 32.3, p90 32.3, max 32.3 ms
+> measure 1 menu Unified  [53 ms]
+MEASURE menu Older Commit ×1: frame median 5.9, p90 5.9, max 5.9 | settled median 152.1, p90 152.1, max 152.1 ms
+> measure 1 menu Older Commit  [173 ms]
+MEASURE menu Newer Commit ×1: frame median 3.3, p90 3.3, max 3.3 | settled median 311.6, p90 311.6, max 311.6 ms
+> measure 1 menu Newer Commit  [333 ms]
+MEASURE menu All Commits ×1: frame median 0.0, p90 0.0, max 0.0 | settled median 0.1, p90 0.1, max 0.1 ms
+> measure 1 menu All Commits  [20 ms]
+MEASURE key j ×3: frame median 0.6, p90 0.7, max 0.7 | settled median 0.7, p90 493.4, max 493.4 ms
+> measure 3 key j  [557 ms]
+> sleep 1000  [1047 ms]
+MARK cycle-12: 63993 ms since launch, 129 MB, at 1793998739258751744
+> mark cycle-12  [0 ms]
+MEASURE menu Next File ×5: frame median 0.8, p90 13.7, max 13.7 | settled median 0.8, p90 13.7, max 13.7 ms
+> measure 5 menu Next File  [156 ms]
+MEASURE menu Previous File ×5: frame median 0.4, p90 0.8, max 0.8 | settled median 0.4, p90 0.8, max 0.8 ms
+> measure 5 menu Previous File  [108 ms]
+MEASURE scroll 40 ×20: frame median 2.9, p90 5.2, max 5.5 | settled median 3.0, p90 5.5, max 239.5 ms
+> measure 20 scroll 40  [715 ms]
+MEASURE menu All Changes ×1: frame median 35.8, p90 35.8, max 35.8 | settled median 35.8, p90 35.8, max 35.8 ms
+> measure 1 menu All Changes  [57 ms]
+MEASURE scroll 40 ×20: frame median 3.6, p90 6.0, max 7.2 | settled median 3.7, p90 6.0, max 7.2 ms
+> measure 20 scroll 40  [492 ms]
+MEASURE menu Side by Side ×1: frame median 72.0, p90 72.0, max 72.0 | settled median 72.0, p90 72.0, max 72.0 ms
+> measure 1 menu Side by Side  [93 ms]
+MEASURE menu Unified ×1: frame median 30.5, p90 30.5, max 30.5 | settled median 30.5, p90 30.5, max 30.5 ms
+> measure 1 menu Unified  [51 ms]
+MEASURE menu Older Commit ×1: frame median 6.1, p90 6.1, max 6.1 | settled median 117.9, p90 117.9, max 117.9 ms
+> measure 1 menu Older Commit  [139 ms]
+MEASURE menu Newer Commit ×1: frame median 3.4, p90 3.4, max 3.4 | settled median 305.9, p90 305.9, max 305.9 ms
+> measure 1 menu Newer Commit  [326 ms]
+MEASURE menu All Commits ×1: frame median 0.0, p90 0.0, max 0.0 | settled median 0.1, p90 0.1, max 0.1 ms
+> measure 1 menu All Commits  [21 ms]
+MEASURE key j ×3: frame median 0.6, p90 1.1, max 1.1 | settled median 0.6, p90 1.1, max 1.1 ms
+> measure 3 key j  [64 ms]
+> sleep 1000  [1000 ms]
+MARK cycle-13: 67223 ms since launch, 235 MB, at 1793998742488639744
+> mark cycle-13  [0 ms]
+MEASURE menu Next File ×5: frame median 4.5, p90 36.0, max 36.0 | settled median 12.9, p90 49.7, max 49.7 ms
+> measure 5 menu Next File  [212 ms]
+MEASURE menu Previous File ×5: frame median 4.1, p90 20.2, max 20.2 | settled median 13.5, p90 36.8, max 36.8 ms
+> measure 5 menu Previous File  [198 ms]
+MEASURE scroll 40 ×20: frame median 0.3, p90 0.6, max 0.6 | settled median 0.3, p90 0.6, max 0.6 ms
+> measure 20 scroll 40  [425 ms]
+MEASURE menu All Changes ×1: frame median 38.8, p90 38.8, max 38.8 | settled median 38.8, p90 38.8, max 38.8 ms
+> measure 1 menu All Changes  [59 ms]
+MEASURE scroll 40 ×20: frame median 2.5, p90 4.2, max 4.8 | settled median 2.5, p90 4.8, max 325.6 ms
+> measure 20 scroll 40  [798 ms]
+MEASURE menu Side by Side ×1: frame median 46.1, p90 46.1, max 46.1 | settled median 46.1, p90 46.1, max 46.1 ms
+> measure 1 menu Side by Side  [67 ms]
+MEASURE menu Unified ×1: frame median 31.4, p90 31.4, max 31.4 | settled median 31.4, p90 31.4, max 31.4 ms
+> measure 1 menu Unified  [53 ms]
+MEASURE menu Older Commit ×1: frame median 5.9, p90 5.9, max 5.9 | settled median 111.4, p90 111.4, max 111.4 ms
+> measure 1 menu Older Commit  [131 ms]
+MEASURE menu Newer Commit ×1: frame median 3.6, p90 3.6, max 3.6 | settled median 185.8, p90 185.8, max 185.8 ms
+> measure 1 menu Newer Commit  [206 ms]
+MEASURE menu All Commits ×1: frame median 0.0, p90 0.0, max 0.0 | settled median 0.0, p90 0.0, max 0.0 ms
+> measure 1 menu All Commits  [21 ms]
+MEASURE key j ×3: frame median 0.6, p90 0.6, max 0.6 | settled median 0.6, p90 0.7, max 0.7 ms
+> measure 3 key j  [65 ms]
+> sleep 1000  [1001 ms]
+MARK cycle-14: 70468 ms since launch, 133 MB, at 1793998745733250048
+> mark cycle-14  [0 ms]
+MEASURE menu Next File ×5: frame median 4.1, p90 46.1, max 46.1 | settled median 36.7, p90 283.8, max 283.8 ms
+> measure 5 menu Next File  [500 ms]
+MEASURE menu Previous File ×5: frame median 4.4, p90 22.0, max 22.0 | settled median 34.1, p90 41.5, max 41.5 ms
+> measure 5 menu Previous File  [241 ms]
+MEASURE scroll 40 ×20: frame median 0.3, p90 0.4, max 0.5 | settled median 0.3, p90 0.4, max 0.5 ms
+> measure 20 scroll 40  [422 ms]
+MEASURE menu All Changes ×1: frame median 40.2, p90 40.2, max 40.2 | settled median 40.3, p90 40.3, max 40.3 ms
+> measure 1 menu All Changes  [61 ms]
+MEASURE scroll 40 ×20: frame median 2.8, p90 5.1, max 5.7 | settled median 2.8, p90 5.1, max 5.7 ms
+> measure 20 scroll 40  [478 ms]
+MEASURE menu Side by Side ×1: frame median 53.0, p90 53.0, max 53.0 | settled median 53.0, p90 53.0, max 53.0 ms
+> measure 1 menu Side by Side  [73 ms]
+MEASURE menu Unified ×1: frame median 34.4, p90 34.4, max 34.4 | settled median 34.4, p90 34.4, max 34.4 ms
+> measure 1 menu Unified  [56 ms]
+MEASURE menu Older Commit ×1: frame median 6.5, p90 6.5, max 6.5 | settled median 120.9, p90 120.9, max 120.9 ms
+> measure 1 menu Older Commit  [141 ms]
+MEASURE menu Newer Commit ×1: frame median 2.9, p90 2.9, max 2.9 | settled median 222.9, p90 222.9, max 222.9 ms
+> measure 1 menu Newer Commit  [243 ms]
+MEASURE menu All Commits ×1: frame median 0.0, p90 0.0, max 0.0 | settled median 0.1, p90 0.1, max 0.1 ms
+> measure 1 menu All Commits  [20 ms]
+MEASURE key j ×3: frame median 0.6, p90 0.7, max 0.7 | settled median 0.6, p90 0.7, max 0.7 ms
+> measure 3 key j  [65 ms]
+> sleep 1000  [1011 ms]
+MARK cycle-15: 73791 ms since launch, 137 MB, at 1793998749056553728
+> mark cycle-15  [0 ms]
+MEASURE menu Next File ×5: frame median 8.0, p90 41.3, max 41.3 | settled median 17.9, p90 58.9, max 58.9 ms
+> measure 5 menu Next File  [234 ms]
+MEASURE menu Previous File ×5: frame median 3.6, p90 19.2, max 19.2 | settled median 14.6, p90 33.4, max 33.4 ms
+> measure 5 menu Previous File  [191 ms]
+MEASURE scroll 40 ×20: frame median 0.2, p90 0.4, max 0.5 | settled median 0.2, p90 0.5, max 197.4 ms
+> measure 20 scroll 40  [617 ms]
+MEASURE menu All Changes ×1: frame median 20.0, p90 20.0, max 20.0 | settled median 20.0, p90 20.0, max 20.0 ms
+> measure 1 menu All Changes  [44 ms]
+MEASURE scroll 40 ×20: frame median 2.5, p90 4.3, max 4.6 | settled median 2.5, p90 4.3, max 4.6 ms
+> measure 20 scroll 40  [477 ms]
+MEASURE menu Side by Side ×1: frame median 50.9, p90 50.9, max 50.9 | settled median 50.9, p90 50.9, max 50.9 ms
+> measure 1 menu Side by Side  [71 ms]
+MEASURE menu Unified ×1: frame median 32.7, p90 32.7, max 32.7 | settled median 32.7, p90 32.7, max 32.7 ms
+> measure 1 menu Unified  [54 ms]
+MEASURE menu Older Commit ×1: frame median 5.9, p90 5.9, max 5.9 | settled median 107.9, p90 107.9, max 107.9 ms
+> measure 1 menu Older Commit  [129 ms]
+MEASURE menu Newer Commit ×1: frame median 2.7, p90 2.7, max 2.7 | settled median 368.3, p90 368.3, max 368.3 ms
+> measure 1 menu Newer Commit  [390 ms]
+MEASURE menu All Commits ×1: frame median 0.0, p90 0.0, max 0.0 | settled median 0.0, p90 0.0, max 0.0 ms
+> measure 1 menu All Commits  [21 ms]
+MEASURE key j ×3: frame median 0.5, p90 0.6, max 0.6 | settled median 0.5, p90 0.6, max 0.6 ms
+> measure 3 key j  [64 ms]
+> sleep 1000  [1001 ms]
+MARK cycle-16: 77093 ms since launch, 243 MB, at 1793998752358131968
+> mark cycle-16  [0 ms]
+MEASURE menu Next File ×5: frame median 6.7, p90 47.9, max 47.9 | settled median 34.9, p90 71.2, max 71.2 ms
+> measure 5 menu Next File  [271 ms]
+MEASURE menu Previous File ×5: frame median 3.9, p90 18.8, max 18.8 | settled median 12.7, p90 31.8, max 31.8 ms
+> measure 5 menu Previous File  [193 ms]
+MEASURE scroll 40 ×20: frame median 0.3, p90 0.6, max 0.6 | settled median 0.3, p90 0.6, max 0.7 ms
+> measure 20 scroll 40  [427 ms]
+MEASURE menu All Changes ×1: frame median 38.6, p90 38.6, max 38.6 | settled median 38.6, p90 38.6, max 38.6 ms
+> measure 1 menu All Changes  [62 ms]
+MEASURE scroll 40 ×20: frame median 2.5, p90 4.1, max 4.8 | settled median 2.6, p90 4.1, max 4.8 ms
+> measure 20 scroll 40  [473 ms]
+MEASURE menu Side by Side ×1: frame median 59.8, p90 59.8, max 59.8 | settled median 59.8, p90 59.8, max 59.8 ms
+> measure 1 menu Side by Side  [80 ms]
+MEASURE menu Unified ×1: frame median 33.0, p90 33.0, max 33.0 | settled median 270.3, p90 270.3, max 270.3 ms
+> measure 1 menu Unified  [291 ms]
+MEASURE menu Older Commit ×1: frame median 7.1, p90 7.1, max 7.1 | settled median 110.2, p90 110.2, max 110.2 ms
+> measure 1 menu Older Commit  [131 ms]
+MEASURE menu Newer Commit ×1: frame median 2.8, p90 2.8, max 2.8 | settled median 234.5, p90 234.5, max 234.5 ms
+> measure 1 menu Newer Commit  [255 ms]
+MEASURE menu All Commits ×1: frame median 0.1, p90 0.1, max 0.1 | settled median 0.1, p90 0.1, max 0.1 ms
+> measure 1 menu All Commits  [20 ms]
+MEASURE key j ×3: frame median 0.6, p90 0.6, max 0.6 | settled median 0.6, p90 0.6, max 0.6 ms
+> measure 3 key j  [65 ms]
+> sleep 1000  [1025 ms]
+MARK cycle-17: 80392 ms since launch, 141 MB, at 1793998755657850112
+> mark cycle-17  [0 ms]
+MEASURE menu Next File ×5: frame median 4.6, p90 37.3, max 37.3 | settled median 18.7, p90 54.0, max 54.0 ms
+> measure 5 menu Next File  [224 ms]
+MEASURE menu Previous File ×5: frame median 4.1, p90 18.5, max 18.5 | settled median 20.5, p90 215.7, max 215.7 ms
+> measure 5 menu Previous File  [399 ms]
+MEASURE scroll 40 ×20: frame median 0.2, p90 0.3, max 0.3 | settled median 0.2, p90 0.4, max 0.4 ms
+> measure 20 scroll 40  [419 ms]
+MEASURE menu All Changes ×1: frame median 38.3, p90 38.3, max 38.3 | settled median 38.3, p90 38.3, max 38.3 ms
+> measure 1 menu All Changes  [59 ms]
+MEASURE scroll 40 ×20: frame median 2.6, p90 5.9, max 7.2 | settled median 2.6, p90 5.9, max 7.2 ms
+> measure 20 scroll 40  [482 ms]
+MEASURE menu Side by Side ×1: frame median 51.5, p90 51.5, max 51.5 | settled median 51.5, p90 51.5, max 51.5 ms
+> measure 1 menu Side by Side  [73 ms]
+MEASURE menu Unified ×1: frame median 31.1, p90 31.1, max 31.1 | settled median 31.1, p90 31.1, max 31.1 ms
+> measure 1 menu Unified  [52 ms]
+MEASURE menu Older Commit ×1: frame median 6.2, p90 6.2, max 6.2 | settled median 111.0, p90 111.0, max 111.0 ms
+> measure 1 menu Older Commit  [131 ms]
+MEASURE menu Newer Commit ×1: frame median 3.0, p90 3.0, max 3.0 | settled median 214.8, p90 214.8, max 214.8 ms
+> measure 1 menu Newer Commit  [235 ms]
+MEASURE menu All Commits ×1: frame median 0.1, p90 0.1, max 0.1 | settled median 0.1, p90 0.1, max 0.1 ms
+> measure 1 menu All Commits  [20 ms]
+MEASURE key j ×3: frame median 0.6, p90 0.6, max 0.6 | settled median 0.6, p90 0.6, max 0.6 ms
+> measure 3 key j  [64 ms]
+> sleep 1000  [1034 ms]
+MARK cycle-18: 83591 ms since launch, 248 MB, at 1793998758856528128
+> mark cycle-18  [0 ms]
+MEASURE menu Next File ×5: frame median 4.4, p90 38.3, max 38.3 | settled median 13.9, p90 39.8, max 39.8 ms
+> measure 5 menu Next File  [200 ms]
+MEASURE menu Previous File ×5: frame median 3.8, p90 19.6, max 19.6 | settled median 7.1, p90 34.9, max 34.9 ms
+> measure 5 menu Previous File  [178 ms]
+MEASURE scroll 40 ×20: frame median 0.3, p90 0.5, max 0.5 | settled median 0.3, p90 0.6, max 0.6 ms
+> measure 20 scroll 40  [419 ms]
+MEASURE menu All Changes ×1: frame median 40.6, p90 40.6, max 40.6 | settled median 40.6, p90 40.6, max 40.6 ms
+> measure 1 menu All Changes  [62 ms]
+MEASURE scroll 40 ×20: frame median 2.0, p90 6.2, max 6.8 | settled median 2.3, p90 6.8, max 209.0 ms
+> measure 20 scroll 40  [676 ms]
+MEASURE menu Side by Side ×1: frame median 49.1, p90 49.1, max 49.1 | settled median 49.1, p90 49.1, max 49.1 ms
+> measure 1 menu Side by Side  [70 ms]
+MEASURE menu Unified ×1: frame median 31.4, p90 31.4, max 31.4 | settled median 31.4, p90 31.4, max 31.4 ms
+> measure 1 menu Unified  [53 ms]
+MEASURE menu Older Commit ×1: frame median 5.9, p90 5.9, max 5.9 | settled median 107.7, p90 107.7, max 107.7 ms
+> measure 1 menu Older Commit  [129 ms]
+MEASURE menu Newer Commit ×1: frame median 2.9, p90 2.9, max 2.9 | settled median 179.3, p90 179.3, max 179.3 ms
+> measure 1 menu Newer Commit  [200 ms]
+MEASURE menu All Commits ×1: frame median 0.0, p90 0.0, max 0.0 | settled median 0.1, p90 0.1, max 0.1 ms
+> measure 1 menu All Commits  [21 ms]
+MEASURE key j ×3: frame median 0.4, p90 0.6, max 0.6 | settled median 0.5, p90 0.6, max 0.6 ms
+> measure 3 key j  [64 ms]
+> sleep 1000  [1021 ms]
+MARK cycle-19: 86692 ms since launch, 147 MB, at 1793998761957579008
+> mark cycle-19  [0 ms]
+MEASURE menu Next File ×5: frame median 3.8, p90 28.8, max 28.8 | settled median 14.6, p90 241.4, max 241.4 ms
+> measure 5 menu Next File  [405 ms]
+MEASURE menu Previous File ×5: frame median 3.5, p90 20.5, max 20.5 | settled median 14.0, p90 35.1, max 35.1 ms
+> measure 5 menu Previous File  [189 ms]
+MEASURE scroll 40 ×20: frame median 0.3, p90 0.4, max 0.4 | settled median 0.3, p90 0.4, max 0.4 ms
+> measure 20 scroll 40  [420 ms]
+MEASURE menu All Changes ×1: frame median 40.7, p90 40.7, max 40.7 | settled median 40.7, p90 40.7, max 40.7 ms
+> measure 1 menu All Changes  [61 ms]
+MEASURE scroll 40 ×20: frame median 2.5, p90 5.1, max 6.8 | settled median 2.5, p90 5.1, max 6.8 ms
+> measure 20 scroll 40  [480 ms]
+MEASURE menu Side by Side ×1: frame median 51.1, p90 51.1, max 51.1 | settled median 51.1, p90 51.1, max 51.1 ms
+> measure 1 menu Side by Side  [72 ms]
+MEASURE menu Unified ×1: frame median 31.7, p90 31.7, max 31.7 | settled median 31.8, p90 31.8, max 31.8 ms
+> measure 1 menu Unified  [53 ms]
+MEASURE menu Older Commit ×1: frame median 6.0, p90 6.0, max 6.0 | settled median 170.6, p90 170.6, max 170.6 ms
+> measure 1 menu Older Commit  [192 ms]
+MEASURE menu Newer Commit ×1: frame median 3.1, p90 3.1, max 3.1 | settled median 261.1, p90 261.1, max 261.1 ms
+> measure 1 menu Newer Commit  [281 ms]
+MEASURE menu All Commits ×1: frame median 0.0, p90 0.0, max 0.0 | settled median 0.0, p90 0.0, max 0.0 ms
+> measure 1 menu All Commits  [21 ms]
+MEASURE key j ×3: frame median 0.6, p90 0.7, max 0.7 | settled median 0.6, p90 0.7, max 0.7 ms
+> measure 3 key j  [64 ms]
+> sleep 1000  [1055 ms]
+MARK cycle-20: 89992 ms since launch, 149 MB, at 1793998765257116928
+> mark cycle-20  [0 ms]
+MEASURE menu Next File ×5: frame median 4.5, p90 35.5, max 35.5 | settled median 15.8, p90 50.8, max 50.8 ms
+> measure 5 menu Next File  [213 ms]
+MEASURE menu Previous File ×5: frame median 3.8, p90 20.5, max 20.5 | settled median 13.0, p90 34.3, max 34.3 ms
+> measure 5 menu Previous File  [200 ms]
+MEASURE scroll 40 ×20: frame median 0.1, p90 0.4, max 0.5 | settled median 0.1, p90 0.6, max 202.0 ms
+> measure 20 scroll 40  [627 ms]
+MEASURE menu All Changes ×1: frame median 34.7, p90 34.7, max 34.7 | settled median 34.7, p90 34.7, max 34.7 ms
+> measure 1 menu All Changes  [55 ms]
+MEASURE scroll 40 ×20: frame median 3.0, p90 5.2, max 5.6 | settled median 3.0, p90 5.2, max 5.7 ms
+> measure 20 scroll 40  [483 ms]
+MEASURE menu Side by Side ×1: frame median 61.5, p90 61.5, max 61.5 | settled median 61.5, p90 61.5, max 61.5 ms
+> measure 1 menu Side by Side  [83 ms]
+MEASURE menu Unified ×1: frame median 31.4, p90 31.4, max 31.4 | settled median 31.4, p90 31.4, max 31.4 ms
+> measure 1 menu Unified  [52 ms]
+MEASURE menu Older Commit ×1: frame median 5.8, p90 5.8, max 5.8 | settled median 126.6, p90 126.6, max 126.6 ms
+> measure 1 menu Older Commit  [148 ms]
+MEASURE menu Newer Commit ×1: frame median 3.2, p90 3.2, max 3.2 | settled median 175.2, p90 175.2, max 175.2 ms
+> measure 1 menu Newer Commit  [196 ms]
+MEASURE menu All Commits ×1: frame median 0.1, p90 0.1, max 0.1 | settled median 0.1, p90 0.1, max 0.1 ms
+> measure 1 menu All Commits  [20 ms]
+MEASURE key j ×3: frame median 1.0, p90 7.1, max 7.1 | settled median 1.0, p90 208.0, max 208.0 ms
+> measure 3 key j  [275 ms]
+> sleep 1000  [1038 ms]
+MARK cycle-21: 93391 ms since launch, 270 MB, at 1793998768655961088
+> mark cycle-21  [0 ms]
+MEASURE menu Next File ×5: frame median 0.2, p90 0.5, max 0.5 | settled median 0.3, p90 0.6, max 0.6 ms
+> measure 5 menu Next File  [106 ms]
+MEASURE menu Previous File ×5: frame median 0.3, p90 0.4, max 0.4 | settled median 0.4, p90 0.5, max 0.5 ms
+> measure 5 menu Previous File  [105 ms]
+MEASURE scroll 40 ×20: frame median 0.4, p90 0.5, max 0.7 | settled median 0.4, p90 0.6, max 0.7 ms
+> measure 20 scroll 40  [429 ms]
+MEASURE menu All Changes ×1: frame median 16.0, p90 16.0, max 16.0 | settled median 16.0, p90 16.0, max 16.0 ms
+> measure 1 menu All Changes  [37 ms]
+MEASURE scroll 40 ×20: frame median 0.3, p90 0.4, max 0.4 | settled median 0.3, p90 0.4, max 0.4 ms
+> measure 20 scroll 40  [424 ms]
+MEASURE menu Side by Side ×1: frame median 25.8, p90 25.8, max 25.8 | settled median 25.8, p90 25.8, max 25.8 ms
+> measure 1 menu Side by Side  [46 ms]
+MEASURE menu Unified ×1: frame median 8.8, p90 8.8, max 8.8 | settled median 8.8, p90 8.8, max 8.8 ms
+> measure 1 menu Unified  [30 ms]
+MEASURE menu Older Commit ×1: frame median 3.4, p90 3.4, max 3.4 | settled median 239.1, p90 239.1, max 239.1 ms
+> measure 1 menu Older Commit  [260 ms]
+MEASURE menu Newer Commit ×1: frame median 3.1, p90 3.1, max 3.1 | settled median 186.0, p90 186.0, max 186.0 ms
+> measure 1 menu Newer Commit  [206 ms]
+MEASURE menu All Commits ×1: frame median 0.0, p90 0.0, max 0.0 | settled median 0.0, p90 0.0, max 0.0 ms
+> measure 1 menu All Commits  [20 ms]
+MEASURE key j ×3: frame median 0.8, p90 0.9, max 0.9 | settled median 0.8, p90 0.9, max 0.9 ms
+> measure 3 key j  [64 ms]
+> sleep 1000  [1005 ms]
+MARK cycle-22: 96132 ms since launch, 146 MB, at 1793998771397436160
+> mark cycle-22  [0 ms]
+MEASURE menu Next File ×5: frame median 4.9, p90 35.7, max 35.7 | settled median 21.3, p90 54.5, max 54.5 ms
+> measure 5 menu Next File  [233 ms]
+MEASURE menu Previous File ×5: frame median 4.2, p90 20.1, max 20.1 | settled median 21.4, p90 26.1, max 26.1 ms
+> measure 5 menu Previous File  [199 ms]
+MEASURE scroll 40 ×20: frame median 0.1, p90 0.2, max 0.3 | settled median 0.1, p90 0.3, max 211.9 ms
+> measure 20 scroll 40  [635 ms]
+MEASURE menu All Changes ×1: frame median 36.3, p90 36.3, max 36.3 | settled median 36.3, p90 36.3, max 36.3 ms
+> measure 1 menu All Changes  [57 ms]
+MEASURE scroll 40 ×20: frame median 2.4, p90 4.1, max 4.7 | settled median 2.4, p90 4.1, max 4.7 ms
+> measure 20 scroll 40  [469 ms]
+MEASURE menu Side by Side ×1: frame median 45.8, p90 45.8, max 45.8 | settled median 45.8, p90 45.8, max 45.8 ms
+> measure 1 menu Side by Side  [67 ms]
+MEASURE menu Unified ×1: frame median 32.1, p90 32.1, max 32.1 | settled median 32.1, p90 32.1, max 32.1 ms
+> measure 1 menu Unified  [53 ms]
+MEASURE menu Older Commit ×1: frame median 5.9, p90 5.9, max 5.9 | settled median 106.1, p90 106.1, max 106.1 ms
+> measure 1 menu Older Commit  [126 ms]
+MEASURE menu Newer Commit ×1: frame median 2.9, p90 2.9, max 2.9 | settled median 170.9, p90 170.9, max 170.9 ms
+> measure 1 menu Newer Commit  [191 ms]
+MEASURE menu All Commits ×1: frame median 0.1, p90 0.1, max 0.1 | settled median 0.1, p90 0.1, max 0.1 ms
+> measure 1 menu All Commits  [21 ms]
+MEASURE key j ×3: frame median 0.8, p90 0.9, max 0.9 | settled median 0.8, p90 0.9, max 0.9 ms
+> measure 3 key j  [65 ms]
+> sleep 1000  [1022 ms]
+MARK cycle-23: 99279 ms since launch, 260 MB, at 1793998774544684032
+> mark cycle-23  [0 ms]
+MEASURE menu Next File ×5: frame median 4.7, p90 31.6, max 31.6 | settled median 19.1, p90 33.5, max 33.5 ms
+> measure 5 menu Next File  [214 ms]
+MEASURE menu Previous File ×5: frame median 4.5, p90 19.5, max 19.5 | settled median 14.0, p90 34.9, max 34.9 ms
+> measure 5 menu Previous File  [193 ms]
+MEASURE scroll 40 ×20: frame median 0.3, p90 0.5, max 0.6 | settled median 0.3, p90 0.6, max 0.6 ms
+> measure 20 scroll 40  [423 ms]
+MEASURE menu All Changes ×1: frame median 35.0, p90 35.0, max 35.0 | settled median 35.1, p90 35.1, max 35.1 ms
+> measure 1 menu All Changes  [55 ms]
+MEASURE scroll 40 ×20: frame median 2.6, p90 4.6, max 5.3 | settled median 2.6, p90 4.6, max 5.3 ms
+> measure 20 scroll 40  [486 ms]
+MEASURE menu Side by Side ×1: frame median 44.0, p90 44.0, max 44.0 | settled median 44.0, p90 44.0, max 44.0 ms
+> measure 1 menu Side by Side  [64 ms]
+MEASURE menu Unified ×1: frame median 32.6, p90 32.6, max 32.6 | settled median 32.6, p90 32.6, max 32.6 ms
+> measure 1 menu Unified  [53 ms]
+MEASURE menu Older Commit ×1: frame median 6.3, p90 6.3, max 6.3 | settled median 115.2, p90 115.2, max 115.2 ms
+> measure 1 menu Older Commit  [135 ms]
+MEASURE menu Newer Commit ×1: frame median 3.1, p90 3.1, max 3.1 | settled median 188.8, p90 188.8, max 188.8 ms
+> measure 1 menu Newer Commit  [210 ms]
+MEASURE menu All Commits ×1: frame median 0.0, p90 0.0, max 0.0 | settled median 0.1, p90 0.1, max 0.1 ms
+> measure 1 menu All Commits  [20 ms]
+MEASURE key j ×3: frame median 0.8, p90 0.9, max 0.9 | settled median 0.9, p90 0.9, max 0.9 ms
+> measure 3 key j  [63 ms]
+> sleep 1000  [1004 ms]
+MARK cycle-24: 102206 ms since launch, 272 MB, at 1793998777471742208
+> mark cycle-24  [0 ms]
+MEASURE menu Next File ×5: frame median 5.3, p90 42.8, max 42.8 | settled median 29.0, p90 45.2, max 45.2 ms
+> measure 5 menu Next File  [257 ms]
+MEASURE menu Previous File ×5: frame median 3.9, p90 21.4, max 21.4 | settled median 28.4, p90 42.8, max 42.8 ms
+> measure 5 menu Previous File  [244 ms]
+MEASURE scroll 40 ×20: frame median 0.2, p90 0.4, max 1.1 | settled median 0.2, p90 1.1, max 376.0 ms
+> measure 20 scroll 40  [803 ms]
+MEASURE menu All Changes ×1: frame median 40.8, p90 40.8, max 40.8 | settled median 40.9, p90 40.9, max 40.9 ms
+> measure 1 menu All Changes  [61 ms]
+MEASURE scroll 40 ×20: frame median 3.2, p90 5.3, max 6.0 | settled median 3.2, p90 5.3, max 6.0 ms
+> measure 20 scroll 40  [482 ms]
+MEASURE menu Side by Side ×1: frame median 66.4, p90 66.4, max 66.4 | settled median 66.4, p90 66.4, max 66.4 ms
+> measure 1 menu Side by Side  [86 ms]
+MEASURE menu Unified ×1: frame median 32.3, p90 32.3, max 32.3 | settled median 32.3, p90 32.3, max 32.3 ms
+> measure 1 menu Unified  [53 ms]
+MEASURE menu Older Commit ×1: frame median 5.9, p90 5.9, max 5.9 | settled median 183.6, p90 183.6, max 183.6 ms
+> measure 1 menu Older Commit  [204 ms]
+MEASURE menu Newer Commit ×1: frame median 3.3, p90 3.3, max 3.3 | settled median 353.6, p90 353.6, max 353.6 ms
+> measure 1 menu Newer Commit  [374 ms]
+MEASURE menu All Commits ×1: frame median 0.0, p90 0.0, max 0.0 | settled median 0.1, p90 0.1, max 0.1 ms
+> measure 1 menu All Commits  [20 ms]
+MEASURE key j ×3: frame median 0.6, p90 0.7, max 0.7 | settled median 0.7, p90 231.2, max 231.2 ms
+> measure 3 key j  [295 ms]
+> sleep 1000  [1001 ms]
+MARK cycle-25: 106096 ms since launch, 248 MB, at 1793998781361320960
+> mark cycle-25  [0 ms]
+MEASURE menu Next File ×5: frame median 5.6, p90 44.3, max 44.3 | settled median 13.9, p90 64.4, max 64.4 ms
+> measure 5 menu Next File  [224 ms]
+MEASURE menu Previous File ×5: frame median 3.7, p90 19.4, max 19.4 | settled median 12.6, p90 46.7, max 46.7 ms
+> measure 5 menu Previous File  [204 ms]
+MEASURE scroll 40 ×20: frame median 0.2, p90 0.6, max 0.7 | settled median 0.2, p90 0.6, max 207.8 ms
+> measure 20 scroll 40  [628 ms]
+MEASURE menu All Changes ×1: frame median 23.4, p90 23.4, max 23.4 | settled median 23.4, p90 23.4, max 23.4 ms
+> measure 1 menu All Changes  [47 ms]
+MEASURE scroll 40 ×20: frame median 2.6, p90 4.4, max 4.9 | settled median 2.6, p90 4.4, max 4.9 ms
+> measure 20 scroll 40  [476 ms]
+MEASURE menu Side by Side ×1: frame median 48.7, p90 48.7, max 48.7 | settled median 48.8, p90 48.8, max 48.8 ms
+> measure 1 menu Side by Side  [69 ms]
+MEASURE menu Unified ×1: frame median 36.2, p90 36.2, max 36.2 | settled median 36.2, p90 36.2, max 36.2 ms
+> measure 1 menu Unified  [56 ms]
+MEASURE menu Older Commit ×1: frame median 7.2, p90 7.2, max 7.2 | settled median 202.9, p90 202.9, max 202.9 ms
+> measure 1 menu Older Commit  [223 ms]
+MEASURE menu Newer Commit ×1: frame median 3.7, p90 3.7, max 3.7 | settled median 321.5, p90 321.5, max 321.5 ms
+> measure 1 menu Newer Commit  [342 ms]
+MEASURE menu All Commits ×1: frame median 0.0, p90 0.0, max 0.0 | settled median 0.1, p90 0.1, max 0.1 ms
+> measure 1 menu All Commits  [20 ms]
+MEASURE key j ×3: frame median 0.6, p90 0.7, max 0.7 | settled median 0.6, p90 0.7, max 0.7 ms
+> measure 3 key j  [64 ms]
+> sleep 1000  [1006 ms]
+> sleep 2000  [2026 ms]
+MARK checkpoint-25: 111490 ms since launch, 257 MB, at 1793998786755831040
+> mark checkpoint-25  [0 ms]

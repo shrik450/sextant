@@ -1,0 +1,4 @@
+commit 07f9ee6311dc52accd41472276bf3ec3f57bd785 
+app /Users/shrik450/.herdr/worktrees/review-ui/perf/.build/perf/Sextant.app (com.shrikanthup.Sextant.sextant-step0)
+machine Apple M5 Pro, 18 cores, macOS 26.6
+started Fri Nov  6 15:47:35 EST 2026 load { 8.59 8.54 10.72 }

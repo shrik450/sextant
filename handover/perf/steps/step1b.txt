@@ -1,0 +1,13 @@
+You are sextant-step1b. Your task is the second part of step 1 of the performance plan: git correctness. Steps 0 and 1a are on the branch; read /Users/shrik450/Developer/review-ui/scratch/perf/steps/0.md and 1a.md first (how to run Tests/perf/run.sh, and what 1a found).
+
+First, a harness fix: the reading scenario logs about 67 beeps on every build (see 1a.md); fix the script so the quick tier runs clean, in its own commit.
+
+Then fix, each in its own commit, after reproducing it on the branch with a test (integration tests against real git repositories built in the test, per the existing GitIntegrationTests; unit tests only for pure functions):
+1. Merge conflicts: `git diff --raw -p` emits a combined `::` raw header (k+1 modes and oids, status after them) and no patch for an unmerged path. parseRawMeta misreads it and parseRawPatchZ gives the next file's patch to it, shifting every later file. Parse combined headers, mark them unmerged, and pair patches to raw entries by path, not by position. Decide how unmerged files should show (with --cc or by reading the worktree) and say what you chose.
+2. hash-object failures: `git hash-object --stdin-paths` exits 128 on a dangling symlink or a symlink to a directory (and, per Argon, a gitlink or an untracked nested repository), failing the whole diff. Hash symlinks as git does (their link text) in-process; never pass gitlinks or directories; a file deleted between listing and hashing must not fail the diff.
+3. Added files doubled: Repository.open (~line 247) expands the first diff into a whole file even when it's added, and oldLines falls back to the new side when there's no old blob, so the file shows twice. oldLines must return nothing without an old blob; skip the expansion where the file is already whole.
+4. readWorktreeFile checks the size with lstat then reads through a symlink, bypassing the 4 MB cap, and returns the target's contents where git stores link text. Read regular files only, size-checked; symlinks as their link text.
+5. CR in patch lines: parseFilePatch keeps a trailing CR while splitLines drops it, so the same line differs by where it came from. Make them agree.
+6. Newline paths: hashObjects feeds paths line by line, and parseGrepZ splits on LF before NUL; a path containing a newline breaks both. Use NUL-separated I/O throughout.
+Also check these unverified leads from scratch/review/argon-sections/git.md while you're in this code, and fix what holds: parseBranches dropping branches whose name ends in /HEAD; CommitDetail.summary not splitting on CRLF; Resolver silently falling back when the base is beyond the 1,000-commit window.
+The Argon reports are evidence, not facts: reproduce each before fixing. Run the quick tier before and after.

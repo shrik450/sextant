@@ -1,0 +1,32 @@
+timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work
+sleep 2000
+menu Go to Anything…
+jumptype build.zig
+key cmd+return
+sleep 1500
+open /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work-wt-1
+menu Go to Anything…
+jumptype build.zig
+key cmd+return
+sleep 1500
+open /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work-wt-2
+menu Go to Anything…
+jumptype build.zig
+key cmd+return
+sleep 1500
+open /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work-wt-3
+menu Go to Anything…
+jumptype build.zig
+key cmd+return
+sleep 1500
+open /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work-wt-4
+sleep 5000
+mark panes-start
+sleep 10000
+mark panes-end
+mark churn-start
+sleep 20000
+mark churn-end
+sleep 3000
+dump /Users/shrik450/Developer/review-ui/scratch/perf/baseline/full-step1-worktrees/worktrees/run/state.json
+quit

@@ -1,0 +1,6 @@
+mark start
+timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work
+mark opened
+sleep 3000
+mark idle
+quit

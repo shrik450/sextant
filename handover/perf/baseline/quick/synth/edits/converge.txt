@@ -1,0 +1,5 @@
+edit1 converge_ms=1350 correct=1 gap_max_ms=2 states=0
+edit2 converge_ms=1259 correct=1 gap_max_ms=1 states=0
+edit3 converge_ms=1455 correct=1 gap_max_ms=1 states=0
+edit4 converge_ms=1267 correct=1 gap_max_ms=1 states=0
+edit5 converge_ms=1348 correct=1 gap_max_ms=1 states=0

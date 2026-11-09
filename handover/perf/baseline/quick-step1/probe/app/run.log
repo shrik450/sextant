@@ -1,0 +1,11 @@
+OPEN /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work: window 150, content 437, settled 736 ms, 204 MB
+> timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work  [736 ms]
+> sleep 1000  [1059 ms]
+MARK stall-start: 1936 ms since launch, 105 MB, 832 ms CPU, at 1794028009764465920
+> mark stall-start  [0 ms]
+> stall 2000  [2000 ms]
+MARK stall-end: 3938 ms since launch, 100 MB, 844 ms CPU, at 1794028011765965824
+> mark stall-end  [0 ms]
+> sleep 500  [525 ms]
+MARK kill: 4464 ms since launch, 100 MB, 849 ms CPU, at 1794028012292491008
+> mark kill  [0 ms]

@@ -1,0 +1,6 @@
+probe	selftest_short_stall_ms	307.0
+probe	selftest_stall_ms	2006.3
+probe	selftest_killed_stall_ms	1571.3
+probe	app_stall_ms	2002.0
+probe	app_killed_stall_ms	2068
+probe	scenario_s	12

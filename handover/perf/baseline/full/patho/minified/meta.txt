@@ -1,0 +1,6 @@
+commit 07f9ee6311dc52accd41472276bf3ec3f57bd785 
+start 1793998604 load { 5.72 6.95 8.79 }
+options probe=1 malloc=0 timeout=90 background=--background
+pid 4776
+KILLED footprint over 4096 MB
+end 1793998612 load { 5.34 6.85 8.74 }

@@ -1,0 +1,2 @@
+/Users/shrik450/.herdr/worktrees/review-ui/perf/Tests/perf/scenarios/soak.sh: line 51: /Users/shrik450/Developer/review-ui/scratch/perf/baseline/rerun/soak/run/checkpoints.txt: No such file or directory
+awk: fatal: cannot open file `/Users/shrik450/Developer/review-ui/scratch/perf/baseline/rerun/soak/run/checkpoints.txt' for reading: No such file or directory

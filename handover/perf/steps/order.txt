@@ -1,0 +1,6 @@
+Step 1 done (1a-1f, 98c17f9..2208911): see 1a.md-1f.md.
+Step 2 split:
+2a done (6ac0f0f..10f9999) lifetimes (full-tier baseline + forward guard first; Git.run cancellation/bounds/threads, ObjectReader lifetime, bounded+cancelled neighbours, pane/session lifetimes, byte-bounded LRU)
+2b PARTIAL (83d0631, cba3ba3; stopped on usage) content admission (size/line/width caps, plain text above ~2 MB or a ~20k-unit line, bounded preview above ~50 MB/1M lines, cancellable parsing, lazy untracked reads, bounded grep, query captures)
+Then steps 3-8 per plan.md.
+2b left: release tests; quick/neighbours/linux after; item 3 lazy untracked reads; item 4 bounded grep/Find/lookups; paneclose scene 402 CPU-ms after close (expects <200). See 2b.md.

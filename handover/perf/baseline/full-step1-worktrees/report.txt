@@ -1,0 +1,7 @@
+worktrees   came_forward                                  0 <= 0          runs   PASS
+worktrees   beeps                                         0 <= 0          beeps  PASS
+worktrees   churn_status_elsewhere                        0 <= 0          procs  PASS
+worktrees   idle_gits                                     - <= 0          procs  MISSING
+worktrees   churn_max_stall_ms                            - <= 16.7       ms     MISSING
+
+3 pass, 0 fail, 2 missing

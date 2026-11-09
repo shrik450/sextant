@@ -1,0 +1,8 @@
+timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work
+sleep 1000
+mark stall-start
+stall 2000
+mark stall-end
+sleep 500
+mark kill
+stall 10000

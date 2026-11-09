@@ -1,0 +1,20 @@
+timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/linux HEAD~30..HEAD
+sleep 2000
+mark index-start
+menu Go to Anything…
+waitindex 600000
+mark index-end
+sleep 2000
+mark typing-start
+jumptype kmalloc_node
+mark typing-end
+key esc
+sleep 500
+menu Go to Anything…
+sleep 1000
+mark burst-start
+jumpburst kmalloc_node
+mark burst-end
+key esc
+sleep 500
+quit

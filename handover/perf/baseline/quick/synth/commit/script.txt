@@ -1,0 +1,8 @@
+timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/synth HEAD~1..HEAD
+sleep 2000
+mark commit-start
+measure 2 menu Mark File as Reviewed
+measure 1 menu All Changes
+measure 2 menu Mark File as Reviewed
+mark commit-end
+quit

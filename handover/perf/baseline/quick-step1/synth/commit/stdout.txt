@@ -1,0 +1,13 @@
+OPEN /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/synth HEAD~1..HEAD: window 253, content 534, settled 1335 ms, 250 MB
+> timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/synth HEAD~1..HEAD  [1335 ms]
+> sleep 2000  [2006 ms]
+MARK commit-start: 3515 ms since launch, 126 MB, 1270 ms CPU, at 1794028262819288064
+> mark commit-start  [1 ms]
+MEASURE menu Mark File as Reviewed ×2: frame median 581.2, p90 581.2, max 581.2 | settled median 610.6, p90 610.6, max 610.6 ms
+> measure 2 menu Mark File as Reviewed  [1229 ms]
+MEASURE menu All Changes ×1: frame median 55.8, p90 55.8, max 55.8 | settled median 55.8, p90 55.8, max 55.8 ms
+> measure 1 menu All Changes  [78 ms]
+MEASURE menu Mark File as Reviewed ×2: frame median 2412.1, p90 2412.1, max 2412.1 | settled median 2412.3, p90 2412.3, max 2412.3 ms
+> measure 2 menu Mark File as Reviewed  [4784 ms]
+MARK commit-end: 9608 ms since launch, 158 MB, 7339 ms CPU, at 1794028268912870912
+> mark commit-end  [0 ms]

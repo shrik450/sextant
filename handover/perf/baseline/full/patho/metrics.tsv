@@ -1,0 +1,19 @@
+patho	megaline_finished	0
+patho	megaline_show_frame_ms	2.4
+patho	megaline_show_settled_ms	618.2
+patho	megaline_footprint_growth_mb	4013
+patho	megaline_open_cpu_ms	13503
+patho	megaline_open_max_stall_ms	518.8
+patho	million_finished	0
+patho	million_show_frame_ms	
+patho	million_show_settled_ms	
+patho	million_footprint_growth_mb	3955
+patho	million_open_cpu_ms	12651
+patho	million_open_max_stall_ms	38.5
+patho	minified_finished	0
+patho	minified_show_frame_ms	
+patho	minified_show_settled_ms	
+patho	minified_footprint_growth_mb	4095
+patho	minified_open_cpu_ms	12696
+patho	minified_open_max_stall_ms	2308.3
+patho	scenario_s	21

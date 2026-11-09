@@ -1,0 +1,20 @@
+timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work 
+sleep 2000
+mark index-start
+menu Go to Anything…
+waitindex 120000
+mark index-end
+sleep 2000
+mark typing-start
+jumptype renderthread
+mark typing-end
+key esc
+sleep 500
+menu Go to Anything…
+sleep 1000
+mark burst-start
+jumpburst renderthread
+mark burst-end
+key esc
+sleep 500
+quit

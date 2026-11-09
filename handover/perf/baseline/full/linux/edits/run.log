@@ -1,0 +1,6 @@
+OPEN /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/linux: window 157, content 5947, settled 6848 ms, 223 MB
+> timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/linux  [6848 ms]
+> watch /Users/shrik450/Developer/review-ui/scratch/perf/baseline/full/linux/edits/states.txt  [0 ms]
+> sleep 5000  [5004 ms]
+MARK edits-start: 11953 ms since launch, 100 MB, at 1793998430533679872
+> mark edits-start  [0 ms]

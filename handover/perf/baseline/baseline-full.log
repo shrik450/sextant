@@ -1,0 +1,30 @@
+fetching git input 'git+file:///Users/shrik450/.herdr/worktrees/review-ui/perf'
+== probe
+   12 s
+== launch
+   18 s
+== idle
+   59 s
+== reading
+   20 s
+== bigfile
+   5 s
+== overview
+   34 s
+== agents
+   98 s
+== synth
+   67 s
+== goto-work
+   22 s
+== linux
+   61 s
+== goto-linux
+   100 s
+== lookups
+   40 s
+== patho
+   21 s
+== worktrees
+   61 s
+== soak

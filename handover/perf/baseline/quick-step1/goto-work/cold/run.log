@@ -1,0 +1,41 @@
+OPEN /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work: window 173, content 347, settled 461 ms, 220 MB
+> timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work  [461 ms]
+> sleep 2000  [2093 ms]
+MARK index-start: 2759 ms since launch, 103 MB, 853 ms CPU, at 1794028329864040960
+> mark index-start  [0 ms]
+> menu Go to Anything…  [330 ms]
+INDEXED 1699 ms, 42178 definitions, 147 MB
+> waitindex 120000  [1698 ms]
+MARK index-end: 4790 ms since launch, 147 MB, 5745 ms CPU, at 1794028331894633984
+> mark index-end  [0 ms]
+> sleep 2000  [2065 ms]
+MARK typing-start: 6855 ms since launch, 155 MB, 5778 ms CPU, at 1794028333960270848
+> mark typing-start  [0 ms]
+JUMPKEY r: key 14.2, results 95.2 ms
+JUMPKEY e: key 1.1, results 75.7 ms
+JUMPKEY n: key 0.7, results 95.6 ms
+JUMPKEY d: key 0.7, results 95.1 ms
+JUMPKEY e: key 0.6, results 94.3 ms
+JUMPKEY r: key 0.7, results 95.0 ms
+JUMPKEY t: key 0.6, results 85.6 ms
+JUMPKEY h: key 0.7, results 103.2 ms
+JUMPKEY r: key 0.6, results 95.2 ms
+JUMPKEY e: key 0.7, results 85.3 ms
+JUMPKEY a: key 0.7, results 92.4 ms
+JUMPKEY d: key 0.6, results 98.8 ms
+JUMP renderthread ×12: key median 0.7, p90 1.1, max 14.2 | results median 95.1, p90 98.8, max 103.2 ms
+> jumptype renderthread  [1113 ms]
+MARK typing-end: 7969 ms since launch, 162 MB, 6989 ms CPU, at 1794028335073905920
+> mark typing-end  [0 ms]
+> key esc  [276 ms]
+> sleep 500  [512 ms]
+> menu Go to Anything…  [281 ms]
+> sleep 1000  [1012 ms]
+MARK burst-start: 10053 ms since launch, 161 MB, 7084 ms CPU, at 1794028337158054912
+> mark burst-start  [0 ms]
+JUMPBURST renderthread: results 147.2 ms
+> jumpburst renderthread  [147 ms]
+MARK burst-end: 10201 ms since launch, 169 MB, 8349 ms CPU, at 1794028337306274816
+> mark burst-end  [0 ms]
+> key esc  [278 ms]
+> sleep 500  [520 ms]

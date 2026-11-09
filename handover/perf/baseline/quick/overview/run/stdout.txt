@@ -1,0 +1,27 @@
+OPEN /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/many HEAD~1..HEAD: window 160, content 670, settled 863 ms, 362 MB
+> timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/many HEAD~1..HEAD  [863 ms]
+> sleep 2000  [2065 ms]
+MARK overview-start: 3053 ms since launch, 237 MB, at 1793997810757282048
+> mark overview-start  [0 ms]
+MEASURE menu All Changes ×1: frame median 352.5, p90 352.5, max 352.5 | settled median 369.9, p90 369.9, max 369.9 ms
+> measure 1 menu All Changes  [392 ms]
+> sleep 1000  [1007 ms]
+MEASURE scroll 40 ×100: frame median 4.4, p90 21.5, max 25.0 | settled median 4.4, p90 21.5, max 25.1 ms
+> measure 100 scroll 40  [3126 ms]
+MEASURE menu Mark File as Reviewed ×2: frame median 3001.6, p90 3001.6, max 3001.6 | settled median 3001.7, p90 3001.7, max 3001.7 ms
+> measure 2 menu Mark File as Reviewed  [6031 ms]
+MEASURE menu Show Nearby Unchanged Lines ×2: frame median 3014.3, p90 3014.3, max 3014.3 | settled median 3014.4, p90 3014.4, max 3014.4 ms
+> measure 2 menu Show Nearby Unchanged Lines  [6051 ms]
+MEASURE note A note from the benchmark ×2: frame median 3061.0, p90 3061.0, max 3061.0 | settled median 3061.0, p90 3061.0, max 3061.0 ms
+> measure 2 note A note from the benchmark  [6096 ms]
+MEASURE menu Bigger ×1: frame median 3099.1, p90 3099.1, max 3099.1 | settled median 3099.2, p90 3099.2, max 3099.2 ms
+> measure 1 menu Bigger  [3123 ms]
+MEASURE menu Smaller ×1: frame median 3069.5, p90 3069.5, max 3069.5 | settled median 3069.5, p90 3069.5, max 3069.5 ms
+> measure 1 menu Smaller  [3099 ms]
+MEASURE menu Side by Side ×1: frame median 619.1, p90 619.1, max 619.1 | settled median 619.1, p90 619.1, max 619.1 ms
+> measure 1 menu Side by Side  [640 ms]
+MEASURE menu Unified ×1: frame median 353.1, p90 353.1, max 353.1 | settled median 353.1, p90 353.1, max 353.1 ms
+> measure 1 menu Unified  [375 ms]
+MARK overview-end: 33003 ms since launch, 574 MB, at 1793997840706806016
+> mark overview-end  [0 ms]
+> sleep 1000  [1003 ms]

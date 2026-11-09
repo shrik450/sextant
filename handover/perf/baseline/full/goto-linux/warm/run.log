@@ -1,0 +1,41 @@
+OPEN /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/linux HEAD~30..HEAD: window 173, content 6326, settled 6972 ms, 242 MB
+> timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/linux HEAD~30..HEAD  [6972 ms]
+> sleep 2000  [2125 ms]
+MARK index-start: 9223 ms since launch, 239 MB, at 1793998525764663040
+> mark index-start  [0 ms]
+> menu Go to Anything…  [298 ms]
+INDEXED 888 ms, 1441573 definitions, 694 MB
+> waitindex 600000  [887 ms]
+MARK index-end: 10410 ms since launch, 694 MB, at 1793998526951799808
+> mark index-end  [0 ms]
+> sleep 2000  [2009 ms]
+MARK typing-start: 12420 ms since launch, 692 MB, at 1793998528961970944
+> mark typing-start  [0 ms]
+JUMPKEY k: key 13.2, results 1211.2 ms
+JUMPKEY m: key 2.7, results 1372.3 ms
+JUMPKEY a: key 0.6, results 1347.6 ms
+JUMPKEY l: key 0.6, results 1349.5 ms
+JUMPKEY l: key 0.7, results 1405.1 ms
+JUMPKEY o: key 0.6, results 1386.6 ms
+JUMPKEY c: key 0.7, results 1386.9 ms
+JUMPKEY _: key 0.6, results 1370.3 ms
+JUMPKEY n: key 0.6, results 1379.5 ms
+JUMPKEY o: key 0.6, results 1591.9 ms
+JUMPKEY d: key 0.7, results 1632.3 ms
+JUMPKEY e: key 0.7, results 1658.3 ms
+JUMP kmalloc_node ×12: key median 0.7, p90 2.7, max 13.2 | results median 1386.6, p90 1632.3, max 1658.3 ms
+> jumptype kmalloc_node  [17093 ms]
+MARK typing-end: 29515 ms since launch, 684 MB, at 1793998546056399872
+> mark typing-end  [0 ms]
+> key esc  [277 ms]
+> sleep 500  [530 ms]
+> menu Go to Anything…  [285 ms]
+> sleep 1000  [1008 ms]
+MARK burst-start: 31617 ms since launch, 684 MB, at 1793998548158756864
+> mark burst-start  [0 ms]
+JUMPBURST kmalloc_node: results 1946.1 ms
+> jumpburst kmalloc_node  [1946 ms]
+MARK burst-end: 33564 ms since launch, 415 MB, at 1793998550105790208
+> mark burst-end  [0 ms]
+> key esc  [275 ms]
+> sleep 500  [514 ms]

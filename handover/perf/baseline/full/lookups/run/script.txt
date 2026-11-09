@@ -1,0 +1,28 @@
+timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/linux HEAD~30..HEAD
+sleep 3000
+measure 1 menu Next File
+key w
+key w
+key w
+key w
+key w
+key w
+mark refs-start
+measure 1 menu Find References
+sleep 1500
+measure 1 menu Find References
+sleep 1500
+measure 1 menu Peek Definition
+sleep 1500
+key esc
+measure 1 menu Peek Definition
+sleep 1500
+key esc
+mark refs-end
+menu Find in Files…
+type kmalloc
+mark find-start
+key return
+sleep 8000
+mark find-end
+quit

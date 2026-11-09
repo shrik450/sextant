@@ -1,0 +1,40 @@
+OPEN /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/linux HEAD~30..HEAD: window 156, content 7455, settled 8491 ms, 242 MB
+> timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/linux HEAD~30..HEAD  [8490 ms]
+> sleep 3000  [3066 ms]
+MARK reading-start: 11662 ms since launch, 146 MB, at 1793998404764528896
+> mark reading-start  [0 ms]
+MEASURE menu Next File ×10: frame median 5.7, p90 54.0, max 54.0 | settled median 31.8, p90 82.0, max 82.0 ms
+> measure 10 menu Next File  [534 ms]
+MEASURE menu Mark File as Reviewed ×2: frame median 167.7, p90 167.7, max 167.7 | settled median 196.0, p90 196.0, max 196.0 ms
+> measure 2 menu Mark File as Reviewed  [430 ms]
+MEASURE menu Side by Side ×1: frame median 1.9, p90 1.9, max 1.9 | settled median 1.9, p90 1.9, max 1.9 ms
+> measure 1 menu Side by Side  [22 ms]
+MEASURE menu Unified ×1: frame median 1.5, p90 1.5, max 1.5 | settled median 1.5, p90 1.5, max 1.5 ms
+> measure 1 menu Unified  [23 ms]
+MEASURE menu All Changes ×1: frame median 92.7, p90 92.7, max 92.7 | settled median 92.8, p90 92.8, max 92.8 ms
+> measure 1 menu All Changes  [114 ms]
+> sleep 500  [532 ms]
+MEASURE scroll 40 ×100: frame median 7.0, p90 10.7, max 13.7 | settled median 7.1, p90 10.7, max 13.7 ms
+> measure 100 scroll 40  [2763 ms]
+MEASURE menu Mark File as Reviewed ×2: frame median 300.2, p90 300.2, max 300.2 | settled median 300.4, p90 300.4, max 300.4 ms
+> measure 2 menu Mark File as Reviewed  [640 ms]
+MEASURE menu Side by Side ×1: frame median 188.3, p90 188.3, max 188.3 | settled median 188.3, p90 188.3, max 188.3 ms
+> measure 1 menu Side by Side  [209 ms]
+MEASURE menu Unified ×1: frame median 133.4, p90 133.4, max 133.4 | settled median 133.4, p90 133.4, max 133.4 ms
+> measure 1 menu Unified  [154 ms]
+MEASURE menu Older Commit ×3: frame median 5.1, p90 6.0, max 6.0 | settled median 823.9, p90 915.6, max 915.6 ms
+> measure 3 menu Older Commit  [2430 ms]
+MEASURE menu Newer Commit ×2: frame median 3.5, p90 3.5, max 3.5 | settled median 785.9, p90 785.9, max 785.9 ms
+> measure 2 menu Newer Commit  [1437 ms]
+MEASURE menu All Commits ×1: frame median 5.1, p90 5.1, max 5.1 | settled median 925.3, p90 925.3, max 925.3 ms
+> measure 1 menu All Commits  [945 ms]
+MARK reading-end: 21903 ms since launch, 323 MB, at 1793998415005410048
+> mark reading-end  [0 ms]
+> sleep 2000  [2055 ms]
+MARK refresh-start: 23960 ms since launch, 207 MB, at 1793998417061753088
+> mark refresh-start  [0 ms]
+MEASURE menu Refresh ×3: frame median 0.0, p90 0.1, max 0.1 | settled median 0.1, p90 0.1, max 0.1 ms
+> measure 3 menu Refresh  [64 ms]
+MARK refresh-end: 24025 ms since launch, 207 MB, at 1793998417126746112
+> mark refresh-end  [0 ms]
+> sleep 1000  [1032 ms]

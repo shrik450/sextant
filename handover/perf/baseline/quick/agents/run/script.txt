@@ -1,0 +1,5 @@
+timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work
+watch /Users/shrik450/Developer/review-ui/scratch/perf/baseline/quick/agents/run/states.txt
+sleep 2000
+mark agents-start
+sleep 600000

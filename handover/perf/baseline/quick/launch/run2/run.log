@@ -1,0 +1,9 @@
+MARK start: 124 ms since launch, 13 MB, at 1793997715338496000
+> mark start  [0 ms]
+OPEN /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work: window 171, content 267, settled 513 ms, 204 MB
+> timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work  [513 ms]
+MARK opened: 638 ms since launch, 204 MB, at 1793997715852253952
+> mark opened  [0 ms]
+> sleep 3000  [3006 ms]
+MARK idle: 3645 ms since launch, 106 MB, at 1793997718859687936
+> mark idle  [0 ms]

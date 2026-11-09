@@ -1,0 +1,23 @@
+OPEN /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/patho HEAD~1..HEAD: window 155, content 332, settled 372 ms, 256 MB
+> timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/patho HEAD~1..HEAD  [372 ms]
+> sleep 2000  [2025 ms]
+> menu Go to Anything…  [309 ms]
+JUMPKEY m: key 4.9, results 13.3 ms
+JUMPKEY i: key 0.7, results 6.3 ms
+JUMPKEY n: key 0.6, results 1.9 ms
+JUMPKEY i: key 0.4, results 2.3 ms
+JUMPKEY f: key 0.4, results 3.1 ms
+JUMPKEY i: key 0.4, results 1.9 ms
+JUMPKEY e: key 0.3, results 1.0 ms
+JUMPKEY d: key 0.4, results 2.8 ms
+JUMPKEY .: key 0.9, results 1.7 ms
+JUMPKEY m: key 0.3, results 0.7 ms
+JUMPKEY i: key 0.3, results 1.6 ms
+JUMPKEY n: key 0.3, results 2.8 ms
+JUMPKEY .: key 0.5, results 1.5 ms
+JUMPKEY j: key 0.5, results 1.8 ms
+JUMPKEY s: key 0.3, results 1.1 ms
+JUMP minified.min.js ×15: key median 0.4, p90 0.9, max 4.9 | results median 1.9, p90 6.3, max 13.3 ms
+> jumptype minified.min.js  [44 ms]
+MARK jump: 2871 ms since launch, 160 MB, at 1793998607410424064
+> mark jump  [0 ms]

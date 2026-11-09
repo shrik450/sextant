@@ -1,0 +1,26 @@
+OPEN /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/patho HEAD~1..HEAD: window 182, content 333, settled 399 ms, 253 MB
+> timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/patho HEAD~1..HEAD  [399 ms]
+> sleep 2000  [2043 ms]
+> menu Go to Anything…  [302 ms]
+JUMPKEY m: key 6.0, results 14.7 ms
+JUMPKEY e: key 0.8, results 5.5 ms
+JUMPKEY g: key 0.5, results 2.7 ms
+JUMPKEY a: key 0.6, results 3.0 ms
+JUMPKEY l: key 1.7, results 2.5 ms
+JUMPKEY i: key 0.4, results 1.7 ms
+JUMPKEY n: key 0.4, results 4.0 ms
+JUMPKEY e: key 0.6, results 1.2 ms
+JUMPKEY .: key 0.4, results 1.2 ms
+JUMPKEY s: key 0.3, results 2.5 ms
+JUMPKEY w: key 0.8, results 1.7 ms
+JUMPKEY i: key 0.5, results 1.8 ms
+JUMPKEY f: key 0.5, results 1.1 ms
+JUMPKEY t: key 0.4, results 3.4 ms
+JUMP megaline.swift ×14: key median 0.5, p90 1.7, max 6.0 | results median 2.5, p90 5.5, max 14.7 ms
+> jumptype megaline.swift  [48 ms]
+MARK jump: 2907 ms since launch, 217 MB, at 1793998594044847104
+> mark jump  [0 ms]
+MEASURE key return ×1: frame median 2.4, p90 2.4, max 2.4 | settled median 618.2, p90 618.2, max 618.2 ms
+> measure 1 key return  [638 ms]
+MARK shown: 3545 ms since launch, 527 MB, at 1793998594683741184
+> mark shown  [0 ms]

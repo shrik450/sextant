@@ -1,0 +1,14 @@
+worktrees	panes	5
+worktrees	idle_gits	0
+worktrees	idle_cpu_ms	88
+worktrees	idle_fp_end_mb	178
+worktrees	churn_gits	690
+worktrees	churn_git_cpu_ms	39414
+worktrees	churn_cpu_ms	2234
+worktrees	churn_max_stall_ms	0.0
+worktrees	churn_stalls_gt50	0
+worktrees	churn_status_elsewhere	76
+worktrees	churn_status_changed	19
+worktrees	scenario_s	62
+worktrees	beeps	0
+worktrees	came_forward	0

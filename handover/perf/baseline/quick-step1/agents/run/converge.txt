@@ -1,0 +1,11 @@
+burst1 converge_ms=928 correct=1 gap_max_ms=665 states=0
+burst2 converge_ms=935 correct=1 gap_max_ms=636 states=0
+sustained converge_ms=829 correct=1 gap_max_ms=14535 states=0
+create converge_ms=971 correct=1 gap_max_ms=109 states=0
+ignored converge_ms=0 correct=1 gap_max_ms=12024 states=0
+commit converge_ms=460 correct=1 gap_max_ms=378 states=0
+checkout converge_ms=525 correct=1 gap_max_ms=1573 states=1
+stash converge_ms=467 correct=1 gap_max_ms=2153 states=0
+rebase converge_ms=440 correct=1 gap_max_ms=125 states=0
+worktree converge_ms=0 correct=1 gap_max_ms=496 states=0
+untracked converge_ms=756 correct=1 gap_max_ms=53 states=0

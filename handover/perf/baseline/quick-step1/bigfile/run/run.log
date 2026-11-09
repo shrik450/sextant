@@ -1,0 +1,17 @@
+OPEN /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/bigfile HEAD~1..HEAD: window 165, content 274, settled 685 ms, 270 MB
+> timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/bigfile HEAD~1..HEAD  [685 ms]
+> sleep 300  [313 ms]
+MARK bigfile-start: 1110 ms since launch, 267 MB, 1637 ms CPU, at 1794028119622380032
+> mark bigfile-start  [0 ms]
+MEASURE key w ×40: frame median 2.6, p90 14.5, max 18.8 | settled median 2.6, p90 14.6, max 18.8 ms
+> measure 40 key w  [1078 ms]
+MEASURE menu Next File ×30: frame median 3.5, p90 4.6, max 45.6 | settled median 11.2, p90 13.8, max 72.0 ms
+> measure 30 menu Next File  [1056 ms]
+MEASURE menu Previous File ×10: frame median 3.7, p90 19.1, max 19.1 | settled median 12.2, p90 34.2, max 34.2 ms
+> measure 10 menu Previous File  [360 ms]
+MEASURE menu All Changes ×1: frame median 34.8, p90 34.8, max 34.8 | settled median 34.9, p90 34.9, max 34.9 ms
+> measure 1 menu All Changes  [57 ms]
+MEASURE scroll 40 ×30: frame median 2.8, p90 5.9, max 10.2 | settled median 2.8, p90 5.9, max 10.2 ms
+> measure 30 scroll 40  [738 ms]
+MARK bigfile-end: 4404 ms since launch, 285 MB, 3274 ms CPU, at 1794028122915808000
+> mark bigfile-end  [0 ms]

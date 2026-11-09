@@ -1,0 +1,23 @@
+timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/linux HEAD~30..HEAD
+sleep 3000
+mark reading-start
+measure 10 menu Next File
+measure 2 menu Mark File as Reviewed
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu All Changes
+sleep 500
+measure 100 scroll 40
+measure 2 menu Mark File as Reviewed
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 3 menu Older Commit
+measure 2 menu Newer Commit
+measure 1 menu All Commits
+mark reading-end
+sleep 2000
+mark refresh-start
+measure 3 menu Refresh
+mark refresh-end
+sleep 1000
+quit

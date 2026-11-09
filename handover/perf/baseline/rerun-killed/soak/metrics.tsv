@@ -1,0 +1,17 @@
+soak	footprint_drift_25_100_mb	
+soak	heap_drift_25_100_mb	
+soak	next_file_settled_first	
+soak	next_file_settled_last	
+soak	all_changes_settled_first	
+soak	all_changes_settled_last	
+soak	run_max_stall_ms	
+soak	run_stalls_gt50	
+soak	run_stalls_gt16	
+soak	run_fp_peak_mb	
+soak	run_fp_end_mb	
+soak	run_cpu_ms	
+soak	run_git_cpu_ms	
+soak	run_gits	
+soak	scenario_s	5
+soak	beeps	0
+soak	came_forward	1

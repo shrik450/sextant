@@ -1,0 +1,6 @@
+commit 1b72116b2ab0d754ba85f9f6ecd9df6ddb508ca5 
+start 1793999538 load { 10.73 8.29 8.13 }
+options probe=1 malloc=0 timeout=400 background=--background
+pid 7121
+KILLED came in front of the windows in use
+end 1793999542 load { 10.75 8.34 8.15 }

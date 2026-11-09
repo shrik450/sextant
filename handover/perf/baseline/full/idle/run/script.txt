@@ -1,0 +1,14 @@
+timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work
+sleep 10000
+mark shown-start
+sleep 15000
+mark shown-end
+mark unrelated-start
+sleep 12000
+mark unrelated-end
+menu Hide Sextant
+sleep 3000
+mark hidden-start
+sleep 15000
+mark hidden-end
+quit

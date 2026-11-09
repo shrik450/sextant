@@ -1,0 +1,10 @@
+timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/bigfile HEAD~1..HEAD
+sleep 300
+mark bigfile-start
+measure 40 key w
+measure 30 menu Next File
+measure 10 menu Previous File
+measure 1 menu All Changes
+measure 30 scroll 40
+mark bigfile-end
+quit

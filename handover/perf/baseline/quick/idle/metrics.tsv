@@ -1,0 +1,10 @@
+idle	shown_wakeups_per_s	1.18
+idle	shown_cpu_ms_per_s	0.53
+idle	shown_gits	0
+idle	unrelated_wakeups_per_s	1.09
+idle	unrelated_cpu_ms_per_s	0.55
+idle	unrelated_gits	0
+idle	hidden_wakeups_per_s	1.00
+idle	hidden_cpu_ms_per_s	0.56
+idle	hidden_gits	0
+idle	scenario_s	59

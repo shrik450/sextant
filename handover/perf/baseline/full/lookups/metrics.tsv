@@ -1,0 +1,14 @@
+lookups	references_first_settled_max	6084.7
+lookups	references_again_settled_max	1535.4
+lookups	peek_first_settled_max	1254.9
+lookups	peek_again_settled_max	1376.1
+lookups	lookups_cpu_ms	67123
+lookups	lookups_git_cpu_ms	28446
+lookups	lookups_gits	8
+lookups	lookups_max_stall_ms	152.1
+lookups	find_cpu_ms	304
+lookups	find_git_cpu_ms	7136
+lookups	find_gits	1
+lookups	find_max_stall_ms	183.7
+lookups	find_fp_growth_mb	-87
+lookups	scenario_s	40

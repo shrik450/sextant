@@ -1,0 +1,828 @@
+{
+  "base" : "origin\/main",
+  "baseShown" : true,
+  "baseTitle" : "origin\/main",
+  "blame" : false,
+  "caret" : ".github\/VOUCHED.td:140:1",
+  "caretColumn" : 0,
+  "caretWord" : "francislata",
+  "columns" : 1,
+  "currentChange" : ".github\/VOUCHED.td",
+  "error" : "",
+  "files" : [
+    {
+      "add" : 2,
+      "del" : 0,
+      "path" : ".github\/VOUCHED.td",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 2,
+      "del" : 2,
+      "path" : "build.zig.zon",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 3,
+      "del" : 3,
+      "path" : "build.zig.zon.json",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 288,
+      "del" : 492,
+      "path" : "build.zig.zon.nix",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 1,
+      "del" : 1,
+      "path" : "build.zig.zon.txt",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 4,
+      "del" : 4,
+      "path" : "flake.lock",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 1,
+      "del" : 1,
+      "path" : "flake.nix",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 3,
+      "del" : 3,
+      "path" : "flatpak\/zig-packages.json",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 49,
+      "del" : 2,
+      "path" : "include\/ghostty\/vt\/mouse.h",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 200,
+      "del" : 7,
+      "path" : "include\/ghostty\/vt\/render.h",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 3,
+      "del" : 2,
+      "path" : "include\/ghostty\/vt\/search.h",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 9,
+      "del" : 0,
+      "path" : "include\/ghostty\/vt\/terminal.h",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 25,
+      "del" : 0,
+      "path" : "macos\/Sources\/App\/AppDelegate.swift",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 10,
+      "del" : 0,
+      "path" : "macos\/Sources\/Features\/Terminal\/Window Styles\/TitlebarTabsTahoeTerminalWindow.swift",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 17,
+      "del" : 0,
+      "path" : "macos\/Sources\/Features\/Terminal\/Window Styles\/TransparentTitlebarTerminalWindow.swift",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 37,
+      "del" : 0,
+      "path" : "macos\/Sources\/Helpers\/Extensions\/NSAppleEventDescriptor+Extension.swift",
+      "reviewed" : false,
+      "status" : "A"
+    },
+    {
+      "add" : 0,
+      "del" : 14,
+      "path" : "nix\/libghostty-vt.nix",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 1,
+      "del" : 0,
+      "path" : "pkg\/wuffs\/src\/main.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 132,
+      "del" : 0,
+      "path" : "pkg\/wuffs\/src\/zlib.zig",
+      "reviewed" : false,
+      "status" : "A"
+    },
+    {
+      "add" : 20,
+      "del" : 3,
+      "path" : "src\/App.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 1,
+      "del" : 0,
+      "path" : "src\/apprt\/gtk.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 16,
+      "del" : 6,
+      "path" : "src\/apprt\/gtk\/class\/application.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 140,
+      "del" : 24,
+      "path" : "src\/apprt\/gtk\/class\/render_surface.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 20,
+      "del" : 22,
+      "path" : "src\/apprt\/gtk\/class\/surface.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 186,
+      "del" : 0,
+      "path" : "src\/apprt\/gtk\/scale.zig",
+      "reviewed" : false,
+      "status" : "A"
+    },
+    {
+      "add" : 156,
+      "del" : 5,
+      "path" : "src\/benchmark\/ScreenClone.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 1,
+      "del" : 0,
+      "path" : "src\/build\/SharedDeps.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 62,
+      "del" : 2769,
+      "path" : "src\/font\/nerd_font_attributes.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 115,
+      "del" : 106,
+      "path" : "src\/font\/nerd_font_codegen.py",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 2365,
+      "del" : 0,
+      "path" : "src\/font\/nerd_font_tables.zig",
+      "reviewed" : false,
+      "status" : "A"
+    },
+    {
+      "add" : 10,
+      "del" : 10,
+      "path" : "src\/font\/shaper\/coretext.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 1,
+      "del" : 0,
+      "path" : "src\/lib\/main.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 81,
+      "del" : 0,
+      "path" : "src\/lib\/parse_int.zig",
+      "reviewed" : false,
+      "status" : "A"
+    },
+    {
+      "add" : 8,
+      "del" : 5,
+      "path" : "src\/renderer.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 1,
+      "del" : 7,
+      "path" : "src\/renderer\/backend.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 28,
+      "del" : 3,
+      "path" : "src\/renderer\/generic.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 6,
+      "del" : 0,
+      "path" : "src\/renderer\/message.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 30,
+      "del" : 134,
+      "path" : "src\/renderer\/Metal.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 149,
+      "del" : 0,
+      "path" : "src\/renderer\/metal\/Device.zig",
+      "reviewed" : false,
+      "status" : "A"
+    },
+    {
+      "add" : 40,
+      "del" : 52,
+      "path" : "src\/renderer\/OpenGL.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 67,
+      "del" : 0,
+      "path" : "src\/renderer\/opengl\/Device.zig",
+      "reviewed" : false,
+      "status" : "A"
+    },
+    {
+      "add" : 4,
+      "del" : 1,
+      "path" : "src\/renderer\/opengl\/Frame.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 2,
+      "del" : 6,
+      "path" : "src\/renderer\/opengl\/Target.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 4,
+      "del" : 0,
+      "path" : "src\/renderer\/Options.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 2,
+      "del" : 0,
+      "path" : "src\/renderer\/Thread.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 0,
+      "del" : 2,
+      "path" : "src\/renderer\/WebGL.zig",
+      "reviewed" : false,
+      "status" : "D"
+    },
+    {
+      "add" : 18,
+      "del" : 4,
+      "path" : "src\/Surface.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 516,
+      "del" : 8,
+      "path" : "src\/terminal\/c\/render.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 28,
+      "del" : 0,
+      "path" : "src\/terminal\/c\/search.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 39,
+      "del" : 0,
+      "path" : "src\/terminal\/c\/terminal.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 44,
+      "del" : 0,
+      "path" : "src\/terminal\/c\/types.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 8,
+      "del" : 1,
+      "path" : "src\/terminal\/color.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 11,
+      "del" : 1,
+      "path" : "src\/terminal\/kitty\/color.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 57,
+      "del" : 13,
+      "path" : "src\/terminal\/kitty\/graphics_image.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 0,
+      "del" : 0,
+      "path" : "src\/terminal\/kitty\/testdata\/image-png-zlib_deflate-50x76-2147483647-raw.data",
+      "reviewed" : false,
+      "status" : "A"
+    },
+    {
+      "add" : 1,
+      "del" : 0,
+      "path" : "src\/terminal\/lib.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 22,
+      "del" : 2,
+      "path" : "src\/terminal\/osc\/parsers\/color.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 20,
+      "del" : 10,
+      "path" : "src\/terminal\/osc\/parsers\/context_signal.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 16,
+      "del" : 3,
+      "path" : "src\/terminal\/osc\/parsers\/kitty_desktop_notification.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 11,
+      "del" : 1,
+      "path" : "src\/terminal\/osc\/parsers\/kitty_text_sizing.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 17,
+      "del" : 2,
+      "path" : "src\/terminal\/osc\/parsers\/osc9.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 8,
+      "del" : 1,
+      "path" : "src\/terminal\/osc\/parsers\/semantic_prompt.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 20,
+      "del" : 8,
+      "path" : "src\/terminal\/page.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 673,
+      "del" : 37,
+      "path" : "src\/terminal\/render.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 2,
+      "del" : 8,
+      "path" : "src\/terminal\/Screen.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 19,
+      "del" : 0,
+      "path" : "src\/terminal\/Terminal.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 0,
+      "del" : 11,
+      "path" : "src\/terminal\/tmux\/output.zig",
+      "reviewed" : false,
+      "status" : "M"
+    },
+    {
+      "add" : 7,
+      "del" : 6,
+      "path" : "src\/terminal\/tmux\/viewer.zig",
+      "reviewed" : false,
+      "status" : "M"
+    }
+  ],
+  "firstResponder" : "reader",
+  "focus" : "file:.github\/VOUCHED.td",
+  "focusedPane" : 4,
+  "fontSize" : 12,
+  "footprintMB" : 155,
+  "home" : "\/Users\/shrik450\/Developer\/review-ui\/scratch\/perf\/fixtures\/work-wt-4",
+  "inspector" : [
+    "# Changes",
+    ">   change @140 +1 -0",
+    "  change @361 +1 -0",
+    "# Worktree",
+    "  card: agent-4 | ~\/Developer\/review-ui\/scratch\/perf\/fixtures\/work-wt-4 | 56 commits since origin\/main | 0 uncommitted files | Base 69bf1ac"
+  ],
+  "inspectorCells" : [
+    "Changes",
+    "Line 140  +1",
+    "Line 361  +1",
+    "Worktree",
+    "agent-4\n~\/Developer\/review-ui\/scratch\/perf\/fixtures\/work-wt-4\n56 commits since origin\/main\n0 uncommitted files\nBase 69bf1ac"
+  ],
+  "inspectorCollapsed" : false,
+  "isKey" : false,
+  "isWhole" : true,
+  "jump" : [
+
+  ],
+  "jumpLabels" : [
+
+  ],
+  "navigatorCollapsed" : false,
+  "navigatorTab" : "changes",
+  "notes" : [
+
+  ],
+  "paneHeader" : [
+    ".github",
+    "VOUCHED.td"
+  ],
+  "panes" : [
+    "VOUCHED.td",
+    "VOUCHED.td",
+    "VOUCHED.td",
+    "VOUCHED.td",
+    "VOUCHED.td"
+  ],
+  "picker" : [
+
+  ],
+  "read" : [
+    false,
+    false
+  ],
+  "repo" : "\/Users\/shrik450\/Developer\/review-ui\/scratch\/perf\/fixtures\/work\/.git",
+  "rows" : 17,
+  "scope" : "everything",
+  "scopes" : [
+    "> All Work",
+    "Uncommitted 0",
+    "02a3a04 terminal: clear the kitty placeholder flag on full-row clears (#14449)",
+    "ed350cb renderer: share render device state across renderers (#14446)",
+    "40d5b86 renderer: share render device state across renderers",
+    "05392dc renderer: nuke stub WebGL renderer",
+    "a573781 terminal: clear the kitty placeholder flag on full-row clears",
+    "12752b2 Update VOUCHED list (#14445)",
+    "b1d2b7e font: store nerd-font constraints in a 3-level table (#14420)",
+    "364f847 terminal\/c: expose the application-requested mouse shape (#14371)",
+    "4406075 font: append BMP codepoints as one UTF-16 unit (#14406)",
+    "bcfae28 macOS: fix duplicate new windows triggered by Shortcuts.app (#14413)",
+    "068e15c macOS: reduce the tab bar background opacity on macOS 27 (#14414)",
+    "f04a00c terminal: reject digit separators in OSC integers (#14417)",
+    "d48c037 kitty: Use wuffs for zlib decoding over the stdlib (#14422)",
+    "a85cd2e tmux: map pane mouse flags to the selectors tmux reports (#14425)",
+    "d1eb462 nix: update zon2nix to 0.9.0 (#14436)",
+    "c065cd3 vt: reject search ticks after the terminal is freed (#14437)",
+    "659ca22 update to zon2nix 0.9.0",
+    "1f3d869 nix: remove no-longer-necessary linkFarm override",
+    "1a174c0 nix: update zon2nix to 0.8.1",
+    "b1c2641 vt: reject search ticks after the terminal is freed",
+    "3822aa0 terminal: test OSC 3008 numeric fields reject non-digits",
+    "31bbb12 lib: document why parseInt does not use std.fmt.parseInt",
+    "500040d lib: move parseInt to src\/lib and expose it from main.zig",
+    "d92e340 terminal: parse OSC integers in a single pass",
+    "b40acce Update iTerm2 colorschemes (#14424)",
+    "1ca2858 tmux: map pane mouse flags to the selectors tmux reports",
+    "75166e9 deps: Update iTerm2 color schemes",
+    "42049f1 pkg\/wuffs: align zlib decoder storage",
+    "4b86e35 terminal\/kitty: use wuffs for zlib image decompression",
+    "a3f3331 font: store nerd-font constraints in a 3-level table",
+    "7376891 terminal: reject digit separators in OSC integers",
+    "b94b3a0 macOS: reduce the tab bar background opacity on macOS 27",
+    "e8fe0a5 macOS: fix duplicate new windows triggered by Shortcuts.app",
+    "67fb0c9 terminal\/c: move mouse shapes into mouse.h",
+    "6301810 Update VOUCHED list (#14409)",
+    "b60eed1 font: append BMP codepoints as one UTF-16 unit",
+    "1a9edb0 gtk: don't tell systemd we're ready before we can handle SIGUSR2 (#14399)",
+    "02e51d5 gtk,opengl: even more post-rendersurface fixes (#14403)",
+    "d0c5ba6 libghostty-vt: expose RenderState overscan in the C API (#14404)",
+    "2ea1eea libghostty-vt: expose RenderState overscan in the C API",
+    "b9e07f9 gtk,opengl: flip CPU rendered textures correctly",
+    "47693cc gtk,renderer: don't export DMABUFs when apprts can't accept them",
+    "c959af6 terminal: add overscan support to RenderState for smooth scrolling (#14400)",
+    "ca4f719 terminal: add overscan support to RenderState for smooth scrolling",
+    "4eb3088 gtk: don't tell systemd we're ready before we can handle SIGUSR2",
+    "56dbc4a  gtk: support fractional surface scaling (#14269)",
+    "e1916c1 gtk: demote log from info to debug",
+    "d1da183 gtk: remove widgetDeviceSize, snapshotOrigin wrappers",
+    "70a75ce gtk: Layout unifies scale, origin, snapped size",
+    "0070f9d gtk: snap fractional texture origin GdkSurface",
+    "9dc7408 gtk: snap fractional texture origin to device pixels",
+    "08931f4 gtk: added logs to debug scaling values",
+    "df2186d gtk: drop 4.12 version checks",
+    "1964ed1 gtk: harden fractional scale notify and DPI rounding",
+    "45013fa gtk: support fractional surface scaling",
+    "78494ba terminal\/c: expose the application-requested mouse shape"
+  ],
+  "searchStatus" : "",
+  "selectedText" : "",
+  "selection" : "{47, 0} row 4 of 17 len 183",
+  "selectionRows" : 1,
+  "split" : false,
+  "subject" : "worktree:\/Users\/shrik450\/Developer\/review-ui\/scratch\/perf\/fixtures\/work-wt-4",
+  "subjectTitle" : "agent-4",
+  "subtitle" : "56 commits and uncommitted changes  ·  68 files",
+  "symbol" : "",
+  "target" : "worktree:69bf1ac",
+  "title" : "work",
+  "top" : "137",
+  "tree" : [
+    "All Changes 0\/68",
+    ".github\/ 0\/1",
+    ">   VOUCHED.td [M]",
+    "  ⋯ 6 unchanged",
+    "flatpak\/ 0\/1",
+    "  zig-packages.json [M]",
+    "  ⋯ 4 unchanged",
+    "include\/ghostty\/vt\/ 0\/4",
+    "  mouse.h [M]",
+    "  render.h [M]",
+    "  search.h [M]",
+    "  terminal.h [M]",
+    "  ⋯ 28 unchanged",
+    "macos\/Sources\/ 0\/4",
+    "  App\/ 0\/1",
+    "    AppDelegate.swift [M]",
+    "    ⋯ 5 unchanged",
+    "  Features\/Terminal\/Window Styles\/ 0\/2",
+    "    TitlebarTabsTahoeTerminalWindow.swift [M]",
+    "    TransparentTitlebarTerminalWindow.swift [M]",
+    "    ⋯ 8 unchanged",
+    "  Helpers\/Extensions\/ 0\/1",
+    "    NSAppleEventDescriptor+Extension.swift [A]",
+    "    ⋯ 29 unchanged",
+    "  ⋯ 1 unchanged",
+    "nix\/ 0\/1",
+    "  libghostty-vt.nix [M]",
+    "  ⋯ 8 unchanged",
+    "pkg\/wuffs\/src\/ 0\/2",
+    "  main.zig [M]",
+    "  zlib.zig [A]",
+    "  ⋯ 6 unchanged",
+    "src\/ 0\/49",
+    "  apprt\/ 0\/5",
+    "    gtk\/ 0\/4",
+    "      class\/ 0\/3",
+    "        application.zig [M]",
+    "        render_surface.zig [M]",
+    "        surface.zig [M]",
+    "        ⋯ 21 unchanged",
+    "      scale.zig [A]",
+    "      ⋯ 23 unchanged",
+    "    gtk.zig [M]",
+    "    ⋯ 8 unchanged",
+    "  benchmark\/ 0\/1",
+    "    ScreenClone.zig [M]",
+    "    ⋯ 19 unchanged",
+    "  build\/ 0\/1",
+    "    SharedDeps.zig [M]",
+    "    ⋯ 35 unchanged",
+    "  font\/ 0\/4",
+    "    shaper\/ 0\/1",
+    "      coretext.zig [M]",
+    "      ⋯ 7 unchanged",
+    "    nerd_font_attributes.zig [M]",
+    "    nerd_font_codegen.py [M]",
+    "    nerd_font_tables.zig [A]",
+    "    ⋯ 26 unchanged",
+    "  lib\/ 0\/2",
+    "    main.zig [M]",
+    "    parse_int.zig [A]",
+    "    ⋯ 12 unchanged",
+    "  renderer\/ 0\/12",
+    "    metal\/ 0\/1",
+    "      Device.zig [A]",
+    "      ⋯ 10 unchanged",
+    "    opengl\/ 0\/3",
+    "      Device.zig [A]",
+    "      Frame.zig [M]",
+    "      Target.zig [M]",
+    "      ⋯ 6 unchanged",
+    "    backend.zig [M]",
+    "    generic.zig [M]",
+    "    message.zig [M]",
+    "    Metal.zig [M]",
+    "    OpenGL.zig [M]",
+    "    Options.zig [M]",
+    "    Thread.zig [M]",
+    "    WebGL.zig [D]",
+    "    ⋯ 11 unchanged",
+    "  terminal\/ 0\/21",
+    "    c\/ 0\/4",
+    "      render.zig [M]",
+    "      search.zig [M]",
+    "      terminal.zig [M]",
+    "      types.zig [M]",
+    "      ⋯ 32 unchanged",
+    "    kitty\/ 0\/3",
+    "      testdata\/ 0\/1",
+    "        image-png-zlib_deflate-50x76-2147483647-raw.data [A]",
+    "        ⋯ 4 unchanged",
+    "      color.zig [M]",
+    "      graphics_image.zig [M]",
+    "      ⋯ 20 unchanged",
+    "    osc\/parsers\/ 0\/6",
+    "      color.zig [M]",
+    "      context_signal.zig [M]",
+    "      kitty_desktop_notification.zig [M]",
+    "      kitty_text_sizing.zig [M]",
+    "      osc9.zig [M]",
+    "      semantic_prompt.zig [M]",
+    "      ⋯ 11 unchanged",
+    "    tmux\/ 0\/2",
+    "      output.zig [M]",
+    "      viewer.zig [M]",
+    "      ⋯ 2 unchanged",
+    "    color.zig [M]",
+    "    lib.zig [M]",
+    "    page.zig [M]",
+    "    render.zig [M]",
+    "    Screen.zig [M]",
+    "    Terminal.zig [M]",
+    "    ⋯ 53 unchanged",
+    "  App.zig [M]",
+    "  renderer.zig [M]",
+    "  Surface.zig [M]",
+    "  ⋯ 43 unchanged",
+    "build.zig.zon [M]",
+    "build.zig.zon.json [M]",
+    "build.zig.zon.nix [M]"
+  ],
+  "uses" : 0,
+  "visibleRows" : [
+    {
+      "kind" : "fold 136",
+      "x" : 695,
+      "y" : 67.5
+    },
+    {
+      "kind" : " 137 flou",
+      "x" : 695,
+      "y" : 86.5
+    },
+    {
+      "kind" : " 138 fornwall",
+      "x" : 695,
+      "y" : 105.5
+    },
+    {
+      "kind" : " 139 francescarpi",
+      "x" : 695,
+      "y" : 124.5
+    },
+    {
+      "kind" : "+140 francislata",
+      "x" : 695,
+      "y" : 143.5
+    },
+    {
+      "kind" : " 141 fru1tworld",
+      "x" : 695,
+      "y" : 162.5
+    },
+    {
+      "kind" : " 142 gadgetman6",
+      "x" : 695,
+      "y" : 181.5
+    },
+    {
+      "kind" : " 143 gagbo",
+      "x" : 695,
+      "y" : 200.5
+    },
+    {
+      "kind" : "fold 214",
+      "x" : 695,
+      "y" : 219.5
+    },
+    {
+      "kind" : " 358 voidnv",
+      "x" : 695,
+      "y" : 238.5
+    },
+    {
+      "kind" : " 359 williamhcarter",
+      "x" : 695,
+      "y" : 257.5
+    },
+    {
+      "kind" : " 360 wyounas",
+      "x" : 695,
+      "y" : 276.5
+    },
+    {
+      "kind" : "+361 xandris",
+      "x" : 695,
+      "y" : 295.5
+    },
+    {
+      "kind" : " 362 yabbal",
+      "x" : 695,
+      "y" : 314.5
+    },
+    {
+      "kind" : " 363 yak3d",
+      "x" : 695,
+      "y" : 333.5
+    },
+    {
+      "kind" : " 364 yamshta",
+      "x" : 695,
+      "y" : 352.5
+    },
+    {
+      "kind" : "fold 8",
+      "x" : 695,
+      "y" : 371.5
+    }
+  ],
+  "windowFrame" : "{{1912, 8}, {1440, 1034}}"
+}

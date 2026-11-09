@@ -1,0 +1,6 @@
+OPEN /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work: window 149, content 492, settled 732 ms, 216 MB
+> timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work  [732 ms]
+> watch /Users/shrik450/Developer/review-ui/scratch/perf/baseline/quick-step1/agents/run/states.txt  [0 ms]
+> sleep 2000  [2001 ms]
+MARK agents-start: 2867 ms since launch, 103 MB, 883 ms CPU, at 1794028160804430848
+> mark agents-start  [0 ms]

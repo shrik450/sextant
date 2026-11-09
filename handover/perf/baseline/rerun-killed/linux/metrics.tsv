@@ -1,0 +1,31 @@
+linux	open_window_ms	
+linux	open_content_ms	
+linux	open_settled_ms	
+linux	next_file_frame_p90	
+linux	next_file_settled_p90	
+linux	mark_reviewed_frame_max	
+linux	mark_reviewed_settled_max	
+linux	side_by_side_frame_max	
+linux	side_by_side_settled_max	
+linux	all_changes_frame_max	
+linux	all_changes_settled_max	
+linux	overview_scroll_frame_p90	
+linux	overview_scroll_frame_max	
+linux	overview_mark_reviewed_frame_max	
+linux	overview_mark_reviewed_settled_max	
+linux	overview_side_by_side_frame_max	
+linux	overview_side_by_side_settled_max	
+linux	older_commit_settled_median	
+linux	older_commit_settled_max	
+linux	all_commits_settled_max	
+linux	run_max_stall_ms	
+linux	run_stalls_gt50	
+linux	run_stalls_gt16	
+linux	run_fp_peak_mb	
+linux	run_fp_end_mb	
+linux	run_cpu_ms	
+linux	run_git_cpu_ms	
+linux	run_gits	
+linux	refresh_gits	0
+linux	refresh_git_cpu_ms	0
+linux	refresh_cpu_ms	0

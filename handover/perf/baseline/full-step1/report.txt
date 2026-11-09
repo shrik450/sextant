@@ -1,0 +1,32 @@
+worktrees   came_forward                                  0 <= 0          runs   PASS
+soak        came_forward                                  0 <= 0          runs   PASS
+linux       came_forward                                  0 <= 0          runs   PASS
+worktrees   beeps                                         0 <= 0          beeps  PASS
+soak        beeps                                         0 <= 0          beeps  PASS
+linux       beeps                                         0 <= 0          beeps  PASS
+linux       open_content_ms                            7685 <= 500        ms     FAIL
+linux       next_file_frame_p90                        51.1 <= 8.3        ms     FAIL
+linux       next_file_settled_p90                      78.3 <= 50         ms     FAIL
+linux       mark_reviewed_frame_max                   164.0 <= 8.3        ms     FAIL
+linux       mark_reviewed_settled_max                 191.0 <= 50         ms     FAIL
+linux       side_by_side_settled_max                   13.7 <= 100        ms     PASS
+linux       all_changes_settled_max                    86.8 <= 100        ms     PASS
+linux       overview_scroll_frame_max                  15.8 <= 4          ms     FAIL
+linux       overview_mark_reviewed_frame_max          294.5 <= 8.3        ms     FAIL
+linux       older_commit_settled_max                 1046.9 <= 100        ms     FAIL
+linux       all_commits_settled_max                  1116.0 <= 100        ms     FAIL
+linux       run_max_stall_ms                          308.7 <= 16.7       ms     FAIL
+linux       run_fp_peak_mb                              399 <= 500        MB     PASS
+linux       edit_converge_ms_max                       6197 <= 250        ms     FAIL
+linux       edit_correct_min                              1 >= 1          -      PASS
+linux       edit_total_cpu_ms_median                   8732 <= 100        ms     FAIL
+linux       edit_max_stall_ms_max                     137.5 <= 8.3        ms     FAIL
+worktrees   churn_status_elsewhere                        0 <= 0          procs  PASS
+worktrees   idle_gits                                     - <= 0          procs  MISSING
+worktrees   churn_max_stall_ms                            - <= 16.7       ms     MISSING
+soak        row_views_100                                55 <= 80         views  PASS
+soak        layout_engines_100                          141 <= 250        engines PASS
+soak        footprint_drift_25_100_mb                    23 <= 20         MB     FAIL
+soak        run_stalls_gt50                             475 <= 0          stalls FAIL
+
+13 pass, 15 fail, 2 missing

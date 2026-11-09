@@ -1,0 +1,16 @@
+timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/many HEAD~1..HEAD
+sleep 2000
+mark overview-start
+measure 1 menu All Changes
+sleep 1000
+measure 100 scroll 40
+measure 2 menu Mark File as Reviewed
+measure 2 menu Show Nearby Unchanged Lines
+measure 2 note A note from the benchmark
+measure 1 menu Bigger
+measure 1 menu Smaller
+measure 1 menu Side by Side
+measure 1 menu Unified
+mark overview-end
+sleep 1000
+quit

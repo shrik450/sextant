@@ -1,0 +1,16 @@
+timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/patho HEAD~1..HEAD
+sleep 2000
+menu Go to Anything…
+jumptype minified.min.js
+mark jump
+measure 1 key return
+mark shown
+sleep 15000
+mark observed
+menu Go to Anything…
+jumptype crlf.txt
+key return
+mark left
+sleep 5000
+mark after
+quit

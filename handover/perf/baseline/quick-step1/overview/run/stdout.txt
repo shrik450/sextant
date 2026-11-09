@@ -1,0 +1,27 @@
+OPEN /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/many HEAD~1..HEAD: window 145, content 624, settled 740 ms, 368 MB
+> timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/many HEAD~1..HEAD  [739 ms]
+> sleep 2000  [2000 ms]
+MARK overview-start: 2873 ms since launch, 250 MB, 1020 ms CPU, at 1794028126257965056
+> mark overview-start  [0 ms]
+MEASURE menu All Changes ×1: frame median 358.0, p90 358.0, max 358.0 | settled median 358.0, p90 358.0, max 358.0 ms
+> measure 1 menu All Changes  [379 ms]
+> sleep 1000  [1026 ms]
+MEASURE scroll 40 ×100: frame median 4.5, p90 21.6, max 24.7 | settled median 4.5, p90 21.6, max 24.7 ms
+> measure 100 scroll 40  [3134 ms]
+MEASURE menu Mark File as Reviewed ×2: frame median 2948.4, p90 2948.4, max 2948.4 | settled median 2948.6, p90 2948.6, max 2948.6 ms
+> measure 2 menu Mark File as Reviewed  [5940 ms]
+MEASURE menu Show Nearby Unchanged Lines ×2: frame median 2944.6, p90 2944.6, max 2944.6 | settled median 2944.7, p90 2944.7, max 2944.7 ms
+> measure 2 menu Show Nearby Unchanged Lines  [5927 ms]
+MEASURE note A note from the benchmark ×2: frame median 2941.3, p90 2941.3, max 2941.3 | settled median 2941.3, p90 2941.3, max 2941.3 ms
+> measure 2 note A note from the benchmark  [5921 ms]
+MEASURE menu Bigger ×1: frame median 2920.2, p90 2920.2, max 2920.2 | settled median 2920.3, p90 2920.3, max 2920.3 ms
+> measure 1 menu Bigger  [2957 ms]
+MEASURE menu Smaller ×1: frame median 2944.9, p90 2944.9, max 2944.9 | settled median 2944.9, p90 2944.9, max 2944.9 ms
+> measure 1 menu Smaller  [2977 ms]
+MEASURE menu Side by Side ×1: frame median 614.1, p90 614.1, max 614.1 | settled median 614.2, p90 614.2, max 614.2 ms
+> measure 1 menu Side by Side  [638 ms]
+MEASURE menu Unified ×1: frame median 350.8, p90 350.8, max 350.8 | settled median 350.9, p90 350.9, max 350.9 ms
+> measure 1 menu Unified  [375 ms]
+MARK overview-end: 32156 ms since launch, 565 MB, 30967 ms CPU, at 1794028155541202944
+> mark overview-end  [0 ms]
+> sleep 1000  [1003 ms]

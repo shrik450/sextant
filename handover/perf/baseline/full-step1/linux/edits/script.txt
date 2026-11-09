@@ -1,0 +1,5 @@
+timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/linux
+watch /Users/shrik450/Developer/review-ui/scratch/perf/baseline/full-step1/linux/edits/states.txt
+sleep 5000
+mark edits-start
+sleep 600000

@@ -1,0 +1,6 @@
+OPEN /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/synth: window 216, content nan, settled 30001 ms, 97 MB
+> timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/synth  [30002 ms]
+> watch /Users/shrik450/Developer/review-ui/scratch/perf/baseline/quick/synth/edits/states.txt  [0 ms]
+> sleep 3000  [3003 ms]
+MARK edits-start: 33118 ms since launch, 97 MB, at 1793997983390327040
+> mark edits-start  [0 ms]

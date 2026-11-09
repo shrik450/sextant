@@ -1,0 +1,20 @@
+OPEN /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work: window 180, content 249, settled 381 ms, 189 MB
+> timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work  [380 ms]
+> sleep 10000  [10222 ms]
+MARK shown-start: 10723 ms since launch, 101 MB, at 1793998096921229824
+> mark shown-start  [0 ms]
+> sleep 15000  [15061 ms]
+MARK shown-end: 25786 ms since launch, 93 MB, at 1793998111983546112
+> mark shown-end  [0 ms]
+MARK unrelated-start: 25786 ms since launch, 93 MB, at 1793998111984056832
+> mark unrelated-start  [0 ms]
+> sleep 12000  [12772 ms]
+MARK unrelated-end: 38559 ms since launch, 93 MB, at 1793998124756995072
+> mark unrelated-end  [0 ms]
+> menu Hide Sextant  [279 ms]
+> sleep 3000  [3020 ms]
+MARK hidden-start: 41860 ms since launch, 93 MB, at 1793998128058243072
+> mark hidden-start  [0 ms]
+> sleep 15000  [15797 ms]
+MARK hidden-end: 57659 ms since launch, 93 MB, at 1793998143857090048
+> mark hidden-end  [0 ms]

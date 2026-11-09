@@ -1,0 +1,1320 @@
+timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/work
+sleep 3000
+mark soak-start
+mark cycle-1
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+sleep 2000
+mark checkpoint-1
+sleep 20000
+mark cycle-2
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-3
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-4
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-5
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-6
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-7
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-8
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-9
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-10
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-11
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-12
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-13
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-14
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-15
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-16
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-17
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-18
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-19
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-20
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-21
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-22
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-23
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-24
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-25
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+sleep 2000
+mark checkpoint-25
+sleep 20000
+mark cycle-26
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-27
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-28
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-29
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-30
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-31
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-32
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-33
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-34
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-35
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-36
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-37
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-38
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-39
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-40
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-41
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-42
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-43
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-44
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-45
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-46
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-47
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-48
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-49
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-50
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+sleep 2000
+mark checkpoint-50
+sleep 20000
+mark cycle-51
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-52
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-53
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-54
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-55
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-56
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-57
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-58
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-59
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-60
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-61
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-62
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-63
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-64
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-65
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-66
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-67
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-68
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-69
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-70
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-71
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-72
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-73
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-74
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-75
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+sleep 2000
+mark checkpoint-75
+sleep 20000
+mark cycle-76
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-77
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-78
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-79
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-80
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-81
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-82
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-83
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-84
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-85
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-86
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-87
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-88
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-89
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-90
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-91
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-92
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-93
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-94
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-95
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-96
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-97
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-98
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-99
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+mark cycle-100
+measure 5 menu Next File
+measure 5 menu Previous File
+measure 20 scroll 40
+measure 1 menu All Changes
+measure 20 scroll 40
+measure 1 menu Side by Side
+measure 1 menu Unified
+measure 1 menu Older Commit
+measure 1 menu Newer Commit
+measure 1 menu All Commits
+measure 3 key j
+sleep 1000
+sleep 2000
+mark checkpoint-100
+sleep 20000
+mark soak-end
+sleep 600000

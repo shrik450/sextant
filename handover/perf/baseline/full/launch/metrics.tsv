@@ -1,0 +1,10 @@
+launch	appkit_ms	115
+launch	window_ms	166
+launch	content_ms	422
+launch	settled_ms	638
+launch	cpu_ms	837
+launch	git_cpu_ms	708
+launch	gits	14
+launch	peak_mb	219
+launch	settled_footprint_mb	103
+launch	scenario_s	18

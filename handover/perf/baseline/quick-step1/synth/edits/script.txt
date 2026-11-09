@@ -1,0 +1,5 @@
+timeopen /Users/shrik450/Developer/review-ui/scratch/perf/fixtures/synth
+watch /Users/shrik450/Developer/review-ui/scratch/perf/baseline/quick-step1/synth/edits/states.txt
+sleep 3000
+mark edits-start
+sleep 600000
