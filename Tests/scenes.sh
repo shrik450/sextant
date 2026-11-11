@@ -33,7 +33,7 @@ bundle_id=${SEXTANT_SCENES_BUNDLE:-com.shrikanthup.Sextant.scenes}
 main_checkout=$(cd "$(git -C "$here" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
 lock=${SEXTANT_PERF_LOCK:-$main_checkout/scratch/gui-lock}
 real_git=$(command -v git)
-scenes=(page symlink find reload close base status shared showall columns rename read endings removed notes reference harness fields frames reopen lookups drop slowdrop paneclose large)
+scenes=(page symlink find reload close base status shared showall columns rename read advance endings removed notes reference harness fields frames reopen lookups drop slowdrop paneclose large)
 failed=0
 holding_lock=0
 
@@ -760,6 +760,76 @@ EOF
   expect read "file reviewed once it changes elsewhere" "$(value "$dir/reviewed-edited.json" files.0.reviewed)" false
   expect read "files with changes read once the work is committed" "$(plutil -convert json -o - "$repo/.git/sextant/read.json" 2>/dev/null)" '{}'
   expect read "files reviewed once the work is committed" "$(plutil -convert json -o - "$repo/.git/sextant/reviewed.json" 2>/dev/null)" '{}'
+}
+
+#######################################
+# Marks changes read and files reviewed in five files with two runs each, moving on after
+# marking and then not. With it on, reading a run must go to the next unread run, reading the
+# last one and reviewing a file to the next unreviewed file; with it off, all must stay put.
+#######################################
+scene_advance() {
+  local dir repo f
+  dir=$(scene_dir advance)
+  repo="$dir/repo"
+  mkdir -p "$repo"
+  g init -q -b main "$repo"
+  for f in a b c d e; do printf 'func a() {\n    1\n}\n\nfunc b() {\n    2\n}\n' > "$repo/$f.swift"; done
+  g -C "$repo" add -A
+  g -C "$repo" commit -qm base
+  for f in a b c d e; do printf 'func a() {\n    guard ready else { return }\n    1\n}\n\nfunc b() {\n    guard ready else { return }\n    2\n}\n' > "$repo/$f.swift"; done
+  cat > "$dir/script.txt" <<EOF
+defaults readerMode file
+open $repo
+wait
+menu Mark Change as Read
+wait
+dump $dir/on-read.json
+menu Mark Change as Read
+wait
+dump $dir/on-last-read.json
+menu Mark File as Reviewed
+wait
+dump $dir/on-reviewed.json
+defaults advancesAfterMarking 0
+menu Mark Change as Read
+wait
+dump $dir/off-read.json
+menu Mark File as Reviewed
+wait
+dump $dir/off-reviewed.json
+menu Next File
+wait
+menu Mark Change as Read
+wait
+menu Next Change
+wait
+menu Mark Change as Read
+wait
+dump $dir/off-last-read.json
+quit
+EOF
+  run_app "$dir"
+  expect advance "on: caret on the next unread run" "$(caret_line "$dir/on-read.json")" "a.swift:7"
+  expect advance "on: file reviewed after reading its last run" "$(value "$dir/on-last-read.json" files.0.reviewed)" true
+  expect advance "on: next unreviewed file after reading the last run" "$(value "$dir/on-last-read.json" currentChange)" "b.swift"
+  expect advance "on: next unreviewed file after reviewing" "$(value "$dir/on-reviewed.json" currentChange)" "c.swift"
+  expect advance "off: run read" "$(plutil -extract read json -o - "$dir/off-read.json" 2>/dev/null)" '[true,false]'
+  expect advance "off: caret stays on the run read" "$(caret_line "$dir/off-read.json")" "c.swift:2"
+  expect advance "off: file reviewed" "$(value "$dir/off-reviewed.json" files.2.reviewed)" true
+  expect advance "off: same file after reviewing" "$(value "$dir/off-reviewed.json" currentChange)" "c.swift"
+  expect advance "off: file reviewed after reading its last run" "$(value "$dir/off-last-read.json" files.3.reviewed)" true
+  expect advance "off: same file after reading the last run" "$(caret_line "$dir/off-last-read.json")" "d.swift:7"
+}
+
+#######################################
+# Prints the file and line of the caret in a state dump, without its column.
+# Arguments:
+#   The dump.
+#######################################
+caret_line() {
+  local caret
+  caret=$(value "$1" caret)
+  echo "${caret%:*}"
 }
 
 #######################################

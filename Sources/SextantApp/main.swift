@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         _ = UserTools.path
+        UserDefaults.standard.register(defaults: [RepoWindowController.advancesAfterMarkingKey: true])
         NSApp.mainMenu = buildMainMenu()
         _ = Appearance.shared
     }

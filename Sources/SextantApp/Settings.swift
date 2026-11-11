@@ -10,6 +10,7 @@ struct SettingsView: View {
     @AppStorage("fontSize") private var fontSize = 12.0
     @AppStorage("tabWidth") private var tabWidth = 4
     @AppStorage("editorCommand") private var editorCommand = ""
+    @AppStorage(RepoWindowController.advancesAfterMarkingKey) private var advancesAfterMarking = true
     @State private var themes: [String] = Appearance.shared.themes.map(\.name)
     @State private var monospaced: [String] = []
 
@@ -62,6 +63,14 @@ struct SettingsView: View {
                 }
             } header: {
                 Text("Text")
+            }
+            Section {
+                Toggle("Move on after marking", isOn: $advancesAfterMarking)
+            } header: {
+                Text("Reviewing")
+            } footer: {
+                Text("Mark Change as Read goes to the next unread change, and Mark File as Reviewed to the next unreviewed file.")
+                    .foregroundStyle(.secondary)
             }
             Section {
                 TextField("Command", text: $editorCommand, prompt: Text("Required"))

@@ -556,19 +556,21 @@ extension RepoWindowController: NSMenuItemValidation {
         if !reader.nextChange(-1) { beep() }
     }
 
-    /// Marks the run of changes at the caret read, then moves to the next unread one in the file,
-    /// or marks it unread if it was read.
+    /// Marks the run of changes at the caret read, or unread if it was read.
     ///
-    /// Reading the last unread run marks the file reviewed.
+    /// Reading the last unread run marks the file reviewed. When marking moves on, reading a run
+    /// goes to the next unread one in the file, or to the next unreviewed file once none is left.
     @objc func toggleChangeRead(_ sender: Any?) {
         guard let (f, text, run) = reader.caretRun, let review else { beep(); return }
         let reviews = repository.reviews
         let read = !reviews.isRead(run.key, in: f.diff.change)
         reviews.setRead(run.key, in: f.diff.change, all: text.keyedRuns.map(\.key), to: read, in: review)
-        guard read, let fi = reader.files.firstIndex(where: { $0.text === text }) else { return }
+        guard read, advancesAfterMarking, let fi = reader.files.firstIndex(where: { $0.text === text }) else { return }
         let unread = text.keyedRuns.filter { !reviews.isRead($0.key, in: f.diff.change) }
         if let next = unread.first(where: { $0.run.lines.lowerBound > run.run.lines.lowerBound }) ?? unread.first {
             reader.land(onLine: next.run.lines.lowerBound, file: fi)
+        } else if let i = changes.firstIndex(where: { $0.path == f.path }) {
+            goToUnreviewed(after: i)
         }
     }
 
@@ -643,8 +645,14 @@ extension RepoWindowController: NSMenuItemValidation {
     @objc func toggleReviewedAction(_ sender: Any?) {
         let paths = actionPaths
         guard !paths.isEmpty else { beep(); return }
-        toggleReviewed(paths, advance: window?.firstResponder !== navigator.changes.outline)
+        toggleReviewed(paths, advance: advancesAfterMarking && window?.firstResponder !== navigator.changes.outline)
     }
+
+    static let advancesAfterMarkingKey = "advancesAfterMarking"
+
+    /// Whether marking a change read goes to the next unread change, and marking a file reviewed
+    /// to the next unreviewed file.
+    private var advancesAfterMarking: Bool { UserDefaults.standard.bool(forKey: Self.advancesAfterMarkingKey) }
 
     @objc func markAllReviewed(_ sender: Any?) {
         guard !changes.isEmpty, let review else { return }
@@ -657,12 +665,7 @@ extension RepoWindowController: NSMenuItemValidation {
     }
 
     @objc func nextUnreviewed(_ sender: Any?) {
-        let cur = currentChange ?? -1
-        guard let next = changes.indices.first(where: { $0 > cur && !changes[$0].reviewed }) ?? changes.indices.first(where: { !changes[$0].reviewed }) else {
-            beep()
-            return
-        }
-        if case .overview? = focus { reader.scrollToFile(next) } else { open(changes[next].path) }
+        if !goToUnreviewed(after: currentChange ?? -1) { beep() }
     }
 
     @objc func toggleShowAll(_ sender: Any?) {

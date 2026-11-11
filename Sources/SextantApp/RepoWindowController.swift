@@ -1052,13 +1052,20 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         let newValue = !idx.allSatisfy { changes[$0].reviewed }
         for i in idx { changes[i].reviewed = newValue }
         if let review { repository.reviews.set(idx.map { changes[$0] }, reviewed: newValue, in: review) }
-        if newValue, advance, let last = idx.max() {
-            let next = changes.indices.first { $0 > last && !changes[$0].reviewed } ?? changes.indices.first { !changes[$0].reviewed }
-            if let next {
-                if case .overview? = focus { reader.scrollToFile(next) } else { open(changes[next].path) }
-            }
-        }
+        if newValue, advance, let last = idx.max() { goToUnreviewed(after: last) }
         updateTitle()
+    }
+
+    /// Goes to the first unreviewed file after a change, wrapping around to the first.
+    ///
+    /// - Parameter i: The change's index in `changes`, or -1 to start from the first.
+    /// - Returns: False if every file is reviewed.
+    @discardableResult
+    func goToUnreviewed(after i: Int) -> Bool {
+        let changes = self.changes
+        guard let next = changes.indices.first(where: { $0 > i && !changes[$0].reviewed }) ?? changes.indices.first(where: { !changes[$0].reviewed }) else { return false }
+        if case .overview? = focus { reader.scrollToFile(next) } else { open(changes[next].path) }
+        return true
     }
 
     func showError(_ error: Error) {
