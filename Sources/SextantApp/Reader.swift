@@ -763,6 +763,15 @@ final class Reader: NSViewController, CodeViewDelegate {
         return files[p.file].text.lineNumber(at: p.line)
     }
 
+    /// Returns the one-based line in the checkout's copy of the file that a position stands for:
+    /// its new-side line, or for a removed line the line before the removal.
+    func checkoutLine(at p: ReaderPosition) -> Int? {
+        guard files.indices.contains(p.file) else { return nil }
+        let text = files[p.file].text
+        guard text.lines.indices.contains(p.line) else { return nil }
+        return text.positions.newSideLine(at: p.line) + 1
+    }
+
     /// How far the top of the viewport sits below the top position's row; negative when above it.
     private var offsetFromTopPosition: CGFloat {
         guard let a = topAnchor else { return 0 }

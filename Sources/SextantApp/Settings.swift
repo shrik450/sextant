@@ -64,7 +64,7 @@ struct SettingsView: View {
                 Text("Text")
             }
             Section {
-                TextField("Command", text: $editorCommand, prompt: Text("Default app"))
+                TextField("Command", text: $editorCommand, prompt: Text("Required"))
                     .font(.system(.body, design: .monospaced))
             } header: {
                 Text("Open in Editor")

@@ -1221,7 +1221,7 @@ extension RepoWindowController: ReaderDelegate {
 
     func readerOpenInEditor(_ r: Reader, file: Int) {
         guard r.files.indices.contains(file) else { return }
-        openInEditor(path: r.files[file].file.path, line: 0)
+        openInEditor(path: r.files[file].file.path, line: 1)
     }
 
     func readerUnfolded(_ r: Reader) {}

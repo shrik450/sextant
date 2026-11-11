@@ -188,7 +188,7 @@ extension RepoWindowController: NSMenuItemValidation {
     }
 
     private func fileItems(_ m: NSMenu, path: String) {
-        add(m, "Open in Editor", #selector(menuOpenInEditor(_:)), [path, 0] as [Any])
+        add(m, "Open in Editor", #selector(menuOpenInEditor(_:)), [path, 1] as [Any])
         add(m, "Reveal in Finder", #selector(menuReveal(_:)), path)
         add(m, "Copy Path", #selector(copyString(_:)), path)
     }
@@ -200,7 +200,7 @@ extension RepoWindowController: NSMenuItemValidation {
 
     @objc func menuOpenInEditor(_ sender: NSMenuItem) {
         guard let a = sender.representedObject as? [Any], let path = a[0] as? String else { return }
-        openInEditor(path: path, line: a[1] as? Int ?? 0)
+        openInEditor(path: path, line: a[1] as? Int ?? 1)
     }
 
     /// The checkout that files open from: the reviewed worktree, or the one on the reviewed branch.
@@ -219,24 +219,31 @@ extension RepoWindowController: NSMenuItemValidation {
     }
 
     /// Opens a file of the checkout in the user's editor, which may differ from the revision read.
+    ///
+    /// Runs the editor command from Settings, and opens Settings to ask for one if none is set.
+    ///
+    /// - Parameters:
+    ///   - path: The file's path in the checkout.
+    ///   - line: The one-based line to open the file at.
     func openInEditor(path: String, line: Int) {
+        guard let cmd = UserDefaults.standard.string(forKey: "editorCommand"), !cmd.trimmingCharacters(in: .whitespaces).isEmpty else {
+            beep()
+            (NSApp.delegate as? AppDelegate)?.showSettings(nil)
+            return
+        }
         guard let root = checkout else { beep(); return }
         let url = root.url.appendingPathComponent(path)
         guard FileManager.default.fileExists(atPath: url.path) else { beep(); return }
-        if let cmd = UserDefaults.standard.string(forKey: "editorCommand"), !cmd.trimmingCharacters(in: .whitespaces).isEmpty {
-            let full = cmd.replacingOccurrences(of: "{file}", with: shellQuote(url.path)).replacingOccurrences(of: "{line}", with: String(max(1, line)))
-            Task {
-                let p = Process()
-                p.executableURL = URL(fileURLWithPath: "/bin/sh")
-                p.arguments = ["-c", full]
-                p.currentDirectoryURL = root.url
-                var env = ProcessInfo.processInfo.environment
-                env["PATH"] = await UserTools.path.value
-                p.environment = env
-                do { try p.run() } catch { showError(error) }
-            }
-        } else {
-            NSWorkspace.shared.open(url)
+        let full = cmd.replacingOccurrences(of: "{file}", with: shellQuote(url.path)).replacingOccurrences(of: "{line}", with: String(max(1, line)))
+        Task {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/bin/sh")
+            p.arguments = ["-c", full]
+            p.currentDirectoryURL = root.url
+            var env = ProcessInfo.processInfo.environment
+            env["PATH"] = await UserTools.path.value
+            p.environment = env
+            do { try p.run() } catch { showError(error) }
         }
     }
 
@@ -454,7 +461,7 @@ extension RepoWindowController: NSMenuItemValidation {
                 add(m, f.reviewed ? "Mark as Not Reviewed" : "Mark as Reviewed", #selector(menuToggleReviewed(_:)), [f.path])
                 m.addItem(.separator())
             }
-            let n = line.flatMap { reader.sideLine(at: ReaderPosition(file: file, line: $0))?.number } ?? 0
+            let n = line.flatMap { reader.checkoutLine(at: ReaderPosition(file: file, line: $0)) } ?? 1
             add(m, "Open in Editor", #selector(menuOpenInEditor(_:)), [f.path, n] as [Any])
             add(m, "Reveal in Finder", #selector(menuReveal(_:)), f.path)
         }
@@ -736,9 +743,13 @@ extension RepoWindowController: NSMenuItemValidation {
     }
 
     @objc func openCurrentInEditor(_ sender: Any?) {
-        guard let path = focusedFile?.file.path ?? actionPaths.first else { beep(); return }
-        let line = selectedReference.map { $0.old ? 0 : $0.lines.lowerBound } ?? 0
-        openInEditor(path: path, line: line)
+        if window?.firstResponder !== navigator.changes.outline, let caret = reader.caret, let line = reader.checkoutLine(at: caret) {
+            openInEditor(path: reader.files[caret.file].file.path, line: line)
+        } else if let path = actionPaths.first ?? focusedFile?.file.path {
+            openInEditor(path: path, line: 1)
+        } else {
+            beep()
+        }
     }
 
     @objc func copyCurrentPath(_ sender: Any?) {
