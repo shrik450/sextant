@@ -259,8 +259,8 @@ public struct Git: Sendable {
                     files.append(untrackedFileDiff(path: path, oid: oid, contents: readWorktreeFile(path, limit: 4 << 20), mode: worktreeMode(path)))
                 }
             }
-            files.sort { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
         }
+        files.sort { precedesInFileTree($0.path, $1.path) }
         try await markUncompared(&files)
         return files
     }

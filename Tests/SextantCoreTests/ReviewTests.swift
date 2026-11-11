@@ -152,6 +152,29 @@ private let treePaths = [
     ])
 }
 
+@Test func ordersPathsAsTheFileTreeListsThem() {
+    let paths = [
+        "src/zz.swift", "src/z/x.swift", "README.md", "a.txt", "Package.swift", "src/file10.swift", "src/file2.swift",
+        "a/b.txt", "b/a.txt", "C/c.txt", "src/deep/x/y.swift", "src/Deep.swift",
+    ]
+    func files(_ nodes: [FileNode]) -> [String] {
+        nodes.flatMap { n -> [String] in
+            switch n.kind {
+            case .file: [n.path]
+            case .folder: files(n.children)
+            case .unchanged: []
+            }
+        }
+    }
+    let tree = fileTree(paths: paths, changed: Set(paths), reviewed: [], showUnchanged: false, revealed: [])
+    let sorted = paths.sorted(by: precedesInFileTree)
+    #expect(sorted == files(tree))
+    #expect(sorted == [
+        "a/b.txt", "b/a.txt", "C/c.txt", "src/deep/x/y.swift", "src/z/x.swift", "src/Deep.swift", "src/file2.swift",
+        "src/file10.swift", "src/zz.swift", "a.txt", "Package.swift", "README.md",
+    ])
+}
+
 @Test func findsChangeRuns() {
     let lines = [
         DiffLine(kind: .context, oldNo: 1, newNo: 1, text: "a"),

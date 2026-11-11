@@ -41,6 +41,30 @@ public func fileTree(paths: [String], changed: Set<String>, reviewed: Set<String
     return root.nodes(prefix: "", showAll: showUnchanged, revealed: revealed, changed: changed, reviewed: reviewed)
 }
 
+/// Returns whether one path comes before another in the file tree.
+///
+/// The tree orders each folder's items folders first, then by name as the Finder does, so this
+/// compares paths one component at a time in that order. Names the Finder ranks the same, such
+/// as `a` and `A`, fall back to byte order, so the order is total.
+public func precedesInFileTree(_ a: String, _ b: String) -> Bool {
+    let x = a.split(separator: "/", omittingEmptySubsequences: false)
+    let y = b.split(separator: "/", omittingEmptySubsequences: false)
+    for i in 0..<min(x.count, y.count) {
+        let xIsFolder = i < x.count - 1, yIsFolder = i < y.count - 1
+        if xIsFolder != yIsFolder { return xIsFolder }
+        if x[i] != y[i] { return precedesByName(String(x[i]), String(y[i])) }
+    }
+    return false
+}
+
+private func precedesByName(_ a: String, _ b: String) -> Bool {
+    switch a.localizedStandardCompare(b) {
+    case .orderedAscending: true
+    case .orderedDescending: false
+    case .orderedSame: a < b
+    }
+}
+
 private final class Folder {
     var folders: [String: Folder] = [:]
     var files: Set<String> = []
@@ -74,7 +98,7 @@ private final class Folder {
     }
 
     private static func sorted(_ names: some Sequence<String>) -> [String] {
-        names.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        names.sorted(by: precedesByName)
     }
 
     func nodes(prefix: String, showAll: Bool, revealed: Set<String>, changed: Set<String>, reviewed: Set<String>) -> [FileNode] {

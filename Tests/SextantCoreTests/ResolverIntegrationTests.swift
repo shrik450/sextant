@@ -32,7 +32,7 @@ extension GitIntegrationTests {
         #expect(r.worktree?.branch == "feature/peek")
         #expect(r.commits.map(\.subject) == ["Add greet()", "Print usage to stderr"])
         #expect(r.mergeBase == (await repo.resolve("main")))
-        #expect(try await paths(r) == ["dir with space/file name.txt", "main.go", "notes.md", "scripts/build.py", "src/lib.rs", "web/app.ts"])
+        #expect(try await paths(r) == ["dir with space/file name.txt", "scripts/build.py", "src/lib.rs", "web/app.ts", "main.go", "notes.md"])
     }
 
     @Test func linkedWorktreeRunsInItsOwnCheckout() async throws {
@@ -41,9 +41,9 @@ extension GitIntegrationTests {
         #expect(all.git.root.standardizedFileURL == Self.agentRoot.standardizedFileURL)
         #expect(all.worktree?.branch == "feature/agent")
         #expect(all.commits.map(\.subject) == ["Agent: greet from the agent"])
-        #expect(try await paths(all) == ["agent-notes.txt", "main.go", "web/app.ts"])
+        #expect(try await paths(all) == ["web/app.ts", "agent-notes.txt", "main.go"])
         let unfinished = try await resolve(Review(subject: .worktree(CanonicalPath(Self.agentRoot)), base: "main", scope: .uncommitted))
-        #expect(try await paths(unfinished) == ["agent-notes.txt", "web/app.ts"])
+        #expect(try await paths(unfinished) == ["web/app.ts", "agent-notes.txt"])
     }
 
     @Test func branchesReviewSinceTheySplitFromTheBase() async throws {
@@ -86,7 +86,7 @@ extension GitIntegrationTests {
         let since = try await resolve(Review(subject: .comparison(from: "feature/agent", to: "feature/peek", sinceAncestor: true)))
         #expect(try await paths(since) == ["scripts/build.py", "web/app.ts"])
         let direct = try await resolve(Review(subject: .comparison(from: "feature/agent", to: "feature/peek", sinceAncestor: false)))
-        #expect(try await paths(direct) == ["main.go", "scripts/build.py", "web/app.ts"])
+        #expect(try await paths(direct) == ["scripts/build.py", "web/app.ts", "main.go"])
         let one = try await resolve(Review(subject: .commit("feature/peek~1"), scope: .uncommitted))
         #expect(one.review.scope == .everything)
         #expect(try await paths(one) == ["scripts/build.py"])

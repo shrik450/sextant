@@ -29,7 +29,7 @@ import Testing
         #expect(Self.ready)
         let files = try await repo.diff(.worktree(since: nil))
         let paths = files.map(\.path)
-        #expect(paths == ["dir with space/file name.txt", "main.go", "notes.md", "scripts/build.py", "src/lib.rs"])
+        #expect(paths == ["dir with space/file name.txt", "scripts/build.py", "src/lib.rs", "main.go", "notes.md"])
         #expect(files.allSatisfy { $0.change.newOid != zeroOid })
         let notes = files.first { $0.path == "notes.md" }!
         #expect(notes.change.isUntracked && notes.additions == 3)
@@ -42,7 +42,7 @@ import Testing
         let staged = try await repo.diff(.staged).map(\.path)
         let unstaged = try await repo.diff(.unstaged).map(\.path)
         #expect(staged == ["main.go"])
-        #expect(unstaged == ["dir with space/file name.txt", "notes.md", "scripts/build.py", "src/lib.rs"])
+        #expect(unstaged == ["dir with space/file name.txt", "scripts/build.py", "src/lib.rs", "notes.md"])
     }
 
     @Test func commitDiffsCoverRenameModeBinaryAndDelete() async throws {
