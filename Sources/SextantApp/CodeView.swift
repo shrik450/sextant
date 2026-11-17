@@ -24,7 +24,7 @@ struct Style {
     var lineHeight: CGFloat
     var tabInterval: CGFloat
     var digitWidth: CGFloat
-    /// How opaque the pane's canvas is, as its look sets it.
+    /// How opaque the pane's canvas is, which lets the window's frost show through a card.
     var canvasOpacity: CGFloat = 1
 
     /// The pane's fill: the canvas at its opacity, so what's behind the strip can show through

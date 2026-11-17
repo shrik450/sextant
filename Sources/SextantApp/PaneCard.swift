@@ -14,7 +14,7 @@ import AppKit
 /// takes the keyboard, so the cards don't change then. A card cut off at the strip's edge shows as
 /// a narrower card, with its own rounded corners and rim on the cut side.
 @MainActor
-final class PaneCard: NSView, PaneSurface {
+final class PaneCard: NSView {
     private let clip = NSView()
     private let cardShadow = CALayer()
     private let shadowCutout = CAShapeLayer()
@@ -25,7 +25,7 @@ final class PaneCard: NSView, PaneSurface {
     private var mainObservers: [NSObjectProtocol] = []
 
     /// Concentric with the window's corners, at the strip's margin from them.
-    static let cornerRadius: CGFloat = GlassLook.windowCornerRadius - GlassLook.margin
+    static let cornerRadius: CGFloat = Glass.windowCornerRadius - Glass.margin
     private static let shadowOffset = CGSize(width: 0, height: -2)
     /// The blur of the shadow, tight enough that it fades out within the strip's margin and the
     /// gap between cards. The window's columns each clip what's drawn in them, so a shadow that

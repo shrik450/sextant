@@ -38,12 +38,10 @@ final class Navigator: NSViewController {
     private(set) var tab: Tab = .changes
     var onTabChanged: (() -> Void)?
 
-    /// - Parameters:
-    ///   - look: The window's look, for the lists' rows and what floats over them.
-    ///   - heading: What heads the column above its tabs, if anything.
-    init(look: any Look, heading: NSView?) {
-        changes = ChangesController(look: look)
-        search = SearchController(look: look)
+    /// - Parameter heading: What heads the column above its tabs, if anything.
+    init(heading: NSView?) {
+        changes = ChangesController()
+        search = SearchController()
         self.heading = heading
         super.init(nibName: nil, bundle: nil)
     }
@@ -165,8 +163,7 @@ final class ChangesController: NSViewController {
 
     weak var delegate: NavigatorDelegate?
     weak var reviews: ReviewStore?
-    private let look: any Look
-    private lazy var rowViews = RowViews(look: look)
+    private let rowViews = RowViews()
     let commits = KeyTableView()
     let outline = KeyOutlineView()
     let filter = NSSearchField()
@@ -196,8 +193,7 @@ final class ChangesController: NSViewController {
         }
     }
 
-    init(look: any Look) {
-        self.look = look
+    init() {
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -734,8 +730,7 @@ final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutli
     let outline = KeyOutlineView()
     private let status = NSTextField(labelWithString: "")
     private let footer = NSView()
-    private let look: any Look
-    private lazy var rowViews = RowViews(look: look)
+    private let rowViews = RowViews()
     private var suppressOpen = false
     private var groups: [Group] = []
     private var items: [ObjectIdentifier: [Item]] = [:]
@@ -743,8 +738,7 @@ final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutli
     var wholeWord = false
     var caseSensitive = false
 
-    init(look: any Look) {
-        self.look = look
+    init() {
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -793,7 +787,7 @@ final class SearchController: NSViewController, NSOutlineViewDataSource, NSOutli
         status.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         let padded = NSStackView(views: [status])
         padded.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
-        footer.pin(look.floating(padded, cornerRadius: Self.footerHeight / 2))
+        footer.pin(Glass.floating(padded, cornerRadius: Self.footerHeight / 2))
         footer.isHidden = true
         footer.translatesAutoresizingMaskIntoConstraints = false
         v.addSubview(field)

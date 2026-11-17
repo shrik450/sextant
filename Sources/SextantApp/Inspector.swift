@@ -64,11 +64,9 @@ final class Inspector: NSViewController, NSSplitViewDelegate {
     private var folded: Set<String> = []
     /// Says whether a run of changes has been read.
     var isRead: (FileState, FileText.KeyedRun) -> Bool = { _, _ in false }
-    private let look: any Look
-    private lazy var rowViews = RowViews(look: look)
+    private let rowViews = RowViews()
 
-    init(look: any Look) {
-        self.look = look
+    init() {
         super.init(nibName: nil, bundle: nil)
     }
 

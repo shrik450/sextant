@@ -41,7 +41,7 @@ final class JumpPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NSTa
     static let rowHeight: CGFloat = 30
     static let visibleRows = 12
 
-    init(look: any Look) {
+    init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 60), styleMask: [.borderless, .fullSizeContentView], backing: .buffered, defer: false)
         isFloatingPanel = !NSApp.runsBehind
         hidesOnDeactivate = true
@@ -90,7 +90,7 @@ final class JumpPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NSTa
             status.trailingAnchor.constraint(equalTo: back.trailingAnchor, constant: -16),
             status.bottomAnchor.constraint(equalTo: back.bottomAnchor, constant: -8),
         ])
-        contentView = look.panel(back)
+        contentView = Glass.panel(back)
     }
 
     override var canBecomeKey: Bool { true }

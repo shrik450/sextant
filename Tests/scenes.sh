@@ -3,7 +3,7 @@
 # Plays scenes that once went wrong in Sextant, and fails when the app doesn't come through one
 # as it should.
 #
-# A crash scene plays against a ghostty checkout in the glass look, in light and in dark, and
+# A crash scene plays against a ghostty checkout, in light and in dark, and
 # passes when the app reaches its end. A checked scene makes the repositories it needs and passes
 # when what the app reports during the scene is right. The app runs behind the windows in use,
 # one scene at a time under the GUI lock the benchmarks share. What each scene leaves, such as
@@ -185,7 +185,6 @@ scene_page() {
   for appearance in light dark; do
     mkdir -p "$dir/$appearance"
     cat > "$dir/$appearance/script.txt" <<EOF
-defaults look glass
 open $repo a573781c6^..a573781c6
 resize 1500 950
 appearance $appearance

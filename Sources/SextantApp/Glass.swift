@@ -1,8 +1,9 @@
 import AppKit
 
-/// The look of macOS 26: the side columns and the panes' cards share one frosted backdrop, and a
-/// toolbar floats over the cards' headers.
-struct GlassLook: Look {
+/// The measurements and materials of the window's glass: the side columns and the panes' cards
+/// share one frosted backdrop, and a toolbar floats over the cards' headers.
+@MainActor
+enum Glass {
     /// The space between the cards and the strip's edges.
     static let margin: CGFloat = 8
     /// The corner radius of a macOS 26 window with a toolbar, measured from a capture, since
@@ -11,53 +12,43 @@ struct GlassLook: Look {
     /// The corner radius of Go to Anything, as round as a window's.
     static let panelCornerRadius: CGFloat = 20
 
-    var defaultThemes: (light: String, dark: String) { ("Revue Light", "Revue Dark") }
-
-    var strip: StripLayout {
-        let m = Self.margin
-        return StripLayout(margins: NSEdgeInsets(top: m, left: m, bottom: m, right: m), gap: 8, seam: nil)
-    }
-
-    /// A header centred on the traffic lights, in the titlebar's row.
-    var paneHeader: PaneHeaderStyle { PaneHeaderStyle(height: 36, bar: nil, liesInTitlebar: true) }
-
-    func makeFrame() -> WindowFrame { GlassFrame() }
-
-    func makePaneSurface(content: NSView, header: PaneHeader) -> PaneSurface { PaneCard(content: content, header: header) }
-
-    func makeRowView() -> NSTableRowView { PillRowView() }
-
-    func floating(_ content: NSView, cornerRadius: CGFloat) -> NSView {
+    /// Puts something that floats over the code, such as the change counter, on glass.
+    ///
+    /// - Parameters:
+    ///   - content: What floats, which fills the glass.
+    ///   - cornerRadius: The radius of the glass's corners.
+    static func floating(_ content: NSView, cornerRadius: CGFloat) -> NSView {
         let glass = NSGlassEffectView()
         glass.cornerRadius = cornerRadius
         glass.contentView = content
         return glass
     }
 
-    func panel(_ content: NSView) -> NSView {
-        let glass = floating(content, cornerRadius: Self.panelCornerRadius)
+    /// Puts the contents of a panel over the window, such as Go to Anything, on glass.
+    ///
+    /// - Parameter content: The panel's contents, which fill the glass.
+    /// - Returns: The glass, with its corners already rounded.
+    static func panel(_ content: NSView) -> NSView {
+        let glass = floating(content, cornerRadius: panelCornerRadius)
         let shape = NSView()
         shape.wantsLayer = true
-        shape.layer?.cornerRadius = Self.panelCornerRadius
+        shape.layer?.cornerRadius = panelCornerRadius
         shape.layer?.cornerCurve = .continuous
         shape.layer?.masksToBounds = true
         glass.autoresizingMask = [.width, .height]
         shape.addSubview(glass)
         return shape
     }
-
-    /// The theme's card opacity, so the backdrop's frost shows through the cards.
-    func canvasOpacity(of theme: Theme) -> CGFloat { theme.cardOpacity }
 }
 
-/// The glass window's frame: a navigator headed by the review, and a toolbar with the navigator
-/// toggle and a few plain buttons beside the traffic lights and the inspector toggle at the far
-/// end, so the cards rise to the top of the window between them.
+/// The window's frame: a navigator headed by the review, and a toolbar with the navigator toggle
+/// and a few plain buttons beside the traffic lights and the inspector toggle at the far end, so
+/// the cards rise to the top of the window between them.
 ///
 /// The navigator is a plain column rather than the system's sidebar, whose own glass would set it
 /// apart from the backdrop the rest of the window shares.
 @MainActor
-final class GlassFrame: NSObject, WindowFrame, NSToolbarDelegate {
+final class WindowFrame: NSObject, NSToolbarDelegate {
     private let reviewHeader = ReviewHeader()
     private weak var controller: RepoWindowController?
 
@@ -107,8 +98,6 @@ final class GlassFrame: NSObject, WindowFrame, NSToolbarDelegate {
     }
 
     func show(_ summary: ReviewSummary) { reviewHeader.show(summary) }
-
-    func columnsChanged() {}
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [Self.navigatorToggleID, Self.findInFilesID, Self.goToAnythingID, .flexibleSpace, Self.inspectorToggleID]
@@ -226,5 +215,53 @@ final class PillRowView: NSTableRowView {
         let edge = NSBezierPath(roundedRect: pill.insetBy(dx: 0.25, dy: 0.25), xRadius: pill.height / 2, yRadius: pill.height / 2)
         edge.lineWidth = 0.5
         edge.stroke()
+    }
+}
+
+/// The row views of one side column's list, given out again once the list removes them.
+///
+/// A list that scrolls keeps the rows that leave its view in a set it empties only as it's given
+/// the same rows again, and its own reuse queue forgets them when it reloads or changes review,
+/// so rows left to its reuse stay alive for good. Giving the removed rows back first empties the
+/// set, and keeps the rows to the most the list has shown at once.
+@MainActor
+final class RowViews {
+    private var spare: [NSTableRowView] = []
+
+    /// Returns a row the list removed, or a new one.
+    func next() -> NSTableRowView { spare.popLast() ?? PillRowView() }
+
+    /// Keeps a row the list removed, to give it out again.
+    func removed(_ row: NSTableRowView) {
+        guard !spare.contains(where: { $0 === row }) else { return }
+        spare.append(row)
+    }
+}
+
+@MainActor
+extension NSSplitViewItem {
+    /// Makes a side column that sits beside the panes, as the inspector does.
+    ///
+    /// - Parameters:
+    ///   - controller: The column's contents.
+    ///   - maximum: The widest the column gets.
+    static func sideColumn(_ controller: NSViewController, maximum: CGFloat) -> NSSplitViewItem {
+        let item = NSSplitViewItem(viewController: controller)
+        item.holdingPriority = .init(260)
+        item.minimumThickness = 220
+        item.maximumThickness = maximum
+        item.preferredThicknessFraction = 0.18
+        item.canCollapse = true
+        item.canCollapseFromWindowResize = true
+        return item
+    }
+
+    /// Makes the column for the strip of panes.
+    static func strip(_ strip: PaneStrip) -> NSSplitViewItem {
+        let controller = NSViewController()
+        controller.view = strip
+        let item = NSSplitViewItem(viewController: controller)
+        item.minimumThickness = 420
+        return item
     }
 }

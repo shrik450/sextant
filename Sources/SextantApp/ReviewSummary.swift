@@ -1,7 +1,7 @@
 import AppKit
 import SextantCore
 
-/// What a window says about the review its focused pane shows, wherever its look shows it.
+/// What a window says about the review its focused pane shows, in the navigator's heading.
 struct ReviewSummary {
     var repository: String
     /// What's reviewed, with the symbol for its kind and a longer description.
@@ -10,8 +10,6 @@ struct ReviewSummary {
     var scope: String
     /// The base the review is compared with, for subjects that have one.
     var base: BaseChoices?
-    var reviewed: Int
-    var total: Int
 }
 
 /// The base a review is compared with, and the branches it can change to.
@@ -70,9 +68,7 @@ extension RepoWindowController {
             repository: repository.name,
             subject: (label.title, label.symbol, label.tooltip + "  (⇧⌘R)"),
             scope: review == nil ? "" : scopeLabel + (changes.isEmpty ? "" : "  ·  \(changes.count) file\(changes.count == 1 ? "" : "s")"),
-            base: base,
-            reviewed: changes.count(where: \.reviewed),
-            total: changes.count)
+            base: base)
     }
 
     /// Compares the review with the base chosen in the sender, a pop-up button of base choices.

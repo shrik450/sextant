@@ -3,7 +3,6 @@ import SextantCore
 import SwiftUI
 
 struct SettingsView: View {
-    @AppStorage(LookChoice.defaultsKey) private var look: LookChoice = .glass
     @AppStorage("lightTheme") private var lightTheme: String?
     @AppStorage("darkTheme") private var darkTheme: String?
     @AppStorage("fontName") private var fontName = ""
@@ -24,16 +23,6 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            Section {
-                Picker("Look", selection: $look) {
-                    ForEach(LookChoice.allCases, id: \.self) { Text($0.title).tag($0) }
-                }
-            } header: {
-                Text("Window")
-            } footer: {
-                Text("Applies to windows you open next.")
-                    .foregroundStyle(.secondary)
-            }
             Section {
                 Picker("Light appearance", selection: theme($lightTheme, dark: false)) {
                     ForEach(themes, id: \.self) { Text($0).tag($0) }
@@ -90,7 +79,7 @@ struct SettingsView: View {
         }
     }
 
-    /// A theme choice that shows the look's theme until the user chooses one.
+    /// A theme choice that shows the default theme until the user chooses one.
     ///
     /// - Parameters:
     ///   - stored: The user's choice, if they made one.

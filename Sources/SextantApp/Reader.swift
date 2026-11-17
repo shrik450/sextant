@@ -51,18 +51,15 @@ final class Reader: NSViewController, CodeViewDelegate {
     private let stack = NSStackView()
     let header: PaneHeader
     private let emptyState = EmptyState(symbolSize: 40, font: .preferredFont(forTextStyle: .title3))
-    private let changeCounter: ChangeCounter
-    private let look: any Look
+    private let changeCounter = ChangeCounter()
     private var layout = Layout(left: [], right: nil)
     private var syncing = false
 
     /// How many readers exist, so automation can check that a closed pane's goes away.
     nonisolated static let live = Mutex(0)
 
-    init(look: any Look) {
-        self.look = look
-        header = PaneHeader(style: look.paneHeader)
-        changeCounter = ChangeCounter(look: look)
+    init() {
+        header = PaneHeader()
         super.init(nibName: nil, bundle: nil)
         Reader.live.withLock { $0 += 1 }
     }
@@ -73,10 +70,11 @@ final class Reader: NSViewController, CodeViewDelegate {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    /// The style the code draws in, for the appearance the reader shows in and its look.
+    /// The style the code draws in, for the appearance the reader shows in, with the theme's card
+    /// opacity so the window's frost shows through the card.
     private func currentStyle() -> Style {
         var style = Style.current(for: view.effectiveAppearance)
-        style.canvasOpacity = look.canvasOpacity(of: style.theme)
+        style.canvasOpacity = style.theme.cardOpacity
         return style
     }
 
@@ -537,7 +535,7 @@ final class Reader: NSViewController, CodeViewDelegate {
 
     private var jump: Jump? { didSet { showJumpPrompt() } }
     private lazy var jumpPrompt: JumpPrompt = {
-        let p = JumpPrompt(look: look)
+        let p = JumpPrompt()
         p.translatesAutoresizingMaskIntoConstraints = false
         p.isHidden = true
         view.addSubview(p)
@@ -1133,7 +1131,7 @@ final class Reader: NSViewController, CodeViewDelegate {
 final class JumpPrompt: NSView {
     private let text = NSTextField(labelWithString: "")
 
-    init(look: any Look) {
+    init() {
         super.init(frame: .zero)
         let content = NSView()
         text.translatesAutoresizingMaskIntoConstraints = false
@@ -1144,7 +1142,7 @@ final class JumpPrompt: NSView {
             text.topAnchor.constraint(equalTo: content.topAnchor, constant: 8),
             text.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -8),
         ])
-        pin(look.floating(content, cornerRadius: 16))
+        pin(Glass.floating(content, cornerRadius: 16))
     }
 
     required init?(coder: NSCoder) { fatalError() }

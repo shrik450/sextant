@@ -37,7 +37,9 @@ final class PaneHeader: NSView, NSMenuDelegate {
     var onToggleZoom: (() -> Void)?
     var onClose: (() -> Void)?
 
-    private let style: PaneHeaderStyle
+    /// Tall enough to centre the header on the traffic lights, in the titlebar's row.
+    static let height: CGFloat = 36
+
     private var row = NSStackView()
 
     /// How far the content keeps in from each end, clear of the titlebar controls over the header.
@@ -58,7 +60,6 @@ final class PaneHeader: NSView, NSMenuDelegate {
         didSet {
             guard isFocusedPane != oldValue else { return }
             applyEmphasis()
-            needsDisplay = true
         }
     }
 
@@ -90,8 +91,7 @@ final class PaneHeader: NSView, NSMenuDelegate {
         closeButton.isHidden = !beside
     }
 
-    init(style: PaneHeaderStyle) {
-        self.style = style
+    init() {
         super.init(frame: .zero)
         splitButton.target = self
         splitButton.action = #selector(splitClicked)
@@ -140,7 +140,7 @@ final class PaneHeader: NSView, NSMenuDelegate {
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: style.height),
+            heightAnchor.constraint(equalToConstant: Self.height),
             row.leadingAnchor.constraint(equalTo: leadingAnchor),
             row.trailingAnchor.constraint(equalTo: trailingAnchor),
             row.topAnchor.constraint(equalTo: topAnchor),
@@ -151,20 +151,10 @@ final class PaneHeader: NSView, NSMenuDelegate {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    /// Fills the header as a bar over its pane, with a hairline along its foot, when its look
-    /// draws it as one.
-    override func draw(_ dirtyRect: NSRect) {
-        guard let bar = style.bar else { return }
-        (isFocusedPane ? bar.focused : bar.other).setFill()
-        bounds.fill()
-        NSColor.separatorColor.setFill()
-        NSRect(x: 0, y: 0, width: bounds.width, height: 1).fill()
-    }
-
-    /// Zooms or minimizes the window on a double click when the header lies in the titlebar, as
-    /// the titlebar would, following the user's setting for it.
+    /// Zooms or minimizes the window on a double click, as the titlebar the header lies in would,
+    /// following the user's setting for it.
     override func mouseDown(with event: NSEvent) {
-        guard style.liesInTitlebar, event.clickCount == 2, let window else { super.mouseDown(with: event); return }
+        guard event.clickCount == 2, let window else { super.mouseDown(with: event); return }
         switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") {
         case "Minimize": window.performMiniaturize(nil)
         case "None": break

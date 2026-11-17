@@ -17,7 +17,7 @@ final class ChangeCounter: NSView {
     private let previous = ChangeCounter.button("chevron.up", "Previous Change (⇧K)", #selector(RepoWindowController.previousChange(_:)))
     private let next = ChangeCounter.button("chevron.down", "Next Change (⇧J)", #selector(RepoWindowController.nextChange(_:)))
 
-    init(look: any Look) {
+    init() {
         super.init(frame: .zero)
         label.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
         label.textColor = .themed("fgMuted")
@@ -26,7 +26,7 @@ final class ChangeCounter: NSView {
         row.orientation = .horizontal
         row.spacing = 4
         row.edgeInsets = NSEdgeInsets(top: 0, left: 6, bottom: 0, right: 6)
-        pin(look.floating(row, cornerRadius: Self.height / 2))
+        pin(Glass.floating(row, cornerRadius: Self.height / 2))
         heightAnchor.constraint(equalToConstant: Self.height).isActive = true
         setAccessibilityElement(true)
         setAccessibilityRole(.group)

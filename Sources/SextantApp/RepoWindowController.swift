@@ -49,10 +49,8 @@ enum Anchor {
 final class RepoWindowController: NSWindowController, NSWindowDelegate {
     let repository: Repository
     let split = NSSplitViewController()
-    /// How the window looks, which it keeps from when it opens.
-    let look: any Look
     /// The frame the columns sit in, which shows what the window reviews.
-    let frame: WindowFrame
+    let frame = WindowFrame()
     let navigator: Navigator
     let strip: PaneStrip
     let inspector: Inspector
@@ -103,11 +101,9 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     init(repository: Repository, home: CanonicalPath?) {
         self.repository = repository
         self.home = home
-        look = LookChoice.chosen.look
-        frame = look.makeFrame()
-        navigator = Navigator(look: look, heading: frame.navigatorHeading)
-        strip = PaneStrip(look: look)
-        inspector = Inspector(look: look)
+        navigator = Navigator(heading: frame.navigatorHeading)
+        strip = PaneStrip()
+        inspector = Inspector()
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1440, height: 900),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                               backing: .buffered, defer: false)
@@ -127,7 +123,6 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
         frame.install(in: self)
         window.setContentSize(NSSize(width: 1440, height: 900))
         showPanes(animated: false)
-        NotificationCenter.default.addObserver(self, selector: #selector(columnsResized(_:)), name: NSSplitView.didResizeSubviewsNotification, object: split.splitView)
 
         window.autorecalculatesKeyViewLoop = false
         navigator.changes.filter.nextKeyView = navigator.changes.outline
@@ -164,7 +159,7 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
 
     /// Makes a pane's reader, set up like the others.
     private func makePane() -> Pane {
-        let p = Pane(look: look)
+        let p = Pane()
         p.loadingChanged = { [weak self] in self?.runWorkWaitingForFile() }
         let r = p.reader
         r.delegate = self
@@ -1024,11 +1019,6 @@ final class RepoWindowController: NSWindowController, NSWindowDelegate {
     @objc private func notesChanged(_ n: Notification) {
         showNotes()
         for p in panes where !p.reader.files.isEmpty { p.reader.reload(keepPosition: true) }
-    }
-
-    /// Lets the frame follow the side columns as they show, hide or resize.
-    @objc private func columnsResized(_ n: Notification) {
-        frame.columnsChanged()
     }
 
     @objc private func appearanceChanged(_ n: Notification) {

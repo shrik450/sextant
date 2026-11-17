@@ -60,8 +60,8 @@ final class Session {
 @MainActor
 final class Pane {
     let reader: Reader
-    /// The surface the reader shows on, in the strip.
-    let surface: PaneSurface
+    /// The card the reader shows on, in the strip.
+    let surface: PaneCard
     var session: Session?
     /// What the reader shows: the overview of every change, or one file.
     var focus: Location.Place?
@@ -90,9 +90,9 @@ final class Pane {
         preparingNeighbour = nil
     }
 
-    init(look: any Look) {
-        reader = Reader(look: look)
-        surface = look.makePaneSurface(content: reader.view, header: reader.header)
+    init() {
+        reader = Reader()
+        surface = PaneCard(content: reader.view, header: reader.header)
     }
 
     /// Whether a file is loading to show.
@@ -112,16 +112,14 @@ final class Pane {
 /// keeps its width, and the strip slides so the focused one is in view, with its neighbour
 /// showing at the edge.
 ///
-/// Each pane says where it is in its own header, so the strip only places them, as its look
-/// lays them out.
+/// Each pane says where it is in its own header, so the strip only places them, as cards on the
+/// window's frost.
 @MainActor
 final class PaneStrip: NSView {
     private let track = FlippedView()
-    private var surfaces: [PaneSurface] = []
+    private var surfaces: [PaneCard] = []
     private var offset: CGFloat = 0
     private(set) var focused = 0
-    private let arrangement: StripLayout
-    private let headerHeight: CGFloat
     /// The window-space frames of the titlebar controls that can sit over the panes' headers.
     var titlebarControls: () -> [NSRect] = { [] }
 
@@ -131,10 +129,10 @@ final class PaneStrip: NSView {
     static let slideDuration: TimeInterval = 0.18
     /// The space kept between a titlebar control and the header content beside it.
     static let controlClearance: CGFloat = 10
+    /// The space between neighbouring panes.
+    static let gap: CGFloat = 8
 
-    init(look: any Look) {
-        arrangement = look.strip
-        headerHeight = look.paneHeader.height
+    init() {
         super.init(frame: .zero)
         wantsLayer = true
         addSubview(track)
@@ -144,14 +142,8 @@ final class PaneStrip: NSView {
 
     override var isFlipped: Bool { true }
 
-    override var wantsUpdateLayer: Bool { true }
-
-    override func updateLayer() {
-        layer?.backgroundColor = arrangement.seam?.cgColor
-    }
-
     /// Shows panes in order, with one focused.
-    func show(_ panes: [PaneSurface], focused index: Int, animated: Bool) {
+    func show(_ panes: [PaneCard], focused index: Int, animated: Bool) {
         if !panes.elementsEqual(surfaces, by: ===) {
             for s in surfaces where !panes.contains(where: { $0 === s }) { s.removeFromSuperview() }
             for s in panes where s.superview !== track {
@@ -171,8 +163,8 @@ final class PaneStrip: NSView {
     /// The top ignores the safe area, so the panes' headers can share the row with the traffic
     /// lights and toolbar buttons, which each header keeps its content clear of.
     private var paneArea: NSRect {
-        let m = arrangement.margins
-        return NSRect(x: m.left, y: m.top, width: max(0, bounds.width - m.left - m.right), height: max(0, bounds.height - m.top - m.bottom))
+        let m = Glass.margin
+        return NSRect(x: m, y: m, width: max(0, bounds.width - 2 * m), height: max(0, bounds.height - 2 * m))
     }
 
     override func layout() {
@@ -197,7 +189,7 @@ final class PaneStrip: NSView {
 
     private func layoutPanes(animated: Bool) {
         let area = paneArea
-        let w = paneWidth, h = area.height, gap = arrangement.gap
+        let w = paneWidth, h = area.height, gap = Self.gap
         for (i, s) in surfaces.enumerated() {
             let frame = NSRect(x: CGFloat(i) * (w + gap), y: 0, width: w, height: h)
             if s.frame != frame { s.frame = frame }
@@ -211,7 +203,7 @@ final class PaneStrip: NSView {
                 let x = trackFrame.minX + s.frame.minX
                 let from = max(0, area.minX - x), to = min(w, area.maxX - x)
                 s.show(part: NSRect(x: from, y: 0, width: max(0, to - from), height: h))
-                let header = NSRect(x: x, y: area.minY, width: w, height: self.headerHeight)
+                let header = NSRect(x: x, y: area.minY, width: w, height: PaneHeader.height)
                 s.headerClearance = self.clearance(ofHeader: header, shownFrom: x + from, controls: controls)
             }
         }
@@ -258,6 +250,18 @@ final class SeamlessSplitView: NSSplitView {
 }
 
 extension NSView {
+    /// Adds a view that fills this one, following its size.
+    func pin(_ child: NSView) {
+        child.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(child)
+        NSLayoutConstraint.activate([
+            child.topAnchor.constraint(equalTo: topAnchor),
+            child.bottomAnchor.constraint(equalTo: bottomAnchor),
+            child.leadingAnchor.constraint(equalTo: leadingAnchor),
+            child.trailingAnchor.constraint(equalTo: trailingAnchor),
+        ])
+    }
+
     /// Redraws the view and everything in it, as when the theme its colours resolve from changes.
     func redrawSubtree() {
         needsDisplay = true
